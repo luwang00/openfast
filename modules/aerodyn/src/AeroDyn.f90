@@ -442,7 +442,18 @@ subroutine AD_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, InitOut
    ! Set pointer to FlowField data
    if (associated(InitInp%FlowField))  p%FlowField => InitInp%FlowField
 
- 
+   ! Initialize general support structure parameters
+   call Init_GSParam(InputFileData%GS, p%GS, InputFileData%AirDens, InitInp%MHK, InitInp%WtrDpth, errStat2, errMsg2 )
+      if (Failed()) return;
+   if (nRotors >= 1_IntKi) then
+      p%rotors(1)%GSAero = p%GS%GSAero
+      p%rotors(1)%GSDrag = p%GS%GSDrag  ! Only rotor 1 handles GS drag force
+   end if
+   do iR = 2, nRotors
+      p%rotors(iR)%GSAero = p%GS%GSAero
+      p%rotors(iR)%GSDrag = .false.  ! Only rotor 1 handles GS drag force
+   enddo
+
       !............................................................................................
       ! Define and initialize inputs here 
       !............................................................................................
@@ -545,6 +556,13 @@ subroutine AD_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, InitOut
       call Init_RotInflow( p%rotors(iR), m%Inflow(1)%RotInflow(iR), errStat2, ErrMsg2 )
       if (Failed()) return
    enddo
+
+      !............................................................................................
+      ! Initialize m%Inflow%GSInflow for tracking wind inflow
+      !............................................................................................
+   call AllocAry( m%Inflow(1)%GSInflow%InflowVel, 3_IntKi, p%GS%NNodes, 'GSInflow%InflowVel', ErrStat2, ErrMsg2 )
+      if (Failed()) return
+      m%Inflow(1)%GSInflow%InflowVel = 0.0_ReKi
 
    ! Duplicte Inflow(1) (must be done after Init_OLAF)
    call AD_CopyInflowType(m%Inflow(1), m%Inflow(2), MESH_NEWCOPY, ErrStat2, ErrMsg2)
@@ -1062,6 +1080,18 @@ subroutine Init_y(y, u, p, errStat, errMsg)
    errStat = ErrID_None
    errMsg  = ""
    
+   if (p%GSDrag) then
+      call MeshCopy ( SrcMesh  = u%GSMotion       &
+                    , DestMesh = y%GSLoad         &
+                    , CtrlCode = MESH_SIBLING     &
+                    , IOS      = COMPONENT_OUTPUT &
+                    , force    = .TRUE.           &
+                    , moment   = .TRUE.           &
+                    , ErrStat  = ErrStat2         &
+                    , ErrMess  = ErrMsg2          )
+         call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+         if (ErrStat >= AbortErrLev) RETURN
+   end if
          
    if (p%NumTwrNds > 0 .and. (p%TwrAero /= TwrAero_None .or. p%MHK /= MHK_None)) then
             
@@ -1172,12 +1202,17 @@ subroutine Init_u( u, p, p_AD, InputFileData, MHK, WtrDpth, InitInp, errStat, er
       ! Local variables
    real(reKi)                                   :: position(3)       ! node reference position
    real(reKi)                                   :: positionL(3)      ! node local position
+   real(ReKi)                                   :: p1(3)             ! node reference position
+   real(ReKi)                                   :: p2(3)             ! node reference position
    real(R8Ki)                                   :: theta(3)          ! Euler angles
    real(R8Ki)                                   :: orientation(3,3)  ! node reference orientation
    real(R8Ki)                                   :: orientationL(3,3) ! node local orientation
+   real(ReKi)                                   :: s                 ! normalized distance along a GS member
    
    integer(intKi)                               :: j                 ! counter for nodes
    integer(intKi)                               :: k                 ! counter for blades
+   integer(intKi)                               :: nnodes            ! number of nodes of a GS member
+   integer(intKi)                               :: nodeCntr          ! node counter
    
    integer(intKi)                               :: ErrStat2          ! temporary Error status
    character(ErrMsgLen)                         :: ErrMsg2           ! temporary Error message
@@ -1192,11 +1227,74 @@ subroutine Init_u( u, p, p_AD, InputFileData, MHK, WtrDpth, InitInp, errStat, er
       call SetErrStat( errStat2, errMsg2, errStat, errMsg, RoutineName )
       
    if (errStat >= AbortErrLev) return      
-      
-   
+
    u%UserProp      = 0.0_ReKi
-   
-      ! Meshes for motion inputs (ElastoDyn and/or BeamDyn)
+
+      ! Meshes for motion inputs (ElastoDyn, SubDyn, and/or BeamDyn)
+         !................
+         ! general support structure
+         !................
+   if (p%GSAero .or. p%GSDrag) then
+
+      call MeshCreate ( BlankMesh = u%GSMotion      &
+                       ,IOS       = COMPONENT_INPUT &
+                       ,Nnodes    = p_AD%GS%NNodes  &
+                       ,ErrStat   = ErrStat2        &
+                       ,ErrMess   = ErrMsg2         &
+                       ,Orientation     = .true.    &  ! Might be ok to remove Orientation later
+                       ,TranslationDisp = .true.    &
+                       ,TranslationVel  = .true.    &
+                      )
+      if (failed()) return
+
+         ! Add GS joints to the mesh first
+      nodeCntr = 0_IntKi
+      do j=1,p_AD%GS%NJoints
+         position = p_AD%GS%Joints(j)%position ! z offset for MHK_FixedBottom was already done in Init_GSParam
+         nodeCntr = nodeCntr + 1_IntKi
+         call MeshPositionNode(u%GSMotion, nodeCntr, position, errStat2, errMsg2)  ! orientation is identity by default
+            if (failed()) return
+      end do !j
+
+         ! Add member interior nodes to the mesh next
+      do j=1,p_AD%GS%NMembers
+         nnodes = p_AD%GS%Members(j)%NElements + 1_IntKi
+         p1 = p_AD%GS%Joints(p_AD%GS%Members(j)%NodeIndx(     1))%position
+         p2 = p_AD%GS%Joints(p_AD%GS%Members(j)%NodeIndx(nnodes))%position
+         do k=2_IntKi,nnodes-1_IntKi
+            s = real(k-1_IntKi,ReKi)/real(nnodes-1_IntKi,ReKi)
+            position = p1 * (1.0_ReKi-s) + p2 * s
+            nodeCntr = nodeCntr + 1_IntKi
+            call MeshPositionNode(u%GSMotion, nodeCntr, position, errStat2, errMsg2)  ! orientation is identity by default
+               if (failed()) return
+         end do
+         !    ! create line2 elements
+         ! do k=1,nnodes-1_IntKi
+         !    call MeshConstructElement( u%GSMotion, ELEMENT_LINE2, errStat2, errMsg2, &
+         !       p1=p_AD%GS%Members(j)%NodeIndx(  k), &
+         !       p2=p_AD%GS%Members(j)%NodeIndx(k+1) )
+         !       call SetErrStat( errStat2, errMsg2, errStat, errMsg, RoutineName )
+         ! end do
+      end do
+
+      do j=1,nodeCntr
+         call MeshConstructElement( u%GSMotion     &
+                                   ,ELEMENT_POINT  &
+                                   ,errStat2       &
+                                   ,errMsg2        &
+                                   ,j              &
+                                  )
+         if (failed()) return
+      end do
+
+      call MeshCommit(u%GSMotion, errStat2, errMsg2 ); if (failed()) return
+
+      ! Is it necessary to initalize u%GSMotion%Orientation?
+      u%GSMotion%TranslationDisp = 0.0_R8Ki
+      u%GSMotion%TranslationVel  = 0.0_ReKi
+
+   end if
+
          !................
          ! tower
          !................
@@ -1973,6 +2071,9 @@ subroutine AD_CalcWind(t, u, FLowField, p, m, o, Inflow, ErrStat, ErrMsg)
       if(Failed()) return
    enddo
 
+   call AD_CalcWind_GS(t, u%rotors(1), FlowField, p%GS, p, m, Inflow%GSInflow, StartNode, ErrStat2, ErrMsg2)
+   if(Failed()) return
+
    ! OLAF points
    if (allocated(o%WakeLocationPoints) .and. allocated(Inflow%InflowWakeVel)) then
       ! If rotor is MHK, add water depth to z coordinate
@@ -1987,7 +2088,8 @@ subroutine AD_CalcWind(t, u, FLowField, p, m, o, Inflow, ErrStat, ErrMsg)
                                          StartNode, t, &
                                          o%WakeLocationPoints, &
                                          Inflow%InflowWakeVel, &
-                                         NoAcc, ErrStat2, ErrMsg2)
+                                         NoAcc, ErrStat2, ErrMsg2, &
+                                         BoxExceedAllow=.true.)
          if(Failed()) return
       else
          call IfW_FlowField_GetVelAcc(FlowField, StartNode, t, &
@@ -2143,11 +2245,63 @@ subroutine AD_CalcWind_Rotor(t, u, FlowField, p, p_AD, m, RotInflow, StartNode, 
 
 contains
    logical function Failed()
-      call SetErrStat(errStat2, errMsg2, errStat, errMsg, 'AD_CalcWindRotor')
+      call SetErrStat(errStat2, errMsg2, errStat, errMsg, 'AD_CalcWind_Rotor')
       Failed = errStat >= AbortErrLev
    end function Failed
 end subroutine
 
+subroutine AD_CalcWind_GS(t, u, FlowField, p, p_AD, m, GSInflow, StartNode, ErrStat, ErrMsg)
+   real(DbKi),                   intent(in   )  :: t          !< Current simulation time in seconds
+   type(RotInputType),           intent(in   )  :: u          !< Inputs at Time t
+   type(FlowFieldType),pointer,  intent(in   )  :: FlowField  !< Pointer to IfW flowfield
+   type(GSParameterType),        intent(in   )  :: p          !< Parameters
+   type(AD_ParameterType),       intent(in   )  :: p_AD       !< AD parameters
+   type(AD_MiscVarType),         intent(inout)  :: m          !< Misc/optimization variables
+   type(ElemInflowType),target,  intent(inout)  :: GSInflow   !< calculated inflow
+   integer(IntKi),               intent(inout)  :: StartNode  !< starting node for rotor wind
+   integer(IntKi),               intent(  out)  :: ErrStat    !< Error status of the operation
+   character(*),                 intent(  out)  :: ErrMsg     !< Error message if ErrStat /= ErrID_None
+
+   integer(intKi)                               :: ErrStat2
+   character(ErrMsgLen)                         :: ErrMsg2
+   real(ReKi)                                   :: PosOffset(3)
+   real(ReKi), allocatable                      :: NoAcc(:,:)
+
+   ErrStat = ErrID_None
+   ErrMsg = ""
+
+   if (p%GSAero.or.p%GSDrag) then
+      ! If rotor is MHK, add water depth to z coordinate
+      if (p%MHK /= MHK_None) then
+         PosOffset = [0.0_ReKi, 0.0_ReKi, p%WtrDpth]
+      else
+         PosOffset = 0.0_ReKi
+      end if
+      if (p%MHK /= MHK_None .and. p_AD%CompSeaSt) then ! MHK turbines with waves
+         call WaveField_GetWaveVelAcc_AD(p_AD%WaveField, m%WaveField_m, &
+                                         StartNode, t, &
+                                         real(u%GSMotion%Position + u%GSMotion%TranslationDisp, ReKi), &
+                                         GSInflow%InflowVel, &
+                                         NoAcc, ErrStat2, ErrMsg2, &
+                                         BoxExceedAllow=.true.)
+         if(Failed()) return
+      else
+         call IfW_FlowField_GetVelAcc(FlowField, StartNode, t, &
+                                      real(u%GSMotion%Position + u%GSMotion%TranslationDisp, ReKi), &
+                                      GSInflow%InflowVel, &
+                                      NoAcc, ErrStat2, ErrMsg2, &
+                                      BoxExceedAllow=.true., PosOffset=PosOffset)
+         if(Failed()) return
+      end if
+      StartNode = StartNode + p%NNodes
+   end if
+
+contains
+   logical function Failed()
+      call SetErrStat(errStat2, errMsg2, errStat, errMsg, 'AD_CalcWind_GS')
+      Failed = errStat >= AbortErrLev
+   end function Failed
+end subroutine
 
 !----------------------------------------------------------------------------------------------------------------------------------
 !> Routine for computing outputs, used in both loose and tight coupling.
@@ -2195,7 +2349,7 @@ subroutine AD_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, ErrStat, ErrMsg, 
 
    ! SetInputs, Calc BEM Outputs and Twr Outputs 
    do iR=1,size(p%rotors)
-      call RotCalcOutput(t, u%rotors(iR), m%Inflow(1)%RotInflow(iR), p%rotors(iR), p, x%rotors(iR), &
+      call RotCalcOutput(t, u%rotors(iR), m%Inflow(1)%RotInflow(iR), m%Inflow(1)%GSInflow, p%rotors(iR), p, x%rotors(iR), &
                          xd%rotors(iR), z%rotors(iR), OtherState%rotors(iR), &
                          y%rotors(iR), m%rotors(iR), m, iR, ErrStat2, ErrMsg2, .false.)
       if(Failed()) return
@@ -2234,7 +2388,7 @@ contains
    end function Failed
 end subroutine AD_CalcOutput
 !----------------------------------------------------------------------------------------------------------------------------------
-subroutine RotCalcOutput( t, u, RotInflow, p, p_AD, x, xd, z, OtherState, y, m, m_AD, iRot, ErrStat, ErrMsg, NeedWriteOutput)
+subroutine RotCalcOutput( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z, OtherState, y, m, m_AD, iRot, ErrStat, ErrMsg, NeedWriteOutput)
 ! NOTE: no matter how many channels are selected for output, all of the outputs are calculated
 ! All of the calculated output channels are placed into the m%AllOuts(:), while the channels selected for outputs are
 ! placed in the y%WriteOutput(:) array.
@@ -2243,6 +2397,7 @@ subroutine RotCalcOutput( t, u, RotInflow, p, p_AD, x, xd, z, OtherState, y, m, 
    REAL(DbKi),                   INTENT(IN   )  :: t                  !< Current simulation time in seconds
    TYPE(RotInputType),           INTENT(IN   )  :: u                  !< Inputs at Time t
    TYPE(RotInflowType),          INTENT(IN   )  :: RotInflow          !< Rotor Inflow at Time t
+   TYPE(ElemInflowType),         INTENT(IN   )  :: GSInflow           !< General support structure Inflow at Time t
    TYPE(RotParameterType),       INTENT(IN   )  :: p                  !< Parameters
    TYPE(AD_ParameterType),       INTENT(IN   )  :: p_AD               !< Parameters
    TYPE(RotContinuousStateType), INTENT(IN   )  :: x                  !< Continuous states at t
@@ -2299,9 +2454,13 @@ subroutine RotCalcOutput( t, u, RotInflow, p, p_AD, x, xd, z, OtherState, y, m, 
       end if     
    endif 
 
-
    if ( p%TwrAero /= TwrAero_none ) then
       call ADTwr_CalcOutput(p, u, RotInflow, m, y, ErrStat2, ErrMsg2 )
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   endif
+
+   if (p%GSDrag) then
+      call ADGS_CalcOutput(p_AD%GS, u, GSInflow, m, y, ErrStat2, ErrMsg2)
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    endif
 
@@ -5123,7 +5282,158 @@ contains
    end subroutine Cleanup
    
 END SUBROUTINE Init_BEMTmodule
+!----------------------------------------------------------------------------------------------------------------------------------
+!> This routine initializes the FVW module from within AeroDyn.
+SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMsg )
+   type(GSInputFile),               intent(in   ) :: InputFileData
+   type(GSParameterType),           intent(inout) :: p
+   real(ReKi),                      intent(in   ) :: Density
+   integer(IntKi),                  intent(in   ) :: MHK
+   real(ReKi),                      intent(in   ) :: WtrDpth
+   integer(IntKi),                  intent(  out) :: errStat        !< Error status of the operation
+   character(*),                    intent(  out) :: errMsg         !< Error message if ErrStat /= ErrID_None
 
+   integer(IntKi)                                 :: iMem, iJoint, iNode
+   integer(IntKi)                                 :: j1, j2, j1Indx, j2Indx
+   integer(IntKi)                                 :: memID
+   integer(IntKi)                                 :: numDiv
+   real(ReKi)                                     :: j1Pos(3), j2Pos(3)
+   real(ReKi)                                     :: memLength, s
+   logical, allocatable                           :: JointUsed(:)
+   INTEGER(IntKi)                                 :: ErrStat2
+   CHARACTER(ErrMsgLen)                           :: ErrMsg2
+   character(*), parameter                        :: RoutineName = 'Init_GSParam'
+
+   ErrStat = ErrID_None
+   ErrMsg  = ""
+
+   if (InputFileData%NMembers==0_IntKi) then
+      p%GSAero   = .false.
+      p%GSDrag   = .false.
+      p%Density  = 0.0_ReKi
+      p%MHK      = MHK
+      p%WtrDpth  = WtrDpth
+      p%NJoints  = 0_IntKi
+      p%NNodes   = 0_IntKi
+      p%NMembers = 0_IntKi
+      return
+   end if
+
+   ! Default GSAero and GSDrag to true for now; can be based on user input later
+   p%GSAero = .true.
+   p%GSDrag = .true.
+   p%Density  = Density
+   p%NMembers = InputFileData%NMembers
+   p%NJoints  = InputFileData%NJoints
+   p%NNodes   = InputFileData%NJoints ! Total number of nodes (joints + interior nodes); incremented below
+
+   allocate( p%Members(InputFileData%NMembers), STAT = ErrStat2)
+   if ( ErrStat2 /= 0 ) then
+      errMsg  = RoutineName//': Error allocating space for the members array. '
+      errStat = ErrID_Fatal
+      call Cleanup()
+      return
+   end if
+   allocate( p%Joints(InputFileData%NJoints), STAT = ErrStat2)
+   if ( ErrStat2 /= 0 ) then
+      errMsg  = RoutineName//': Error allocating space for the joints array. '
+      errStat = ErrID_Fatal
+      call Cleanup()
+      return
+   end if
+   call AllocAry( JointUsed, InputFileData%NJoints, 'temporary logical array to track which joint is used', ErrStat2, ErrMsg2 )
+      if (Failed())  return
+   JointUsed = .false.
+
+   do iJoint = 1,InputFileData%NJoints
+      p%Joints(iJoint)%JointID  = InputFileData%InpJoints(iJoint)%JointID
+      p%Joints(iJoint)%position = InputFileData%InpJoints(iJoint)%position
+      if (MHK == MHK_FixedBottom) then
+         p%Joints(iJoint)%position(3) = p%Joints(iJoint)%position(3) - WtrDpth
+      end if
+   end do
+
+   do iMem = 1,InputFileData%NMembers
+      memID = InputFileData%InpMembers(iMem)%MemberID
+      p%Members(iMem)%MemberID = memID
+
+      j1 = InputFileData%InpMembers(iMem)%MJointID1
+      j2 = InputFileData%InpMembers(iMem)%MJointID2
+      j1Indx = -1_IntKi
+      j2Indx = -1_IntKi
+      do iJoint = 1,InputFileData%NJoints
+         if (InputFileData%InpJoints(iJoint)%JointID == j1) j1Indx = iJoint
+         if (InputFileData%InpJoints(iJoint)%JointID == j2) j2Indx = iJoint
+      enddo
+      if (j1Indx<0_IntKi) then
+         ErrStat = ErrID_Fatal
+         ErrMsg  = RoutineName//': MJointID1 of member with ID '//trim(num2lstr(memID))//' not found in the joint table. '
+         call Cleanup()
+         return
+      endif
+      JointUsed(j1Indx) = .true.
+      if (j2Indx<0_IntKi) then
+         ErrStat = ErrID_Fatal
+         ErrMsg  = RoutineName//': MJointID2 of member with ID '//trim(num2lstr(memID))//' not found in the joint table. '
+         call Cleanup()
+         return
+      endif
+      JointUsed(j2Indx) = .true.
+
+      j1Pos = InputFileData%InpJoints(j1Indx)%Position
+      j2Pos = InputFileData%InpJoints(j2Indx)%Position
+      memLength = TwoNorm(j2Pos-j1Pos)
+      if (memLength==0.0_ReKi) then
+         ErrStat = ErrID_Fatal
+         ErrMsg  = RoutineName//': Member with ID '//trim(num2lstr(memID))//' has zero length. '
+         call Cleanup()
+         return
+      endif
+      numDiv = ceiling( memLength / InputFileData%InpMembers(iMem)%MDivSize )
+      p%members(iMem)%RefLength = memLength
+      p%members(iMem)%NElements = numDiv
+      p%members(iMem)%dl        = memLength/numDiv
+
+      call AllocAry( p%members(iMem)%NodeIndx, numDiv+1_IntKi, 'Index of each of the member nodes in the global node list', ErrStat2, ErrMsg2 )
+      if (Failed())  return
+      p%members(iMem)%NodeIndx(1) = j1Indx
+      p%members(iMem)%NodeIndx(numDiv+1_IntKi) = j2Indx
+      do iNode = 2,numDiv
+         p%members(iMem)%NodeIndx(iNode) = p%NNodes + iNode - 1_IntKi
+      enddo
+      p%NNodes = p%NNodes + numDiv - 1_IntKi
+
+      call AllocAry( p%members(iMem)%R,  numDiv+1_IntKi, 'Radius of each member nodes', ErrStat2, ErrMsg2 ); if (Failed())  return
+      call AllocAry( p%members(iMem)%Cd, numDiv+1_IntKi, 'Drag coefficient of each member nodes', ErrStat2, ErrMsg2 ); if (Failed())  return
+      call AllocAry( p%members(iMem)%TI, numDiv+1_IntKi, 'Turbulence intensity of each member nodes', ErrStat2, ErrMsg2 ); if (Failed())  return
+      do iNode = 1,numDiv+1_IntKi
+         s = real(iNode-1_IntKi,ReKi) / real(numDiv,ReKi)
+         p%members(iMem)%R(iNode)  = InputFileData%InpMembers(iMem)%MDiam1 * (1.0_ReKi-s) + InputFileData%InpMembers(iMem)%MDiam2 * s
+         p%members(iMem)%Cd(iNode) = InputFileData%InpMembers(iMem)%MCd1   * (1.0_ReKi-s) + InputFileData%InpMembers(iMem)%MCd2   * s
+         p%members(iMem)%TI(iNode) = InputFileData%InpMembers(iMem)%MTI1   * (1.0_ReKi-s) + InputFileData%InpMembers(iMem)%MTI2   * s
+      enddo
+   end do
+
+   if ( any(.not.JointUsed) ) then
+      ErrStat = ErrID_Fatal
+      ErrMsg  = RoutineName//': All joints in the general support structure joint table must be referenced by at least one member. '
+      call Cleanup()
+      return
+   end if
+
+   call Cleanup()
+
+contains
+   subroutine Cleanup()
+      if (allocated(JointUsed)) deallocate(JointUsed)
+   end subroutine Cleanup
+
+   logical function Failed()
+        call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+        Failed =  ErrStat >= AbortErrLev
+        if (Failed) call CleanUp()
+   end function Failed
+END SUBROUTINE
 !----------------------------------------------------------------------------------------------------------------------------------
 !> This routine initializes the FVW module from within AeroDyn.
 SUBROUTINE Init_OLAF( InputFileData, u_AD, u, p, x, xd, z, OtherState, m, ErrStat, ErrMsg )
@@ -5462,6 +5772,65 @@ SUBROUTINE ADTwr_CalcOutput(p, u, RotInflow, m, y, ErrStat, ErrMsg )
    END IF
 
 END SUBROUTINE ADTwr_CalcOutput
+!----------------------------------------------------------------------------------------------------------------------------------
+!> This subroutine calculates the general support structure loads for the AeroDyn GSLoad output mesh.
+SUBROUTINE ADGS_CalcOutput(p, u, GSInflow, m, y, ErrStat, ErrMsg )
+
+   TYPE(RotInputType),           INTENT(IN   )  :: u           !< Inputs at Time t
+   TYPE(ElemInflowType),         INTENT(IN   )  :: GSInflow    !< Inflow at Time t
+   TYPE(GSParameterType),        INTENT(IN   )  :: p           !< Parameters
+   TYPE(RotMiscVarType),         INTENT(INOUT)  :: m           !< Misc/optimization variables
+   TYPE(RotOutputType),          INTENT(INOUT)  :: y           !< Outputs computed at t
+   INTEGER(IntKi),               INTENT(  OUT)  :: ErrStat     !< Error status of the operation
+   CHARACTER(*),                 INTENT(  OUT)  :: ErrMsg      !< Error message if ErrStat /= ErrID_None
+
+   INTEGER(IntKi)                               :: j, j1, j2, iMem
+   real(ReKi)                                   :: q1(3), q2(3)
+   real(ReKi)                                   :: V_rel(3), V_mag    ! relative wind speed on a tower node
+   real(ReKi)                                   :: pos1(3)
+   real(ReKi)                                   :: pos2(3)
+   real(ReKi)                                   :: k(3)
+   real(ReKi)                                   :: dl
+   character(*), parameter                      :: RoutineName = 'ADGS_CalcOutput'
+
+   ErrStat = ErrID_None
+   ErrMsg  = ""
+
+   IF (.not.p%GSDrag) RETURN
+
+   y%GSLoad%Force  = 0.0_ReKi
+   y%GSLoad%moment = 0.0_ReKi
+   do iMem = 1,p%NMembers
+      associate( mem => p%Members(iMem))
+         do j=1,mem%NElements
+
+            j1 = mem%NodeIndx(j  )
+            j2 = mem%NodeIndx(j+1)
+            pos1 = u%GSMotion%position(:,j1) + u%GSMotion%TranslationDisp(:,j1)
+            pos2 = u%GSMotion%position(:,j2) + u%GSMotion%TranslationDisp(:,j2)
+            k  = pos2-pos1
+            dl = TwoNorm(k)
+            if (dl==0.0_ReKi) cycle ! Zero length element; shouldn't happen, but just in case.
+            k  = k/dl
+
+            V_rel = GSInflow%InflowVel(:,j1) - u%GSMotion%TranslationVel(:,j1) ! Total relative wind speed at GS node
+            V_rel = V_rel - dot_product(V_rel,k)*k                             ! Transverse component of relative wind speed
+            V_mag = TwoNorm(V_rel)
+            q1 = mem%Cd(j  ) * p%Density * mem%R(j  ) * 0.5_ReKi * dl * V_mag * V_rel
+
+            V_rel = GSInflow%InflowVel(:,j2) - u%GSMotion%TranslationVel(:,j2) ! Total relative wind speed at GS node
+            V_rel = V_rel - dot_product(V_rel,k)*k                             ! Transverse component of relative wind speed
+            V_mag = TwoNorm(V_rel)
+            q2 = mem%Cd(j+1) * p%Density * mem%R(j+1) * 0.5_ReKi * dl * V_mag * V_rel
+
+            y%GSLoad%force(:,j1) = y%GSLoad%force(:,j1) + q1
+            y%GSLoad%force(:,j2) = y%GSLoad%force(:,j2) + q2
+
+         end do
+      end associate
+   end do
+
+END SUBROUTINE ADGS_CalcOutput
 !----------------------------------------------------------------------------------------------------------------------------------
 !> This routine checks for invalid inputs to the tower influence models.
 SUBROUTINE CheckTwrInfl(u, ErrStat, ErrMsg )
@@ -6175,6 +6544,13 @@ subroutine AD_InitVars(iR, u, p, x, z, OtherState, y, m, InitOut, InputFileData,
                       Mesh=u%TowerMotion, &
                       Perturbs=[PerturbTower, Perturb, PerturbTower, PerturbTower])
 
+   ! Add general support motion
+   call MV_AddMeshVar(InitOut%Vars%u, "General Support", [FieldTransDisp, FieldOrientation, FieldTransVel], &
+                      DatLoc(AD_u_GSMotion), &
+                      Mesh=u%GSMotion, &
+                      Perturbs=[PerturbTower, Perturb, PerturbTower], &
+                      Active=(p%GSAero.or.p%GSDrag))
+
    ! Add blade root motion
    do j = 1, p%NumBlades
       call MV_AddMeshVar(InitOut%Vars%u, "Blade root "//Num2LStr(j), [FieldOrientation], &
@@ -6242,6 +6618,11 @@ subroutine AD_InitVars(iR, u, p, x, z, OtherState, y, m, InitOut, InputFileData,
    ! Add tower load
    call MV_AddMeshVar(InitOut%Vars%y, "Tower", LoadFields, DatLoc(AD_y_TowerLoad), &
                       Mesh=y%TowerLoad)
+
+   ! Add general support load
+   call MV_AddMeshVar(InitOut%Vars%y, "General Support", LoadFields, DatLoc(AD_y_GSLoad), &
+                      Mesh=y%GSLoad, &
+                      Active=p%GSDrag)
 
    ! Loop through blades, add blade loads
    do j = 1, p%NumBlades
@@ -6358,6 +6739,7 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
    type(FlowFieldType),target    :: FF_perturb
    type(FlowFieldType),pointer   :: FF_ptr            ! need a pointer in the CalcWind_Rotor routine
    type(RotInflowType)           :: RotInflow_perturb !< Rotor inflow, perturbed by FlowField extended inputs
+   type(ElemInflowType)          :: GSInflow_perturb
 
    ErrStat = ErrID_None
    ErrMsg  = ''
@@ -6373,7 +6755,8 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
              z => z_AD%rotors(iRotor), &
              OtherState => OtherState_AD%rotors(iRotor), &
              y_lin => m_AD%y_lin%rotors(iRotor), &
-             RotInflow => m_AD%Inflow(1)%RotInflow(iRotor))
+             RotInflow => m_AD%Inflow(1)%RotInflow(iRotor), &
+             GSInflow => m_AD%Inflow(1)%GSInflow)
 
    ! Find indices for extended input variables
    iVarHWindSpeed = 0
@@ -6391,6 +6774,7 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
    end do
 
    call AD_CalcWind_Rotor(t, u, p_AD%FlowField, p, p_AD, m_AD, RotInflow, StartNode, ErrStat, ErrMsg)
+   call AD_CalcWind_GS(t, u, p_AD%FlowField, p_AD%GS, p_AD, m_AD, GSInflow, StartNode, ErrStat, ErrMsg)
    if (ErrStat >= AbortErrLev) return
    
    ! If flow field will need to be perturbed (HWindSpeed, PLexp, or PropagationDir variables)
@@ -6441,6 +6825,7 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
 
       ! Copy rotor inflow type for perturbation
       call AD_CopyRotInflowType(RotInflow, RotInflow_perturb, MESH_NEWCOPY, ErrStat2, ErrMsg2); if (Failed()) return
+      call AD_CopyElemInflowType(GSInflow, GSInflow_perturb, MESH_NEWCOPY, ErrStat2, ErrMsg2); if (Failed()) return
    
       ! Loop through input variables
       do i = 1, size(Vars%u)
@@ -6456,9 +6841,10 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
             if (associated(FF_ptr, FF_perturb)) call PerturbFlowField(Vars%u(i), p_AD%FlowField, 1, FF_ptr)
             StartNode = 1
             call AD_CalcWind_Rotor(t, u_perturb, FF_ptr, p, p_AD, m_AD, RotInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
+            call AD_CalcWind_GS(t, u_perturb, FF_ptr, p_AD%GS, p_AD, m_AD, GSInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
             call SetInputs(t, p, p_AD, u_perturb, RotInflow_perturb, m, indx, ErrStat2, ErrMsg2); if (Failed()) return
             call UpdatePhi(m%BEMT_u(indx), p%BEMT, m%z_lin%BEMT%phi, p_AD%AFI, m%BEMT, m%OtherState_jac%BEMT%ValidPhi, ErrStat2, ErrMsg2); if (Failed()) return
-            call RotCalcOutput(t, u_perturb, RotInflow_perturb, p, p_AD, m%x_init, xd, m%z_lin, m%OtherState_jac, y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2); if (Failed()) return
+            call RotCalcOutput(t, u_perturb, RotInflow_perturb, GSInflow_perturb, p, p_AD, m%x_init, xd, m%z_lin, m%OtherState_jac, y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2); if (Failed()) return
             if (p_AD%Wake_Mod == WakeMod_FVW) then
                call SetInputsForFVW(p_AD, m_AD%u_perturb, 1, m_AD, ErrStat2, ErrMsg2); if(Failed()) return
                call FVW_CalcOutput(t, m_AD%FVW_u(1), p_AD%FVW, x_AD%FVW, xd_AD%FVW, z_AD%FVW, OtherState_AD%FVW, m_AD%FVW_y, m_AD%FVW, ErrStat2, ErrMsg2); if(Failed()) return
@@ -6474,9 +6860,10 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
             if (associated(FF_ptr, FF_perturb)) call PerturbFlowField(Vars%u(i), p_AD%FlowField, -1, FF_ptr)
             StartNode = 1
             call AD_CalcWind_Rotor(t, u_perturb, FF_ptr, p, p_AD, m_AD, RotInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
+            call AD_CalcWind_GS(t, u_perturb, FF_ptr, p_AD%GS, p_AD, m_AD, GSInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
             call SetInputs(t, p, p_AD, u_perturb, RotInflow_perturb, m, indx, ErrStat2, ErrMsg2); if (Failed()) return
             call UpdatePhi(m%BEMT_u(indx), p%BEMT, m%z_lin%BEMT%phi, p_AD%AFI, m%BEMT, m%OtherState_jac%BEMT%ValidPhi, ErrStat2, ErrMsg2); if (Failed()) return
-            call RotCalcOutput(t, u_perturb, RotInflow_perturb, p, p_AD, m%x_init, xd, m%z_lin, m%OtherState_jac, y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2); if (Failed()) return
+            call RotCalcOutput(t, u_perturb, RotInflow_perturb, GSInflow_perturb, p, p_AD, m%x_init, xd, m%z_lin, m%OtherState_jac, y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2); if (Failed()) return
             if (p_AD%Wake_Mod == WakeMod_FVW) then
                call SetInputsForFVW(p_AD, m_AD%u_perturb, 1, m_AD, ErrStat2, ErrMsg2); if(Failed()) return
                call FVW_CalcOutput(t, m_AD%FVW_u(1), p_AD%FVW, x_AD%FVW, xd_AD%FVW, z_AD%FVW, OtherState_AD%FVW, m_AD%FVW_y, m_AD%FVW, ErrStat2, ErrMsg2); if(Failed()) return
@@ -6621,15 +7008,16 @@ SUBROUTINE AD_JacobianPContState(Vars, iRotor, t, u, p, x, xd, z, OtherState, y,
 
    StartNode = 1
    call AD_CalcWind_Rotor(t, u%rotors(iRotor), p%FlowField, p%rotors(iRotor), p, m, m%Inflow(1)%RotInflow(iRotor), StartNode, ErrStat, ErrMsg)
+   call AD_CalcWind_GS(t, u%rotors(1), p%FlowField, p%GS, p, m, m%Inflow(1)%GSInflow, StartNode, ErrStat, ErrMsg)
    if (ErrStat >= AbortErrLev) return
-   call RotJacobianPContState(Vars, iRotor, t, u%rotors(iRotor), m%Inflow(1)%RotInflow(iRotor), p%rotors(iRotor), p, x%rotors(iRotor), xd%rotors(iRotor), z%rotors(iRotor), OtherState%rotors(iRotor), y%rotors(iRotor), m%rotors(iRotor), m, ErrStat, ErrMsg, dYdx, dXdx, dXddx, dZdx)
+   call RotJacobianPContState(Vars, iRotor, t, u%rotors(iRotor), m%Inflow(1)%RotInflow(iRotor), m%Inflow(1)%GSInflow, p%rotors(iRotor), p, x%rotors(iRotor), xd%rotors(iRotor), z%rotors(iRotor), OtherState%rotors(iRotor), y%rotors(iRotor), m%rotors(iRotor), m, ErrStat, ErrMsg, dYdx, dXdx, dXddx, dZdx)
 
 END SUBROUTINE AD_JacobianPContState
 
 !----------------------------------------------------------------------------------------------------------------------------------
 !> Routine to compute the Jacobians of the output (Y), continuous- (X), discrete- (Xd), and constraint-state (Z) functions
 !! with respect to the continuous states (x). The partial derivatives dY/dx, dX/dx, dXd/dx, and dZ/dx are returned.
-SUBROUTINE RotJacobianPContState(Vars, iRotor, t, u, RotInflow, p, p_AD, x, xd, z, OtherState, y, m, m_AD, ErrStat, ErrMsg, dYdx, dXdx, dXddx, dZdx)
+SUBROUTINE RotJacobianPContState(Vars, iRotor, t, u, RotInflow, GSInflow, p, p_AD, x, xd, z, OtherState, y, m, m_AD, ErrStat, ErrMsg, dYdx, dXdx, dXddx, dZdx)
 !..................................................................................................................................
    
    TYPE(ModVarsType),                    INTENT(IN   )           :: Vars       !< Module variables for packing arrays
@@ -6637,6 +7025,7 @@ SUBROUTINE RotJacobianPContState(Vars, iRotor, t, u, RotInflow, p, p_AD, x, xd, 
    REAL(DbKi),                           INTENT(IN   )           :: t          !< Time in seconds at operating point
    TYPE(RotInputType),                   INTENT(IN   )           :: u          !< Inputs at operating point (may change to inout if a mesh copy is required)
    TYPE(RotInflowType),                  INTENT(IN   )           :: RotInflow  !< Rotor inflow
+   TYPE(ElemInflowType),                 INTENT(IN   )           :: GSInflow   !< General support structure inflow
    TYPE(RotParameterType),               INTENT(IN   )           :: p          !< Parameters
    TYPE(AD_ParameterType),               INTENT(IN   )           :: p_AD       !< Parameters
    TYPE(RotContinuousStateType),         INTENT(IN   )           :: x          !< Continuous states at operating point
@@ -6707,13 +7096,13 @@ SUBROUTINE RotJacobianPContState(Vars, iRotor, t, u, RotInflow, p, p_AD, x, xd, 
             ! Calculate positive perturbation
             call MV_Perturb(Vars%x(i), j, 1, m%Jac%x, m%Jac%x_perturb)
             call AD_VarsUnpackContState(Vars, m%Jac%x_perturb, m%x_perturb)
-            call RotCalcOutput(t, u, RotInflow, p, p_AD, m%x_perturb, xd, z, m%OtherState_init, m%y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2) ; if (Failed()) return
+            call RotCalcOutput(t, u, RotInflow, GSInflow, p, p_AD, m%x_perturb, xd, z, m%OtherState_init, m%y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2) ; if (Failed()) return
             call AD_VarsPackOutput(Vars, m%y_lin, m%Jac%y_pos)
 
             ! Calculate negative perturbation
             call MV_Perturb(Vars%x(i), j, -1, m%Jac%x, m%Jac%x_perturb)
             call AD_VarsUnpackContState(Vars, m%Jac%x_perturb, m%x_perturb)
-            call RotCalcOutput(t, u, RotInflow, p, p_AD, m%x_perturb, xd, z, m%OtherState_init, m%y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2) ; if (Failed()) return
+            call RotCalcOutput(t, u, RotInflow, GSInflow, p, p_AD, m%x_perturb, xd, z, m%OtherState_init, m%y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2) ; if (Failed()) return
             call AD_VarsPackOutput(Vars, m%y_lin, m%Jac%y_neg)
 
             ! Calculate column index
@@ -6854,8 +7243,9 @@ SUBROUTINE AD_JacobianPConstrState(Vars, t, u, p, x, xd, z, OtherState, y, m, Er
 
    StartNode = 1
    call AD_CalcWind_Rotor(t, u%rotors(iR), p%FlowField, p%rotors(iR), p, m, m%Inflow(1)%RotInflow(iR), StartNode, ErrStat, ErrMsg)
+   call AD_CalcWind_GS(t, u%rotors(1), p%FlowField, p%GS, p, m, m%Inflow(1)%GSInflow, StartNode, ErrStat, ErrMsg)
    if (ErrStat >= AbortErrLev) return
-   call RotJacobianPConstrState(t, u%rotors(iR), m%Inflow(1)%RotInflow(iR), p%rotors(iR), p, x%rotors(iR), xd%rotors(iR), z%rotors(iR), OtherState%rotors(iR), y%rotors(iR), m%rotors(iR), m, iR, errStat, errMsg, dYdz, dXdz, dXddz, dZdz)
+   call RotJacobianPConstrState(t, u%rotors(iR), m%Inflow(1)%RotInflow(iR), m%Inflow(1)%GSInflow, p%rotors(iR), p, x%rotors(iR), xd%rotors(iR), z%rotors(iR), OtherState%rotors(iR), y%rotors(iR), m%rotors(iR), m, iR, errStat, errMsg, dYdz, dXdz, dXddz, dZdz)
 
 END SUBROUTINE AD_JacobianPConstrState
 
@@ -6863,10 +7253,11 @@ END SUBROUTINE AD_JacobianPConstrState
 !----------------------------------------------------------------------------------------------------------------------------------
 !> Routine to compute the Jacobians of the output (Y), continuous- (X), discrete- (Xd), and constraint-state (Z) functions
 !! with respect to the constraint states (z). The partial derivatives dY/dz, dX/dz, dXd/dz, and dZ/dz are returned.
-SUBROUTINE RotJacobianPConstrState( t, u, RotInflow, p, p_AD, x, xd, z, OtherState, y, m, m_AD, iRot, ErrStat, ErrMsg, dYdz, dXdz, dXddz, dZdz )
+SUBROUTINE RotJacobianPConstrState( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z, OtherState, y, m, m_AD, iRot, ErrStat, ErrMsg, dYdz, dXdz, dXddz, dZdz )
    REAL(DbKi),                           INTENT(IN   )           :: t          !< Time in seconds at operating point
    TYPE(RotInputType),                   INTENT(IN   )           :: u          !< Inputs at operating point (may change to inout if a mesh copy is required)
-   TYPE(RotInflowType),                  INTENT(IN   )           :: RotInflow  !< Inflow on rotor 
+   TYPE(RotInflowType),                  INTENT(IN   )           :: RotInflow  !< Inflow on rotor
+   TYPE(ElemInflowType),                 INTENT(IN   )           :: GSInflow   !< Inflow on general support structure
    TYPE(RotParameterType),               INTENT(IN   )           :: p          !< Parameters
    TYPE(AD_ParameterType),               INTENT(IN   )           :: p_AD       !< Parameters
    TYPE(RotContinuousStateType),         INTENT(IN   )           :: x          !< Continuous states at operating point
@@ -6954,13 +7345,13 @@ SUBROUTINE RotJacobianPConstrState( t, u, RotInflow, p, p_AD, x, xd, z, OtherSta
                z_perturb%BEMT%phi(j,k) = z%BEMT%phi(j,k) + delta_p
             
                   ! compute y at z_op + delta_p z
-               call RotCalcOutput( t, u, RotInflow, p, p_AD, x, xd, z_perturb, OtherState, y_p, m, m_AD, iRot, ErrStat2, ErrMsg2 ) ; if (Failed()) return;
+               call RotCalcOutput( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z_perturb, OtherState, y_p, m, m_AD, iRot, ErrStat2, ErrMsg2 ) ; if (Failed()) return;
             
                   ! get z_op - delta_m z
                z_perturb%BEMT%phi(j,k) = z%BEMT%phi(j,k) - delta_m
             
                   ! compute y at z_op - delta_m z
-               call RotCalcOutput( t, u, RotInflow, p, p_AD, x, xd, z_perturb, OtherState, y_m, m, m_AD, iRot, ErrStat2, ErrMsg2 ) ; if (Failed()) return;
+               call RotCalcOutput( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z_perturb, OtherState, y_m, m, m_AD, iRot, ErrStat2, ErrMsg2 ) ; if (Failed()) return;
 
                   ! get central difference:            
                call Compute_dY( p, p_AD, y_p, y_m, delta_p, delta_m, dYdz(:,i) )

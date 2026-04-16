@@ -92,7 +92,27 @@ typedef    ^    AD_VTK_BLSurfaceType     SiKi                    AirfoilCoords  
 typedef    ^    AD_VTK_RotSurfaceType    AD_VTK_BLSurfaceType    BladeShape          {:}    -    -    "AirfoilCoords for each blade"    -
 typedef    ^          ^                  SiKi                    TowerRad            {:}    -    -    "radius of each ED tower node"    m
 
- 
+# General support data types
+typedef ^   GSJointType IntKi   JointID -   -   -   "User-specified joint ID for the general support structure" -
+typedef ^   GSJointType ReKi    Position    {3} -   -   "Undisplaced position of the joint" m
+typedef ^   GSInpMemberType IntKi   MemberID -   -   -   "User-specified member ID for the general support structure" -
+typedef ^   GSInpMemberType IntKi   MJointID1 -   -   -   "Starting joint ID of the member" -
+typedef ^   GSInpMemberType IntKi   MJointID2 -   -   -   "Ending joint ID of the member" -
+typedef ^   GSInpMemberType ReKi   MDiam1 -   -   -   "Starting diameter of the member" m
+typedef ^   GSInpMemberType ReKi   MDiam2 -   -   -   "Ending diameter of the member" m
+typedef ^   GSInpMemberType ReKi   MCd1 -   -   -   "Starting drag coefficient of the member" -
+typedef ^   GSInpMemberType ReKi   MCd2 -   -   -   "Ending drag coefficient of the member" -
+typedef ^   GSInpMemberType ReKi   MTI1 -   -   -   "Starting turbulence intensity of the member for the Eames tower shadow model" -
+typedef ^   GSInpMemberType ReKi   MTI2 -   -   -   "Ending turbulence intensity of the member for the Eames tower shadow model" -
+typedef ^   GSInpMemberType ReKi   MDivSize -   -   -   "Maximum member discretized element length" m
+typedef ^   GSMemberType    IntKi  MemberID -   -   -   "User-supplied integer ID for this member"  -
+typedef ^   GSMemberType    IntKi  NElements -   -   -   "Number of elements in this member"  -
+typedef ^   GSMemberType    IntKi  NodeIndx {:} -   -   "Index of each of the member's nodes in the global node list"   -
+typedef ^   GSMemberType    ReKi   RefLength    -   -   -   "The reference total length for this member"    m
+typedef ^   GSMemberType    ReKi   dl   -   -   -   "The reference element length of this member"   m
+typedef ^   GSMemberType    ReKi   R    {:} -   -   "Outer member radius at each node"  m
+typedef ^   GSMemberType    ReKi   Cd   {:} -   -   "Drag coefficient at each node"  -
+typedef ^   GSMemberType    ReKi   TI   {:} -   -   "Turbulence intensity at each node for the Eames tower shadow model"  -
 
 # ..... Initialization data .......................................................................................................
 # Define inputs that the initialization routine may need here:
@@ -189,6 +209,11 @@ typedef  ^  RotInputFile   LOGICAL          TFinAero  - .FALSE. -   "Calculate t
 typedef  ^  RotInputFile   CHARACTER(1024)  TFinFile  -    -    -   "Input file for tail fin aerodynamics [used only when TFinAero=True]" -
 typedef  ^  RotInputFile   TFinInputFileType TFin     -    -    -   "Input file data for tail fin" -
 
+typedef ^   GSInputFile IntKi   NJoints -   -   -   "Number of user-specified joints"   -
+typedef ^   GSInputFile GSJointType InpJoints   {:} -   -   "Array of user-specified joints" -
+typedef ^   GSInputFile IntKi   NMembers -   -   -   "Number of user-specified members"   -
+typedef ^   GSInputFile GSInpMemberType InpMembers   {:} -   -   "Array of user-specified members" -
+
 typedef	^	AD_InputFile	Logical	Echo	-	-	-	"Echo input file to echo file"	-
 typedef	^	AD_InputFile	DbKi	DTAero	-	-	-	"Time interval for aerodynamic calculations {or \"default\"}"	s
 typedef	^	AD_InputFile	IntKi	Wake_Mod	-	-	-	"Type of wake/induction model {0=none, 1=BEMT, 2=DBEMT, 3=FVW}"	-
@@ -253,7 +278,7 @@ typedef  ^  AD_InputFile   IntKi BldNd_BladesOut - - - "The blades to output (AD
 typedef  ^  AD_InputFile   ReKi             UAStartRad  -  -  - Starting radius for dynamic stall (fraction of rotor radius)
 typedef  ^  AD_InputFile   ReKi             UAEndRad    -  -  - Ending radius for dynamic stall (fraction of rotor radius)
 typedef  ^  AD_InputFile   RotInputFile  rotors {:} - - "Rotor (blades and tower) input file data" -
-
+typedef  ^  AD_InputFile   GSInputFile  GS  -   -   -   "General support input file data"   -
 
 
 
@@ -290,7 +315,7 @@ typedef	^	OtherStateType	ReKi	WakeLocationPoints	{:}{:}	-	-	"wake points velocit
 typedef	^	ElemInflowType	ReKi	InflowVel	{:}{:}	-	-	"U,V,W at nodes on element (note if we change the requirement that NumNodes is the same for each blade, this will need to change)"	m/s
 typedef	^	ElemInflowType	ReKi	InflowAcc	{:}{:}	-	-	"Wind acceleration at nodes on element (blade or tower) (note if we change the requirement that NumNodes is the same for each blade, this will need to change)"	m/s
 typedef	^	RotInflowType	ElemInflowType    Blade		{:}	-	-	"Blade wind inputs"	-
-typedef	^	RotInflowType	ElemInflowType    Tower		-	-	-	"Blade wind inputs"	-
+typedef	^	RotInflowType	ElemInflowType    Tower		-	-	-	"Tower wind inputs"	-
 typedef	^	RotInflowType	ReKi	InflowOnHub 	{3}{1}	-	-	"U,V,W at hub"	m/s
 typedef	^	RotInflowType	ReKi	InflowOnNacelle	{3}{1}	-	-	"U,V,W at nacelle"	m/s
 typedef	^	RotInflowType	ReKi	InflowOnTailFin	{3}{1}	-	-	"U,V,W at tailfin"	m/s
@@ -298,6 +323,7 @@ typedef	^	RotInflowType	ReKi	AvgDiskVel	{3}	-	0.0	"disk-averaged U,V,W"	m/s
 
 typedef	^	AD_InflowType	ReKi	InflowWakeVel	{:}{:}	-	-	"U,V,W at wake points"	m/s
 typedef	^	AD_InflowType	RotInflowType	RotInflow	{:}	-	-	"Inflow on rotor"	-
+typedef	^   AD_InflowType   ElemInflowType  GSInflow    -   -   -   "Inflow on general support structure"   -
 
 
 # ..... Parameters ................................................................................................................
@@ -385,7 +411,20 @@ typedef  ^  RotParameterType  IntKi BldNd_NumNodesOut - - - "The blades to outpu
 # Tail fin parameters (per rotor)
 typedef  ^  RotParameterType  LOGICAL           TFinAero  - .FALSE. -   "Calculate tail fin aerodynamics model (flag)" flag
 typedef  ^  RotParameterType  TFinParameterType TFin    -       -   -   "Parameters for tail fin of current rotor" -
-
+# General support parameters (per rotor)
+typedef  ^  RotParameterType  LOGICAL           GSAero  - .FALSE. -   "Calculate general support aerodynamic influences (flag)" flag
+typedef  ^  RotParameterType  LOGICAL           GSDrag  - .FALSE. -   "Calculate general support drag force (flag)" flag
+# General support parameters (shared)
+typedef ^   GSParameterType LOGICAL GSAero  - .FALSE. -   "Calculate general support aerodynamic influences (flag)" flag
+typedef ^   GSParameterType LOGICAL GSDrag  - .FALSE. -   "Calculate general support drag force (flag)" flag
+typedef ^   GSParameterType IntKi   NJoints -   -   -   "Total number of user-specified joints for the general support structure" -
+typedef ^   GSParameterType IntKi   NNodes  -   -   -   "Total number of general support structure nodes (joints+interior nodes)" -
+typedef ^   GSParameterType IntKi   NMembers  -   -   -   "Total number of general support structure members" -
+typedef ^   GSParameterType GSMemberType    Members {:} -   -   "General support structure members" -
+typedef ^   GSParameterType GSJointType     Joints  {:} -   -   "General support structure joints"  -
+typedef ^   GSParameterType ReKi            Density -   -   -   "Fluid density" kg/m^3
+typedef ^   GSParameterType IntKi           MHK     -   -   -   "MHK turbine type switch" -
+typedef ^   GSParameterType ReKi            WtrDpth -   -   -   "Water depth" m
 # Parameters for all rotors:
 typedef  ^  ParameterType  RotParameterType rotors {:} - - "Parameter types for each rotor" -
 # Time step for integration of continuous states (if a fixed-step integrator is used) and update of discrete states:
@@ -405,6 +444,7 @@ typedef ^      ^            ReKi           SA_PsiBwd -  -   -    "Sector Average
 typedef ^      ^            ReKi           SA_PsiFwd -  -   -    "Sector Average - Forward Azimuth (>0)"	deg
 typedef ^      ^            IntKi          SA_nPerSec -  -   -    "Sector Average - Number of points per sector (>1)"	-
 typedef ^   ParameterType   SeaSt_WaveFieldType *WaveField -  -   -    "Pointer to SeaState wave field data type" -
+typedef ^   ParameterType   GSParameterType GS  -   -   -   "General support structure parameters"  -
 
 # ..... Inputs ....................................................................................................................
 # Define inputs that are contained on a mesh here:
@@ -414,6 +454,7 @@ typedef	^	RotInputType	MeshType	HubMotion	-	-	-	"motion on the hub"	-
 typedef	^	RotInputType	MeshType	BladeRootMotion	{:}	-	-	"motion on each blade root"	-
 typedef	^	RotInputType	MeshType	BladeMotion	{:}	-	-	"motion on each blade"	-
 typedef	^	RotInputType	MeshType	TFinMotion	- 	-	-	"motion of tail fin (at tail fin ref point)"	-
+typedef	^	RotInputType	MeshType	GSMotion	- 	-	-	"motion of the general support structure"   -
 # Define inputs that are not on a mesh here:
 typedef	^	RotInputType	ReKi	UserProp	{:}{:}	-	-	"Optional user property for interpolating airfoils (per element per blade)" -
 
@@ -428,6 +469,7 @@ typedef	^	RotOutputType	MeshType	HubLoad  	-	-	-	"loads on the hub"  	-
 typedef	^	RotOutputType	MeshType	TowerLoad	-	-	-	"loads on the tower"	-
 typedef	^	RotOutputType	MeshType	BladeLoad	{:}	-	-	"loads on each blade"	-
 typedef	^	RotOutputType	MeshType	TFinLoad 	-  	-	-	"loads on tail fin (at tail fin ref point)"	-
+typedef	^	RotOutputType	MeshType	GSLoad 	-  	-	-	"loads on the general support structure"	-
 # Define outputs that are not on a mesh here:
 typedef	^	RotOutputType	ReKi	WriteOutput	{:}	-	-	"Data to be written to an output file: see WriteOutputHdr for names of each variable"	"see WriteOutputUnt"
 
