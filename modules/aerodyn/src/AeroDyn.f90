@@ -5484,7 +5484,7 @@ SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMs
       call AllocAry( p%members(iMem)%TI, numDiv+1_IntKi, 'Turbulence intensity of each member nodes', ErrStat2, ErrMsg2 ); if (Failed())  return
       do iNode = 1,numDiv+1_IntKi
          s = real(iNode-1_IntKi,ReKi) / real(numDiv,ReKi)
-         p%members(iMem)%R(iNode)  = InputFileData%InpMembers(iMem)%MDiam1 * (1.0_ReKi-s) + InputFileData%InpMembers(iMem)%MDiam2 * s
+         p%members(iMem)%R(iNode) = (InputFileData%InpMembers(iMem)%MDiam1 * (1.0_ReKi-s) + InputFileData%InpMembers(iMem)%MDiam2 * s) * 0.5_ReKi
          p%members(iMem)%Cd(iNode) = InputFileData%InpMembers(iMem)%MCd1   * (1.0_ReKi-s) + InputFileData%InpMembers(iMem)%MCd2   * s
          p%members(iMem)%TI(iNode) = InputFileData%InpMembers(iMem)%MTI1   * (1.0_ReKi-s) + InputFileData%InpMembers(iMem)%MTI2   * s
       enddo
