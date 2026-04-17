@@ -446,12 +446,16 @@ subroutine AD_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, InitOut
    call Init_GSParam(InputFileData%GS, p%GS, InputFileData%AirDens, InitInp%MHK, InitInp%WtrDpth, errStat2, errMsg2 )
       if (Failed()) return;
    if (nRotors >= 1_IntKi) then
-      p%rotors(1)%GSAero = p%GS%GSAero
+      p%rotors(1)%GSAero = p%GS%GSAero  ! True if GSInfl .or. GSShdw
+      p%rotors(1)%GSInfl = p%GS%GSInfl
+      p%rotors(1)%GSShdw = p%GS%GSShdw
       p%rotors(1)%GSDrag = p%GS%GSDrag  ! Only rotor 1 handles GS drag force
    end if
    do iR = 2, nRotors
-      p%rotors(iR)%GSAero = p%GS%GSAero
-      p%rotors(iR)%GSDrag = .false.  ! Only rotor 1 handles GS drag force
+      p%rotors(iR)%GSAero = p%GS%GSAero ! True if GSInfl .or. GSShdw
+      p%rotors(iR)%GSInfl = p%GS%GSInfl
+      p%rotors(iR)%GSShdw = p%GS%GSShdw
+      p%rotors(iR)%GSDrag = .false.     ! Only rotor 1 handles GS drag force
    enddo
 
       !............................................................................................
@@ -629,8 +633,10 @@ subroutine AD_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, InitOut
          call AD_PrintSum( InputFileData, p%rotors(iR), p, u, y, NumBlades(iR), InputFileData%rotors(iR)%BladeProps(:), ErrStat2, ErrMsg2 )
          if (Failed()) return;
       enddo
+      if ( p%GS%GSAero .or. p%GS%GSDrag ) then
+         call AD_PrintSum_GS( p%GS, p, u%rotors(1), y%rotors(1), ErrStat, ErrMsg ); if (Failed()) return
+      end if
    end if
-      
       !............................................................................................
       ! If you want to choose your own rate instead of using what the glue code suggests, tell the glue code the rate at which
       !   this module must be called here:
@@ -4879,6 +4885,72 @@ SUBROUTINE ValidateInputData( InitInp, InputFileData, NumBl, calcCrvAngle, ErrSt
       end do
    end if
 
+   !..................
+   ! check for generalized support structure
+   !..................
+      ! Joints
+   if (InputFileData%GS%NJoints<0_IntKi) then
+      call SetErrStat( ErrID_Fatal, 'NumGSJoints cannot be negative.', ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+   end if
+   if (InputFileData%GS%NJoints==1_IntKi) then
+      call SetErrStat( ErrID_Fatal, 'Generalized support structure requires at least two joints (NumGSJoints>=2).', ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+   end if
+   do j = 1,InputFileData%GS%NJoints
+      if (InputFileData%GS%InpJoints(j)%JointID<0_IntKi) then
+         call SetErrStat( ErrID_Fatal, 'GSJointID cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName )
+            if(Failed()) return
+      end if
+      do k = 1,InputFileData%GS%NJoints
+         if (j==k) cycle
+         if (InputFileData%GS%InpJoints(j)%JointID == InputFileData%GS%InpJoints(k)%JointID) then
+            call SetErrStat( ErrID_Fatal, 'GSJointID must be unique for each joint; check row '//trim(num2lstr(j))//' and row '//trim(num2lstr(k)), ErrStat, ErrMsg, RoutineName )
+               if(Failed()) return
+         end if
+      end do
+   end do
+      ! Members
+   if (InputFileData%GS%NMembers<0_IntKi) then
+      call SetErrStat( ErrID_Fatal, 'NumGSMembers cannot be negative.', ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+   end if
+   do j = 1,InputFileData%GS%NMembers
+      if (InputFileData%GS%InpMembers(j)%MemberID<0_IntKi) then
+         call SetErrStat( ErrID_Fatal, 'GSMemberID cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      do k = 1,InputFileData%GS%NMembers
+         if (j==k) cycle
+         if (InputFileData%GS%InpMembers(j)%MemberID == InputFileData%GS%InpMembers(k)%MemberID) then
+            call SetErrStat( ErrID_Fatal, 'GSMemberID must be unique for each member; check row '//trim(num2lstr(j))//' and row '//trim(num2lstr(k)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+         end if
+      end do
+      if (InputFileData%GS%InpMembers(j)%MJointID1<0_IntKi) then
+         call SetErrStat( ErrID_Fatal, 'GSMJointID1 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      if (InputFileData%GS%InpMembers(j)%MJointID2<0_IntKi) then
+         call SetErrStat( ErrID_Fatal, 'GSMJointID2 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      if (InputFileData%GS%InpMembers(j)%MJointID1 == InputFileData%GS%InpMembers(j)%MJointID2) then
+         call SetErrStat( ErrID_Fatal, 'GSMJointID1 and GSMJointID2 must be distinct for each member; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      if (InputFileData%GS%InpMembers(j)%MDiam1<0.0_ReKi) then
+         call SetErrStat( ErrID_Fatal, 'GSMDia1 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      if (InputFileData%GS%InpMembers(j)%MDiam2<0.0_ReKi) then
+         call SetErrStat( ErrID_Fatal, 'GSMDia2 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      if (InputFileData%GS%InpMembers(j)%MCd1<0.0_ReKi) then
+         call SetErrStat( ErrID_Fatal, 'GSMCd1 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      if (InputFileData%GS%InpMembers(j)%MCd2<0.0_ReKi) then
+         call SetErrStat( ErrID_Fatal, 'GSMCd2 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      if (InputFileData%GS%InpMembers(j)%MTI1<0.0_ReKi) then
+         call SetErrStat( ErrID_Fatal, 'GSMTI1 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      if (InputFileData%GS%InpMembers(j)%MTI2<0.0_ReKi) then
+         call SetErrStat( ErrID_Fatal, 'GSMTI2 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+   end do
+
 contains
 
    SUBROUTINE Fatal(ErrMsg_in)
@@ -5309,6 +5381,8 @@ SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMs
 
    if (InputFileData%NMembers==0_IntKi) then
       p%GSAero   = .false.
+      p%GSInfl   = .false.
+      p%GSShdw   = .false.
       p%GSDrag   = .false.
       p%Density  = 0.0_ReKi
       p%MHK      = MHK
@@ -5320,8 +5394,10 @@ SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMs
    end if
 
    ! Default GSAero and GSDrag to true for now; can be based on user input later
-   p%GSAero = .true.
-   p%GSDrag = .true.
+   p%GSInfl   = .true.
+   p%GSShdw   = .true.
+   p%GSAero   = p%GSInfl .or. p%GSShdw
+   p%GSDrag   = .true.
    p%Density  = Density
    p%NMembers = InputFileData%NMembers
    p%NJoints  = InputFileData%NJoints

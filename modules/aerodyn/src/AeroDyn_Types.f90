@@ -464,13 +464,17 @@ IMPLICIT NONE
     INTEGER(IntKi)  :: BldNd_NumNodesOut = 0_IntKi      !< The blades to output (AD_AllBldNdOuts) [-]
     LOGICAL  :: TFinAero = .FALSE.      !< Calculate tail fin aerodynamics model (flag) [flag]
     TYPE(TFinParameterType)  :: TFin      !< Parameters for tail fin of current rotor [-]
-    LOGICAL  :: GSAero = .FALSE.      !< Calculate general support aerodynamic influences (flag) [flag]
+    LOGICAL  :: GSAero = .FALSE.      !< Calculate general support influence or shadow (flag) [flag]
+    LOGICAL  :: GSInfl = .FALSE.      !< Calculate general support aerodynamic influence (flag) [flag]
+    LOGICAL  :: GSShdw = .FALSE.      !< Calculate general support shadow/wake deficit (flag) [flag]
     LOGICAL  :: GSDrag = .FALSE.      !< Calculate general support drag force (flag) [flag]
   END TYPE RotParameterType
 ! =======================
 ! =========  GSParameterType  =======
   TYPE, PUBLIC :: GSParameterType
-    LOGICAL  :: GSAero = .FALSE.      !< Calculate general support aerodynamic influences (flag) [flag]
+    LOGICAL  :: GSAero = .FALSE.      !< Calculate general support influence or shadow (flag) [flag]
+    LOGICAL  :: GSInfl = .FALSE.      !< Calculate general support aerodynamic influence (flag) [flag]
+    LOGICAL  :: GSShdw = .FALSE.      !< Calculate general support shadow/wake deficit (flag) [flag]
     LOGICAL  :: GSDrag = .FALSE.      !< Calculate general support drag force (flag) [flag]
     INTEGER(IntKi)  :: NJoints = 0_IntKi      !< Total number of user-specified joints for the general support structure [-]
     INTEGER(IntKi)  :: NNodes = 0_IntKi      !< Total number of general support structure nodes (joints+interior nodes) [-]
@@ -4268,6 +4272,8 @@ subroutine AD_CopyRotParameterType(SrcRotParameterTypeData, DstRotParameterTypeD
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
    DstRotParameterTypeData%GSAero = SrcRotParameterTypeData%GSAero
+   DstRotParameterTypeData%GSInfl = SrcRotParameterTypeData%GSInfl
+   DstRotParameterTypeData%GSShdw = SrcRotParameterTypeData%GSShdw
    DstRotParameterTypeData%GSDrag = SrcRotParameterTypeData%GSDrag
 end subroutine
 
@@ -4489,6 +4495,8 @@ subroutine AD_PackRotParameterType(RF, Indata)
    call RegPack(RF, InData%TFinAero)
    call AD_PackTFinParameterType(RF, InData%TFin) 
    call RegPack(RF, InData%GSAero)
+   call RegPack(RF, InData%GSInfl)
+   call RegPack(RF, InData%GSShdw)
    call RegPack(RF, InData%GSDrag)
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
@@ -4603,6 +4611,8 @@ subroutine AD_UnPackRotParameterType(RF, OutData)
    call RegUnpack(RF, OutData%TFinAero); if (RegCheckErr(RF, RoutineName)) return
    call AD_UnpackTFinParameterType(RF, OutData%TFin) ! TFin 
    call RegUnpack(RF, OutData%GSAero); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSInfl); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSShdw); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%GSDrag); if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -4620,6 +4630,8 @@ subroutine AD_CopyGSParameterType(SrcGSParameterTypeData, DstGSParameterTypeData
    ErrStat = ErrID_None
    ErrMsg  = ''
    DstGSParameterTypeData%GSAero = SrcGSParameterTypeData%GSAero
+   DstGSParameterTypeData%GSInfl = SrcGSParameterTypeData%GSInfl
+   DstGSParameterTypeData%GSShdw = SrcGSParameterTypeData%GSShdw
    DstGSParameterTypeData%GSDrag = SrcGSParameterTypeData%GSDrag
    DstGSParameterTypeData%NJoints = SrcGSParameterTypeData%NJoints
    DstGSParameterTypeData%NNodes = SrcGSParameterTypeData%NNodes
@@ -4700,6 +4712,8 @@ subroutine AD_PackGSParameterType(RF, Indata)
    integer(B4Ki)   :: LB(1), UB(1)
    if (RF%ErrStat >= AbortErrLev) return
    call RegPack(RF, InData%GSAero)
+   call RegPack(RF, InData%GSInfl)
+   call RegPack(RF, InData%GSShdw)
    call RegPack(RF, InData%GSDrag)
    call RegPack(RF, InData%NJoints)
    call RegPack(RF, InData%NNodes)
@@ -4738,6 +4752,8 @@ subroutine AD_UnPackGSParameterType(RF, OutData)
    logical         :: IsAllocAssoc
    if (RF%ErrStat /= ErrID_None) return
    call RegUnpack(RF, OutData%GSAero); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSInfl); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSShdw); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%GSDrag); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NJoints); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NNodes); if (RegCheckErr(RF, RoutineName)) return

@@ -412,10 +412,14 @@ typedef  ^  RotParameterType  IntKi BldNd_NumNodesOut - - - "The blades to outpu
 typedef  ^  RotParameterType  LOGICAL           TFinAero  - .FALSE. -   "Calculate tail fin aerodynamics model (flag)" flag
 typedef  ^  RotParameterType  TFinParameterType TFin    -       -   -   "Parameters for tail fin of current rotor" -
 # General support parameters (per rotor)
-typedef  ^  RotParameterType  LOGICAL           GSAero  - .FALSE. -   "Calculate general support aerodynamic influences (flag)" flag
+typedef  ^  RotParameterType  LOGICAL           GSAero  - .FALSE. -   "Calculate general support influence or shadow (flag)" flag
+typedef  ^  RotParameterType  LOGICAL           GSInfl  - .FALSE. -   "Calculate general support aerodynamic influence (flag)" flag
+typedef  ^  RotParameterType  LOGICAL           GSShdw  - .FALSE. -   "Calculate general support shadow/wake deficit (flag)" flag
 typedef  ^  RotParameterType  LOGICAL           GSDrag  - .FALSE. -   "Calculate general support drag force (flag)" flag
 # General support parameters (shared)
-typedef ^   GSParameterType LOGICAL GSAero  - .FALSE. -   "Calculate general support aerodynamic influences (flag)" flag
+typedef ^   GSParameterType LOGICAL GSAero  - .FALSE. -   "Calculate general support influence or shadow (flag)" flag
+typedef ^   GSParameterType LOGICAL GSInfl  - .FALSE. -   "Calculate general support aerodynamic influence (flag)" flag
+typedef ^   GSParameterType LOGICAL GSShdw  - .FALSE. -   "Calculate general support shadow/wake deficit (flag)" flag
 typedef ^   GSParameterType LOGICAL GSDrag  - .FALSE. -   "Calculate general support drag force (flag)" flag
 typedef ^   GSParameterType IntKi   NJoints -   -   -   "Total number of user-specified joints for the general support structure" -
 typedef ^   GSParameterType IntKi   NNodes  -   -   -   "Total number of general support structure nodes (joints+interior nodes)" -
