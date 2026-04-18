@@ -52,6 +52,14 @@ IMPLICIT NONE
     INTEGER(IntKi), PUBLIC, PARAMETER  :: TwrAero_none                     = 0      ! no tower aero [-]
     INTEGER(IntKi), PUBLIC, PARAMETER  :: TwrAero_noVIV                    = 1      ! Tower aero model without VIV [-]
     INTEGER(IntKi), PUBLIC, PARAMETER  :: TwrAero_VIV                      = 2      ! Tower aero model with VIV [-]
+    INTEGER(IntKi), PUBLIC, PARAMETER  :: GSPotent_none                    = 0      ! no general support potential flow [-]
+    INTEGER(IntKi), PUBLIC, PARAMETER  :: GSPotent_baseline                = 1      ! baseline general support potential flow [-]
+    INTEGER(IntKi), PUBLIC, PARAMETER  :: GSPotent_Bak                     = 2      ! general support potential flow with Bak correction [-]
+    INTEGER(IntKi), PUBLIC, PARAMETER  :: GSShadow_none                    = 0      ! no general support shadow [-]
+    INTEGER(IntKi), PUBLIC, PARAMETER  :: GSShadow_Powles                  = 1      ! Powles general support shadow model [-]
+    INTEGER(IntKi), PUBLIC, PARAMETER  :: GSShadow_Eames                   = 2      ! Eames general support shadow model [-]
+    INTEGER(IntKi), PUBLIC, PARAMETER  :: GSAero_none                      = 0      ! no general support aero [-]
+    INTEGER(IntKi), PUBLIC, PARAMETER  :: GSAero_noVIV                     = 1      ! General support aero model without VIV [-]
     INTEGER(IntKi), PUBLIC, PARAMETER  :: SA_Wgt_Uniform                   = 1      ! Sector average weighting - Uniform [-]
     INTEGER(IntKi), PUBLIC, PARAMETER  :: TFinAero_none                    = 0      ! no tail fin aero [-]
     INTEGER(IntKi), PUBLIC, PARAMETER  :: TFinAero_polar                   = 1      ! polar-based tail fin aerodynamics [-]
@@ -464,18 +472,18 @@ IMPLICIT NONE
     INTEGER(IntKi)  :: BldNd_NumNodesOut = 0_IntKi      !< The blades to output (AD_AllBldNdOuts) [-]
     LOGICAL  :: TFinAero = .FALSE.      !< Calculate tail fin aerodynamics model (flag) [flag]
     TYPE(TFinParameterType)  :: TFin      !< Parameters for tail fin of current rotor [-]
-    LOGICAL  :: GSAero = .FALSE.      !< Calculate general support influence or shadow (flag) [flag]
-    LOGICAL  :: GSInfl = .FALSE.      !< Calculate general support aerodynamic influence (flag) [flag]
-    LOGICAL  :: GSShdw = .FALSE.      !< Calculate general support shadow/wake deficit (flag) [flag]
-    LOGICAL  :: GSDrag = .FALSE.      !< Calculate general support drag force (flag) [flag]
+    LOGICAL  :: hasGSMod = .FALSE.      !< Has general support structure model (flag) [flag]
+    INTEGER(IntKi)  :: GSPotent = 0_IntKi      !< Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction} [-]
+    INTEGER(IntKi)  :: GSShadow = 0_IntKi      !< Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model} [-]
+    INTEGER(IntKi)  :: GSAero = 0_IntKi      !< Type of flow-induced loads on the general support {0=none, 1=Drag} [-]
   END TYPE RotParameterType
 ! =======================
 ! =========  GSParameterType  =======
   TYPE, PUBLIC :: GSParameterType
-    LOGICAL  :: GSAero = .FALSE.      !< Calculate general support influence or shadow (flag) [flag]
-    LOGICAL  :: GSInfl = .FALSE.      !< Calculate general support aerodynamic influence (flag) [flag]
-    LOGICAL  :: GSShdw = .FALSE.      !< Calculate general support shadow/wake deficit (flag) [flag]
-    LOGICAL  :: GSDrag = .FALSE.      !< Calculate general support drag force (flag) [flag]
+    LOGICAL  :: hasGSMod = .FALSE.      !< Has general support structure model (flag) [flag]
+    INTEGER(IntKi)  :: GSPotent = 0_IntKi      !< Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction} [-]
+    INTEGER(IntKi)  :: GSShadow = 0_IntKi      !< Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model} [-]
+    INTEGER(IntKi)  :: GSAero = 0_IntKi      !< Type of flow-induced loads on the general support {0=none, 1=Drag} [-]
     INTEGER(IntKi)  :: NJoints = 0_IntKi      !< Total number of user-specified joints for the general support structure [-]
     INTEGER(IntKi)  :: NNodes = 0_IntKi      !< Total number of general support structure nodes (joints+interior nodes) [-]
     INTEGER(IntKi)  :: NMembers = 0_IntKi      !< Total number of general support structure members [-]
@@ -4271,10 +4279,10 @@ subroutine AD_CopyRotParameterType(SrcRotParameterTypeData, DstRotParameterTypeD
    call AD_CopyTFinParameterType(SrcRotParameterTypeData%TFin, DstRotParameterTypeData%TFin, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
+   DstRotParameterTypeData%hasGSMod = SrcRotParameterTypeData%hasGSMod
+   DstRotParameterTypeData%GSPotent = SrcRotParameterTypeData%GSPotent
+   DstRotParameterTypeData%GSShadow = SrcRotParameterTypeData%GSShadow
    DstRotParameterTypeData%GSAero = SrcRotParameterTypeData%GSAero
-   DstRotParameterTypeData%GSInfl = SrcRotParameterTypeData%GSInfl
-   DstRotParameterTypeData%GSShdw = SrcRotParameterTypeData%GSShdw
-   DstRotParameterTypeData%GSDrag = SrcRotParameterTypeData%GSDrag
 end subroutine
 
 subroutine AD_DestroyRotParameterType(RotParameterTypeData, ErrStat, ErrMsg)
@@ -4494,10 +4502,10 @@ subroutine AD_PackRotParameterType(RF, Indata)
    call RegPack(RF, InData%BldNd_NumNodesOut)
    call RegPack(RF, InData%TFinAero)
    call AD_PackTFinParameterType(RF, InData%TFin) 
+   call RegPack(RF, InData%hasGSMod)
+   call RegPack(RF, InData%GSPotent)
+   call RegPack(RF, InData%GSShadow)
    call RegPack(RF, InData%GSAero)
-   call RegPack(RF, InData%GSInfl)
-   call RegPack(RF, InData%GSShdw)
-   call RegPack(RF, InData%GSDrag)
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -4610,10 +4618,10 @@ subroutine AD_UnPackRotParameterType(RF, OutData)
    call RegUnpack(RF, OutData%BldNd_NumNodesOut); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%TFinAero); if (RegCheckErr(RF, RoutineName)) return
    call AD_UnpackTFinParameterType(RF, OutData%TFin) ! TFin 
+   call RegUnpack(RF, OutData%hasGSMod); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSPotent); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSShadow); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%GSAero); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpack(RF, OutData%GSInfl); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpack(RF, OutData%GSShdw); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpack(RF, OutData%GSDrag); if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
 subroutine AD_CopyGSParameterType(SrcGSParameterTypeData, DstGSParameterTypeData, CtrlCode, ErrStat, ErrMsg)
@@ -4629,10 +4637,10 @@ subroutine AD_CopyGSParameterType(SrcGSParameterTypeData, DstGSParameterTypeData
    character(*), parameter        :: RoutineName = 'AD_CopyGSParameterType'
    ErrStat = ErrID_None
    ErrMsg  = ''
+   DstGSParameterTypeData%hasGSMod = SrcGSParameterTypeData%hasGSMod
+   DstGSParameterTypeData%GSPotent = SrcGSParameterTypeData%GSPotent
+   DstGSParameterTypeData%GSShadow = SrcGSParameterTypeData%GSShadow
    DstGSParameterTypeData%GSAero = SrcGSParameterTypeData%GSAero
-   DstGSParameterTypeData%GSInfl = SrcGSParameterTypeData%GSInfl
-   DstGSParameterTypeData%GSShdw = SrcGSParameterTypeData%GSShdw
-   DstGSParameterTypeData%GSDrag = SrcGSParameterTypeData%GSDrag
    DstGSParameterTypeData%NJoints = SrcGSParameterTypeData%NJoints
    DstGSParameterTypeData%NNodes = SrcGSParameterTypeData%NNodes
    DstGSParameterTypeData%NMembers = SrcGSParameterTypeData%NMembers
@@ -4711,10 +4719,10 @@ subroutine AD_PackGSParameterType(RF, Indata)
    integer(B4Ki)   :: i1
    integer(B4Ki)   :: LB(1), UB(1)
    if (RF%ErrStat >= AbortErrLev) return
+   call RegPack(RF, InData%hasGSMod)
+   call RegPack(RF, InData%GSPotent)
+   call RegPack(RF, InData%GSShadow)
    call RegPack(RF, InData%GSAero)
-   call RegPack(RF, InData%GSInfl)
-   call RegPack(RF, InData%GSShdw)
-   call RegPack(RF, InData%GSDrag)
    call RegPack(RF, InData%NJoints)
    call RegPack(RF, InData%NNodes)
    call RegPack(RF, InData%NMembers)
@@ -4751,10 +4759,10 @@ subroutine AD_UnPackGSParameterType(RF, OutData)
    integer(IntKi)  :: stat
    logical         :: IsAllocAssoc
    if (RF%ErrStat /= ErrID_None) return
+   call RegUnpack(RF, OutData%hasGSMod); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSPotent); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSShadow); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%GSAero); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpack(RF, OutData%GSInfl); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpack(RF, OutData%GSShdw); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpack(RF, OutData%GSDrag); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NJoints); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NNodes); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NMembers); if (RegCheckErr(RF, RoutineName)) return

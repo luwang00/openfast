@@ -787,7 +787,7 @@ subroutine InitMappings_AD(Mappings, SrcMod, DstMod, Turbine, ErrStat, ErrMsg)
                             SrcMod=SrcMod, SrcDL=DatLoc(SD_y_Y3Mesh), &    ! SD%y(SrcMod%Ins)%Y3Mesh
                             DstMod=DstMod, DstDL=DatLoc(AD_u_GSMotion), &  ! AD%u%rotors(DstMod%Ins)%GSMotion
                             ErrStat=ErrStat2, ErrMsg=ErrMsg2, &
-                            Active=(AD_p_Rotor%GSAero.or.AD_p_Rotor%GSDrag))
+                            Active=(AD_p_Rotor%hasGSMod))
          if (Failed()) return
       end associate
    end select
@@ -1972,7 +1972,7 @@ subroutine InitMappings_SD(Mappings, SrcMod, DstMod, Turbine, ErrStat, ErrMsg)
                             DstDL=DatLoc(SD_u_LMesh), &                   ! SD%u(DstMod%Ins)%LMesh
                             DstDispDL=DatLoc(SD_y_y3Mesh),&               ! SD%y(DstMod%Ins)%y3Mesh
                             ErrStat=ErrStat2, ErrMsg=ErrMsg2, &
-                            Active=AD_p_Rotor%GSDrag)
+                            Active=AD_p_Rotor%GSAero/=GSAero_none)
          if (Failed()) return
       end associate
 

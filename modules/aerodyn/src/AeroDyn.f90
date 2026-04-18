@@ -446,16 +446,16 @@ subroutine AD_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, InitOut
    call Init_GSParam(InputFileData%GS, p%GS, InputFileData%AirDens, InitInp%MHK, InitInp%WtrDpth, errStat2, errMsg2 )
       if (Failed()) return;
    if (nRotors >= 1_IntKi) then
-      p%rotors(1)%GSAero = p%GS%GSAero  ! True if GSInfl .or. GSShdw
-      p%rotors(1)%GSInfl = p%GS%GSInfl
-      p%rotors(1)%GSShdw = p%GS%GSShdw
-      p%rotors(1)%GSDrag = p%GS%GSDrag  ! Only rotor 1 handles GS drag force
+      p%rotors( 1)%hasGSMod = p%GS%hasGSMod
+      p%rotors( 1)%GSPotent = p%GS%GSPotent
+      p%rotors( 1)%GSShadow = p%GS%GSShadow
+      p%rotors( 1)%GSAero   = p%GS%GSAero    ! Only rotor 1 handles GS drag force
    end if
    do iR = 2, nRotors
-      p%rotors(iR)%GSAero = p%GS%GSAero ! True if GSInfl .or. GSShdw
-      p%rotors(iR)%GSInfl = p%GS%GSInfl
-      p%rotors(iR)%GSShdw = p%GS%GSShdw
-      p%rotors(iR)%GSDrag = .false.     ! Only rotor 1 handles GS drag force
+      p%rotors(iR)%hasGSMod = p%GS%hasGSMod
+      p%rotors(iR)%GSPotent = p%GS%GSPotent
+      p%rotors(iR)%GSShadow = p%GS%GSShadow
+      p%rotors(iR)%GSAero   = GSAero_none    ! Only rotor 1 handles GS drag force
    enddo
 
       !............................................................................................
@@ -633,7 +633,7 @@ subroutine AD_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, InitOut
          call AD_PrintSum( InputFileData, p%rotors(iR), p, u, y, NumBlades(iR), InputFileData%rotors(iR)%BladeProps(:), ErrStat2, ErrMsg2 )
          if (Failed()) return;
       enddo
-      if ( p%GS%GSAero .or. p%GS%GSDrag ) then
+      if ( p%GS%hasGSMod ) then
          call AD_PrintSum_GS( p%GS, p, u%rotors(1), y%rotors(1), ErrStat, ErrMsg ); if (Failed()) return
       end if
    end if
@@ -1086,7 +1086,7 @@ subroutine Init_y(y, u, p, errStat, errMsg)
    errStat = ErrID_None
    errMsg  = ""
    
-   if (p%GSDrag) then
+   if (p%GSAero/=GSAero_none) then
       call MeshCopy ( SrcMesh  = u%GSMotion       &
                     , DestMesh = y%GSLoad         &
                     , CtrlCode = MESH_SIBLING     &
@@ -1240,7 +1240,7 @@ subroutine Init_u( u, p, p_AD, InputFileData, MHK, WtrDpth, InitInp, errStat, er
          !................
          ! general support structure
          !................
-   if (p%GSAero .or. p%GSDrag) then
+   if (p%hasGSMod) then
 
       call MeshCreate ( BlankMesh = u%GSMotion      &
                        ,IOS       = COMPONENT_INPUT &
@@ -2276,31 +2276,31 @@ subroutine AD_CalcWind_GS(t, u, FlowField, p, p_AD, m, GSInflow, StartNode, ErrS
    ErrStat = ErrID_None
    ErrMsg = ""
 
-   if (p%GSAero.or.p%GSDrag) then
-      ! If rotor is MHK, add water depth to z coordinate
-      if (p%MHK /= MHK_None) then
-         PosOffset = [0.0_ReKi, 0.0_ReKi, p%WtrDpth]
-      else
-         PosOffset = 0.0_ReKi
-      end if
-      if (p%MHK /= MHK_None .and. p_AD%CompSeaSt) then ! MHK turbines with waves
-         call WaveField_GetWaveVelAcc_AD(p_AD%WaveField, m%WaveField_m, &
-                                         StartNode, t, &
-                                         real(u%GSMotion%Position + u%GSMotion%TranslationDisp, ReKi), &
-                                         GSInflow%InflowVel, &
-                                         NoAcc, ErrStat2, ErrMsg2, &
-                                         BoxExceedAllow=.true.)
-         if(Failed()) return
-      else
-         call IfW_FlowField_GetVelAcc(FlowField, StartNode, t, &
-                                      real(u%GSMotion%Position + u%GSMotion%TranslationDisp, ReKi), &
-                                      GSInflow%InflowVel, &
-                                      NoAcc, ErrStat2, ErrMsg2, &
-                                      BoxExceedAllow=.true., PosOffset=PosOffset)
-         if(Failed()) return
-      end if
-      StartNode = StartNode + p%NNodes
+   if (.not.p%hasGSMod) return
+
+   ! If rotor is MHK, add water depth to z coordinate
+   if (p%MHK /= MHK_None) then
+      PosOffset = [0.0_ReKi, 0.0_ReKi, p%WtrDpth]
+   else
+      PosOffset = 0.0_ReKi
    end if
+   if (p%MHK /= MHK_None .and. p_AD%CompSeaSt) then ! MHK turbines with waves
+      call WaveField_GetWaveVelAcc_AD(p_AD%WaveField, m%WaveField_m, &
+                                       StartNode, t, &
+                                       real(u%GSMotion%Position + u%GSMotion%TranslationDisp, ReKi), &
+                                       GSInflow%InflowVel, &
+                                       NoAcc, ErrStat2, ErrMsg2, &
+                                       BoxExceedAllow=.true.)
+      if(Failed()) return
+   else
+      call IfW_FlowField_GetVelAcc(FlowField, StartNode, t, &
+                                    real(u%GSMotion%Position + u%GSMotion%TranslationDisp, ReKi), &
+                                    GSInflow%InflowVel, &
+                                    NoAcc, ErrStat2, ErrMsg2, &
+                                    BoxExceedAllow=.true., PosOffset=PosOffset)
+      if(Failed()) return
+   end if
+   StartNode = StartNode + p%NNodes
 
 contains
    logical function Failed()
@@ -2465,7 +2465,7 @@ subroutine RotCalcOutput( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z, OtherSta
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    endif
 
-   if (p%GSDrag) then
+   if (p%GSAero/=GSAero_none) then
       call ADGS_CalcOutput(p_AD%GS, u, GSInflow, m, y, ErrStat2, ErrMsg2)
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    endif
@@ -5380,10 +5380,10 @@ SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMs
    ErrMsg  = ""
 
    if (InputFileData%NMembers==0_IntKi) then
-      p%GSAero   = .false.
-      p%GSInfl   = .false.
-      p%GSShdw   = .false.
-      p%GSDrag   = .false.
+      p%GSPotent = GSPotent_none
+      p%GSShadow = GSShadow_none
+      p%GSAero   = GSAero_none
+      p%hasGSMod = .false.
       p%Density  = 0.0_ReKi
       p%MHK      = MHK
       p%WtrDpth  = WtrDpth
@@ -5393,11 +5393,11 @@ SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMs
       return
    end if
 
-   ! Default GSAero and GSDrag to true for now; can be based on user input later
-   p%GSInfl   = .true.
-   p%GSShdw   = .true.
-   p%GSAero   = p%GSInfl .or. p%GSShdw
-   p%GSDrag   = .true.
+   ! Default values for now; can be based on user input later
+   p%GSPotent = GSPotent_baseline
+   p%GSShadow = GSShadow_Powles
+   p%GSAero   = GSAero_noVIV
+   p%hasGSMod = (p%GSPotent/=GSPotent_none) .or. (p%GSShadow/=GSShadow_none) .or. (p%GSAero/=GSAero_none)
    p%Density  = Density
    p%NMembers = InputFileData%NMembers
    p%NJoints  = InputFileData%NJoints
@@ -5872,7 +5872,7 @@ SUBROUTINE ADGS_CalcOutput(p, u, GSInflow, m, y, ErrStat, ErrMsg )
    ErrStat = ErrID_None
    ErrMsg  = ""
 
-   IF (.not.p%GSDrag) RETURN
+   IF (p%GSAero==GSAero_none) RETURN
 
    y%GSLoad%Force  = 0.0_ReKi
    y%GSLoad%moment = 0.0_ReKi
@@ -6625,7 +6625,7 @@ subroutine AD_InitVars(iR, u, p, x, z, OtherState, y, m, InitOut, InputFileData,
                       DatLoc(AD_u_GSMotion), &
                       Mesh=u%GSMotion, &
                       Perturbs=[PerturbTower, Perturb, PerturbTower], &
-                      Active=(p%GSAero.or.p%GSDrag))
+                      Active=p%hasGSMod)
 
    ! Add blade root motion
    do j = 1, p%NumBlades
@@ -6698,7 +6698,7 @@ subroutine AD_InitVars(iR, u, p, x, z, OtherState, y, m, InitOut, InputFileData,
    ! Add general support load
    call MV_AddMeshVar(InitOut%Vars%y, "General Support", LoadFields, DatLoc(AD_y_GSLoad), &
                       Mesh=y%GSLoad, &
-                      Active=p%GSDrag)
+                      Active=(p%GSAero/=GSAero_none))
 
    ! Loop through blades, add blade loads
    do j = 1, p%NumBlades

@@ -34,9 +34,20 @@ param    ^              -  IntKi    TwrShadow_none          -  0  -  "no tower s
 param    ^              -  IntKi    TwrShadow_Powles        -  1  -  "Powles tower shadow model"                  -
 param    ^              -  IntKi    TwrShadow_Eames         -  2  -  "Eames tower shadow model"                   -
 
-param    ^              -  IntKi    TwrAero_none            -  0  -  "no tower aero"                            -
-param    ^              -  IntKi    TwrAero_noVIV           -  1  -  "Tower aero model without VIV"                  -
-param    ^              -  IntKi    TwrAero_VIV             -  2  -  "Tower aero model with VIV"                   -
+param    ^              -  IntKi    TwrAero_none            -  0  -  "no tower aero"                              -
+param    ^              -  IntKi    TwrAero_noVIV           -  1  -  "Tower aero model without VIV"               -
+param    ^              -  IntKi    TwrAero_VIV             -  2  -  "Tower aero model with VIV"                  -
+
+param    ^              -  IntKi    GSPotent_none           -  0  -  "no general support potential flow"                    -
+param    ^              -  IntKi    GSPotent_baseline       -  1  -  "baseline general support potential flow"              -
+param    ^              -  IntKi    GSPotent_Bak            -  2  -  "general support potential flow with Bak correction"   -
+
+param    ^              -  IntKi    GSShadow_none           -  0  -  "no general support shadow"                            -
+param    ^              -  IntKi    GSShadow_Powles         -  1  -  "Powles general support shadow model"                  -
+param    ^              -  IntKi    GSShadow_Eames          -  2  -  "Eames general support shadow model"                   -
+
+param    ^              -  IntKi    GSAero_none             -  0  -  "no general support aero"                              -
+param    ^              -  IntKi    GSAero_noVIV            -  1  -  "General support aero model without VIV"               -
 
 param    ^              -  IntKi    SA_Wgt_Uniform          -  1  -  "Sector average weighting - Uniform"                            -
 #param    ^              -  IntKi    SA_Wgt_Impulse          -  1  -  "Sector average weighting - Impulse"                            -
@@ -412,15 +423,15 @@ typedef  ^  RotParameterType  IntKi BldNd_NumNodesOut - - - "The blades to outpu
 typedef  ^  RotParameterType  LOGICAL           TFinAero  - .FALSE. -   "Calculate tail fin aerodynamics model (flag)" flag
 typedef  ^  RotParameterType  TFinParameterType TFin    -       -   -   "Parameters for tail fin of current rotor" -
 # General support parameters (per rotor)
-typedef  ^  RotParameterType  LOGICAL           GSAero  - .FALSE. -   "Calculate general support influence or shadow (flag)" flag
-typedef  ^  RotParameterType  LOGICAL           GSInfl  - .FALSE. -   "Calculate general support aerodynamic influence (flag)" flag
-typedef  ^  RotParameterType  LOGICAL           GSShdw  - .FALSE. -   "Calculate general support shadow/wake deficit (flag)" flag
-typedef  ^  RotParameterType  LOGICAL           GSDrag  - .FALSE. -   "Calculate general support drag force (flag)" flag
+typedef  ^  RotParameterType  LOGICAL           hasGSMod  - .FALSE. -   "Has general support structure model (flag)" flag
+typedef  ^  RotParameterType  IntKi             GSPotent  - - -   "Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction}" -
+typedef  ^  RotParameterType  IntKi             GSShadow  - - -   "Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model}" -
+typedef  ^  RotParameterType  IntKi             GSAero    - - -   "Type of flow-induced loads on the general support {0=none, 1=Drag}" -
 # General support parameters (shared)
-typedef ^   GSParameterType LOGICAL GSAero  - .FALSE. -   "Calculate general support influence or shadow (flag)" flag
-typedef ^   GSParameterType LOGICAL GSInfl  - .FALSE. -   "Calculate general support aerodynamic influence (flag)" flag
-typedef ^   GSParameterType LOGICAL GSShdw  - .FALSE. -   "Calculate general support shadow/wake deficit (flag)" flag
-typedef ^   GSParameterType LOGICAL GSDrag  - .FALSE. -   "Calculate general support drag force (flag)" flag
+typedef ^   GSParameterType LOGICAL hasGSMod  - .FALSE. -   "Has general support structure model (flag)" flag
+typedef ^   GSParameterType IntKi   GSPotent  - - -   "Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction}" -
+typedef ^   GSParameterType IntKi   GSShadow  - - -   "Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model}" -
+typedef ^   GSParameterType IntKi   GSAero    - - -   "Type of flow-induced loads on the general support {0=none, 1=Drag}" -
 typedef ^   GSParameterType IntKi   NJoints -   -   -   "Total number of user-specified joints for the general support structure" -
 typedef ^   GSParameterType IntKi   NNodes  -   -   -   "Total number of general support structure nodes (joints+interior nodes)" -
 typedef ^   GSParameterType IntKi   NMembers  -   -   -   "Total number of general support structure members" -

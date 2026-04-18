@@ -2188,6 +2188,7 @@ SUBROUTINE AD_PrintSum_GS( p, p_AD, u, y, ErrStat, ErrMsg )
    INTEGER(IntKi)               :: I, J                                            ! Generic loop counter
    INTEGER(IntKi)               :: JointID, NodeIndx
    INTEGER(IntKi)               :: UnSu                                            ! I/O unit number for the summary output file
+   CHARACTER(100)               :: Msg                                             ! temporary string for writing appropriate text to summary file
 
    if (p%NMembers<=0_IntKi) return
 
@@ -2205,9 +2206,39 @@ SUBROUTINE AD_PrintSum_GS( p, p_AD, u, y, ErrStat, ErrMsg )
 
    WRITE (UnSu,'(/,/,A)') '======  General support structure  =================================================================='
 
-   WRITE (UnSu,'(/,A,L1)')  'Compute influence:     ',p%GSInfl
-   WRITE (UnSu,'(A,L1)')    'Compute shadow effect: ',p%GSShdw
-   WRITE (UnSu,'(A,L1)')    'Compute drag force:    ',p%GSDrag
+   select case (p%GSPotent)
+      case (GSPotent_none)
+         Msg = 'none'
+      case (GSPotent_baseline)
+         Msg = 'baseline model'
+      case (GSPotent_bak)
+         Msg = "Bak correction"
+      case default
+         Msg = 'unknown'
+   end select
+   WRITE (UnSu,'(/,A)')  'Potential-flow influence model:  '//trim(num2lstr(p%GSPotent))//' ('//trim(Msg)//')'
+
+   select case (p%GSShadow)
+      case (GSShadow_none)
+         Msg = 'none'
+      case (GSShadow_Powles)
+         Msg = 'Powles model'
+      case (GSShadow_Eames)
+         Msg = "Eames model"
+      case default
+         Msg = 'unknown'
+   end select
+   WRITE (UnSu,'(A)')    'Downstream shadow/wake model:    '//trim(num2lstr(p%GSShadow))//' ('//trim(Msg)//')'
+
+   select case (p%GSAero)
+      case (GSAero_none)
+         Msg = 'none'
+      case (GSAero_NoVIV)
+         Msg = 'drag only'
+      case default
+         Msg = 'unknown'
+   end select
+   WRITE (UnSu,'(A)')    'Flow-induced load model:         '//trim(num2lstr(p%GSAero))//' ('//trim(Msg)//')'
 
    WRITE (UnSu,'(/,A)')  'Number of joints:  '//trim(num2lstr(p%NJoints))
    WRITE (UnSu,'(A)')    'Number of members: '//trim(num2lstr(p%NMembers))
