@@ -105,7 +105,7 @@ end subroutine
 subroutine disp1r8(u,varname,a)
     integer,intent(in) ::u
     character(len=*),intent(in)::varname
-    real(ReKi),intent(in),dimension(:) ::a
+    real(DbKi),intent(in),dimension(:) ::a
     integer :: n
     character(len=20) :: fmt
     character(len=*),parameter :: RFMT='EN13.3E2'

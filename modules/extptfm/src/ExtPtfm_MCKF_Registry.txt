@@ -64,8 +64,8 @@ typedef   ^                   ^          ModVarsType           Vars             
 
 # ..... States ....................................................................................................................
 # Define continuous (differentiable) states here:
-typedef    ^              ContinuousStateType ReKi     qm         {:} - -  "Internal CraigBampton positions" -
-typedef    ^              ContinuousStateType ReKi     qmdot      {:} - -  "Internal CraigBampton velocities" -
+typedef    ^              ContinuousStateType DbKi     qm         {:} - -  "Internal CraigBampton positions" -
+typedef    ^              ContinuousStateType DbKi     qmdot      {:} - -  "Internal CraigBampton velocities" -
 
 # Define discrete (nondifferentiable) states here:
 typedef   ^               DiscreteStateType   ReKi     DummyDiscState - - -  "Remove this variable if you have discrete states" -
@@ -143,16 +143,15 @@ typedef  ^                  ^                 ReKi     Fm                  {:} -
 typedef   ^               OutputType          MeshType PtfmMesh     -  - -   "Loads at the platform reference point" -
 typedef   ^                 ^                 MeshType ConnMesh     -  - -   "Motion mesh for connection points on the structure" -
 typedef   ^                 ^                 MeshType FBMesh       -  - -   "Motion mesh for rigid-body DOF" -
-typedef   ^                 ^                 ReKi     qm          {:} - -   "Displacement of internal elastic modes" -
-typedef   ^                 ^                 ReKi     qmdot       {:} - -   "Velocity of internal elastic modes" -
-typedef   ^                 ^                 ReKi     qmdotdot    {:} - -   "Acceleration of internal elastic modes" -
+typedef   ^                 ^                 DbKi     qm          {:} - -   "Displacement of internal elastic modes" -
+typedef   ^                 ^                 DbKi     qmdot       {:} - -   "Velocity of internal elastic modes" -
+typedef   ^                 ^                 DbKi     qmdotdot    {:} - -   "Acceleration of internal elastic modes" -
 typedef   ^                 ^                 ReKi     WriteOutput {:} - -   "Example of data to be written to an output file" "s,-"
 
 # ..... Misc/Optimization variables.................................................................................................
 # Define any data that are used only for efficiency purposes (these variables are not associated with time):
 #   e.g. indices for searching in an array, large arrays that are local variables in any routine called multiple times, etc.
-typedef    ^              MiscVarType          ReKi     xFlat    {:} - - "Flattened vector of states"
-typedef    ^                  ^                R8Ki     uFlat   {18} - - "Flattened vector of inputs"
+typedef    ^              MiscVarType          R8Ki     uFlat   {18} - - "Flattened vector of inputs"
 typedef    ^                  ^                ReKi     F_at_t   {:} - - "The 6 interface loads and Craig-Bampton loads at t (force and moment acting at the platform reference (no added-mass effects); positive forces are in the direction of motion)." "N, N-m"
 typedef    ^                  ^                ReKi     FConn_at_t {:} - - "The 3DOF forces at each connection point defined by the user" "N"
 typedef    ^                  ^                ReKi     F1       {:} - - "Interface/rigid-body mode forcing" -

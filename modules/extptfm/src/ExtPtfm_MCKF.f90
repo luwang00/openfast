@@ -192,9 +192,7 @@ SUBROUTINE ExtPtfm_Init( InitInp, u, p, x, xd, z, OtherState, y, m, dt_gluecode,
    call AllocAry( m%AConn, 3_IntKi*p%nConn, 'Connection point acceleration', ErrStat,ErrMsg); if(Failed()) return
    call AllocAry( m%FConn, 3_IntKi*p%nConn, 'Connection force vector', ErrStat,ErrMsg); if(Failed()) return
    call AllocAry( m%FConnCB, p%nTot, 'Connection force vector', ErrStat,ErrMsg); if(Failed()) return
-   call AllocAry( m%xFlat, 2*p%nCB,'xFlat', ErrStat,ErrMsg); if(Failed()) return
-   m%xFlat=0.0_ReKi
-   m%uFlat=0.0_ReKi
+   m%uFlat=0.0_R8Ki
    
    ! Define initial guess (set up mesh first) for the system inputs here:
    call Init_meshes(u, p, y, InitInp, ErrStat, ErrMsg); if(Failed()) return
@@ -1112,6 +1110,8 @@ SUBROUTINE ExtPtfm_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, ErrStat, Err
       endif
    enddo
 
+   CALL ExtPtfm_DestroyContState(xdot, ErrStat, ErrMsg)
+
    CONTAINS
     logical function Failed()
         CALL SetErrStatSimple(ErrStat, ErrMsg, 'ExtPtfm_CalcContStateDeriv')
@@ -1133,7 +1133,7 @@ SUBROUTINE ExtPtfm_CalcContStateDeriv( t, u, p, x, xd, z, OtherState, m, dxdt, E
    TYPE(ExtPtfm_ConstraintStateType), INTENT(IN   )  :: z           !< Constraint states at t
    TYPE(ExtPtfm_OtherStateType),      INTENT(IN   )  :: OtherState  !< Other states at t
    TYPE(ExtPtfm_MiscVarType),         INTENT(INOUT)  :: m           !< Misc variables for optimization (not copied in glue code)
-   TYPE(ExtPtfm_ContinuousStateType), INTENT(  OUT)  :: dxdt        !< Continuous state derivatives at t
+   TYPE(ExtPtfm_ContinuousStateType), INTENT(INOUT)  :: dxdt        !< Continuous state derivatives at t
    INTEGER(IntKi),                    INTENT(  OUT)  :: ErrStat     !< Error status of the operation
    CHARACTER(*),                      INTENT(  OUT)  :: ErrMsg      !< Error message if ErrStat /= ErrID_None
 
@@ -1143,11 +1143,9 @@ SUBROUTINE ExtPtfm_CalcContStateDeriv( t, u, p, x, xd, z, OtherState, m, dxdt, E
    REAL(R8Ki), dimension(3,3)                        :: Rb2g         ! Rotation matrix body 2 global coordinates
 
    ! Allocation of output dxdt (since intent(out))
-   call AllocAry(dxdt%qm,    p%nCB, 'dxdt%qm',    ErrStat, ErrMsg); if(Failed()) return
-   call AllocAry(dxdt%qmdot, p%nCB, 'dxdt%qmdot', ErrStat, ErrMsg); if(Failed()) return
+   if (.not.allocated(dxdt%qm))    call AllocAry(dxdt%qm,    p%nCB, 'dxdt%qm',    ErrStat, ErrMsg); if(Failed()) return
+   if (.not.allocated(dxdt%qmdot)) call AllocAry(dxdt%qmdot, p%nCB, 'dxdt%qmdot', ErrStat, ErrMsg); if(Failed()) return
    if ( p%nCB == 0 ) return
-   dxdt%qm   =0.0_ReKi
-   dxdt%qmdot=0.0_ReKi
 
    ! Compute the loads `fr1 fr2` at t (fr1 without added mass) by time interpolation of the inputs loads p%UsrModeF%Forces
    call InterpStpMat(REAL(t,ReKi), p%UsrModeF%times, p%UsrModeF%Forces, m%Indx_UsrModeF, p%UsrModeF%nTimeSteps, m%F_at_t)
@@ -1627,6 +1625,8 @@ SUBROUTINE PseudoInverse(A, Ainv, ErrStat, ErrMsg)
    allocate(Work(LWORK)); Work=0
    allocate(U (M,K) ); U=0;
    allocate(Vt(K,N) ); Vt=0;
+
+   if (allocated(Ainv)) deallocate(Ainv)
    allocate(Ainv(N,M)); Ainv=0;
    allocate(Acopy(M,N)); Acopy=A;
 
@@ -1653,6 +1653,13 @@ SUBROUTINE PseudoInverse(A, Ainv, ErrStat, ErrMsg)
    !end do
    !print*,'Rank',rank
    !   Ainv=transpose(matmul(matmul(U(:,1:r),S_inv(1:r,1:r)),Vt(1:r,:)))
+
+   if(allocated(S))     deallocate(S)
+   if(allocated(Work))  deallocate(Work)
+   if(allocated(U))     deallocate(U)
+   if(allocated(Vt))    deallocate(Vt)
+   if(allocated(Acopy)) deallocate(Acopy)
+
    END SUBROUTINE PseudoInverse
 
 !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

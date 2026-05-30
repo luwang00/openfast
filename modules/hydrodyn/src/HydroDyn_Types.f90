@@ -186,9 +186,9 @@ IMPLICIT NONE
     TYPE(Morison_InputType)  :: Morison      !< Morison module inputs [-]
     TYPE(MeshType)  :: WAMITMesh      !< Motions at the WAMIT reference point(s) in the inertial frame [-]
     TYPE(MeshType)  :: PRPMesh      !< Motions at the Platform reference point in the inertial frame [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOF      !< Displacement of potential-flow generalized DOF [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOFDot      !< Velocity     of potential-flow generalized DOF [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOFDotDot      !< Acceleration of potential-flow generalized DOF [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOF      !< Displacement of potential-flow generalized DOF [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOFDot      !< Velocity     of potential-flow generalized DOF [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOFDotDot      !< Acceleration of potential-flow generalized DOF [-]
   END TYPE HydroDyn_InputType
 ! =======================
 ! =========  HydroDyn_OutputType  =======

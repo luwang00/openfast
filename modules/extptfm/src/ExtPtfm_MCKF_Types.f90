@@ -87,8 +87,8 @@ IMPLICIT NONE
 ! =======================
 ! =========  ExtPtfm_ContinuousStateType  =======
   TYPE, PUBLIC :: ExtPtfm_ContinuousStateType
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qm      !< Internal CraigBampton positions [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qmdot      !< Internal CraigBampton velocities [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qm      !< Internal CraigBampton positions [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qmdot      !< Internal CraigBampton velocities [-]
   END TYPE ExtPtfm_ContinuousStateType
 ! =======================
 ! =========  ExtPtfm_DiscreteStateType  =======
@@ -173,15 +173,14 @@ IMPLICIT NONE
     TYPE(MeshType)  :: PtfmMesh      !< Loads at the platform reference point [-]
     TYPE(MeshType)  :: ConnMesh      !< Motion mesh for connection points on the structure [-]
     TYPE(MeshType)  :: FBMesh      !< Motion mesh for rigid-body DOF [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qm      !< Displacement of internal elastic modes [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qmdot      !< Velocity of internal elastic modes [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qmdotdot      !< Acceleration of internal elastic modes [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qm      !< Displacement of internal elastic modes [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qmdot      !< Velocity of internal elastic modes [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qmdotdot      !< Acceleration of internal elastic modes [-]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: WriteOutput      !< Example of data to be written to an output file [s,-]
   END TYPE ExtPtfm_OutputType
 ! =======================
 ! =========  ExtPtfm_MiscVarType  =======
   TYPE, PUBLIC :: ExtPtfm_MiscVarType
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: xFlat      !< Flattened vector of states [-]
     REAL(R8Ki) , DIMENSION(1:18)  :: uFlat = 0.0_R8Ki      !< Flattened vector of inputs [-]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: F_at_t      !< The 6 interface loads and Craig-Bampton loads at t (force and moment acting at the platform reference (no added-mass effects); positive forces are in the direction of motion). [N, N-m]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: FConn_at_t      !< The 3DOF forces at each connection point defined by the user [N]
@@ -1804,18 +1803,6 @@ subroutine ExtPtfm_CopyMisc(SrcMiscData, DstMiscData, CtrlCode, ErrStat, ErrMsg)
    character(*), parameter        :: RoutineName = 'ExtPtfm_CopyMisc'
    ErrStat = ErrID_None
    ErrMsg  = ''
-   if (allocated(SrcMiscData%xFlat)) then
-      LB(1:1) = lbound(SrcMiscData%xFlat)
-      UB(1:1) = ubound(SrcMiscData%xFlat)
-      if (.not. allocated(DstMiscData%xFlat)) then
-         allocate(DstMiscData%xFlat(LB(1):UB(1)), stat=ErrStat2)
-         if (ErrStat2 /= 0) then
-            call SetErrStat(ErrID_Fatal, 'Error allocating DstMiscData%xFlat.', ErrStat, ErrMsg, RoutineName)
-            return
-         end if
-      end if
-      DstMiscData%xFlat = SrcMiscData%xFlat
-   end if
    DstMiscData%uFlat = SrcMiscData%uFlat
    if (allocated(SrcMiscData%F_at_t)) then
       LB(1:1) = lbound(SrcMiscData%F_at_t)
@@ -1978,9 +1965,6 @@ subroutine ExtPtfm_DestroyMisc(MiscData, ErrStat, ErrMsg)
    character(*), parameter        :: RoutineName = 'ExtPtfm_DestroyMisc'
    ErrStat = ErrID_None
    ErrMsg  = ''
-   if (allocated(MiscData%xFlat)) then
-      deallocate(MiscData%xFlat)
-   end if
    if (allocated(MiscData%F_at_t)) then
       deallocate(MiscData%F_at_t)
    end if
@@ -2031,7 +2015,6 @@ subroutine ExtPtfm_PackMisc(RF, Indata)
    type(ExtPtfm_MiscVarType), intent(in) :: InData
    character(*), parameter         :: RoutineName = 'ExtPtfm_PackMisc'
    if (RF%ErrStat >= AbortErrLev) return
-   call RegPackAlloc(RF, InData%xFlat)
    call RegPack(RF, InData%uFlat)
    call RegPackAlloc(RF, InData%F_at_t)
    call RegPackAlloc(RF, InData%FConn_at_t)
@@ -2063,7 +2046,6 @@ subroutine ExtPtfm_UnPackMisc(RF, OutData)
    integer(IntKi)  :: stat
    logical         :: IsAllocAssoc
    if (RF%ErrStat /= ErrID_None) return
-   call RegUnpackAlloc(RF, OutData%xFlat); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%uFlat); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%F_at_t); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%FConn_at_t); if (RegCheckErr(RF, RoutineName)) return

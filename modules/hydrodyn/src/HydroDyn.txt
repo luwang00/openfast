@@ -170,9 +170,9 @@ typedef   ^                            ^                             ReKi       
 typedef   ^                            InputType                     Morison_InputType        Morison                         -          -          -         "Morison module inputs" -
 typedef   ^                            ^                             MeshType                 WAMITMesh                       -          -          -         "Motions at the WAMIT reference point(s) in the inertial frame" -
 typedef   ^                            ^                             MeshType                 PRPMesh                         -          -          -         "Motions at the Platform reference point in the inertial frame" -
-typedef   ^                            ^                             ReKi                     qAddDOF                        {:}         -          -         "Displacement of potential-flow generalized DOF" -
-typedef   ^                            ^                             ReKi                     qAddDOFDot                     {:}         -          -         "Velocity     of potential-flow generalized DOF" -
-typedef   ^                            ^                             ReKi                     qAddDOFDotDot                  {:}         -          -         "Acceleration of potential-flow generalized DOF" -
+typedef   ^                            ^                             DbKi                     qAddDOF                        {:}         -          -         "Displacement of potential-flow generalized DOF" -
+typedef   ^                            ^                             DbKi                     qAddDOFDot                     {:}         -          -         "Velocity     of potential-flow generalized DOF" -
+typedef   ^                            ^                             DbKi                     qAddDOFDotDot                  {:}         -          -         "Acceleration of potential-flow generalized DOF" -
 #
 # ..... Outputs ...................................................................................................................
 # Define outputs that are contained on the mesh here:
