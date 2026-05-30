@@ -181,7 +181,7 @@ typedef   ^                            ^                             WAMIT2_Outp
 typedef   ^                            ^                             Morison_OutputType       Morison                         -          -          -         "Morison module outputs"  -
 typedef   ^                            ^                             MeshType                 WAMITMesh                       -          -          -         "Point Loads at the WAMIT reference point(s) in the inertial frame" -
 typedef   ^                            ^                             ReKi                     WriteOutput                    {:}         -          -         "Outputs to be written to the output file(s)"  -
-typedef   ^                            ^                             ReKi                     FAddDOF                        {:}         -          -         "Additional generalized DOF forcing " -
+typedef   ^                            ^                             DbKi                     FAddDOF                        {:}         -          -         "Additional generalized DOF forcing " -
 #
 #
 # ..... Misc/Optimization variables.................................................................................................

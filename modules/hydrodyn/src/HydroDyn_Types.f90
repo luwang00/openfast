@@ -198,7 +198,7 @@ IMPLICIT NONE
     TYPE(Morison_OutputType)  :: Morison      !< Morison module outputs [-]
     TYPE(MeshType)  :: WAMITMesh      !< Point Loads at the WAMIT reference point(s) in the inertial frame [-]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: WriteOutput      !< Outputs to be written to the output file(s) [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: FAddDOF      !< Additional generalized DOF forcing  [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: FAddDOF      !< Additional generalized DOF forcing  [-]
   END TYPE HydroDyn_OutputType
 ! =======================
 ! =========  HydroDyn_MiscVarType  =======

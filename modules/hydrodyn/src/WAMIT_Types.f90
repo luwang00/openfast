@@ -145,15 +145,15 @@ IMPLICIT NONE
   TYPE, PUBLIC :: WAMIT_InputType
     TYPE(MeshType)  :: Mesh      !< Displacements at the WAMIT reference point in the inertial frame [-]
     REAL(ReKi)  :: PtfmRefY = 0.0_ReKi      !< Reference yaw offset [(rad)]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOF      !< Displacement of generalized DOF [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOFDot      !< Velocity     of generalized DOF [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOFDotDot      !< Acceleration of generalized DOF [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOF      !< Displacement of generalized DOF [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOFDot      !< Velocity     of generalized DOF [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: qAddDOFDotDot      !< Acceleration of generalized DOF [-]
   END TYPE WAMIT_InputType
 ! =======================
 ! =========  WAMIT_OutputType  =======
   TYPE, PUBLIC :: WAMIT_OutputType
     TYPE(MeshType)  :: Mesh      !< Loads at the WAMIT reference point in the inertial frame [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: FAddDOF      !< Additional generalized DOF forcing  [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: FAddDOF      !< Additional generalized DOF forcing  [-]
   END TYPE WAMIT_OutputType
 ! =======================
    integer(IntKi), public, parameter :: WAMIT_x_SS_Rdtn_x                =   1 ! WAMIT%SS_Rdtn%x

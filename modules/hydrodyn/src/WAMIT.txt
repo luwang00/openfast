@@ -134,12 +134,12 @@ typedef   ^                            ^                             GridInterp_
 #
 typedef   ^                            InputType                     MeshType                 Mesh                    -           -         -         "Displacements at the WAMIT reference point in the inertial frame" -
 typedef   ^                            ^                             ReKi                     PtfmRefY                -           -         -         "Reference yaw offset" (rad)
-typedef   ^                            ^                             ReKi                     qAddDOF                {:}          -         -         "Displacement of generalized DOF" -
-typedef   ^                            ^                             ReKi                     qAddDOFDot             {:}          -         -         "Velocity     of generalized DOF" -
-typedef   ^                            ^                             ReKi                     qAddDOFDotDot          {:}          -         -         "Acceleration of generalized DOF" -
+typedef   ^                            ^                             DbKi                     qAddDOF                {:}          -         -         "Displacement of generalized DOF" -
+typedef   ^                            ^                             DbKi                     qAddDOFDot             {:}          -         -         "Velocity     of generalized DOF" -
+typedef   ^                            ^                             DbKi                     qAddDOFDotDot          {:}          -         -         "Acceleration of generalized DOF" -
 #
 #
 # ..... Outputs ...................................................................................................................
 # Define outputs that are contained on the mesh here:
 typedef   ^                            OutputType                    MeshType                 Mesh                     -          -         -         "Loads at the WAMIT reference point in the inertial frame" -
-typedef   ^                            ^                             ReKi                     FAddDOF                 {:}         -         -         "Additional generalized DOF forcing " -
+typedef   ^                            ^                             DbKi                     FAddDOF                 {:}         -         -         "Additional generalized DOF forcing " -

@@ -165,7 +165,7 @@ IMPLICIT NONE
     TYPE(MeshType)  :: PtfmMesh      !< Displacements at the platform reference point [-]
     TYPE(MeshType)  :: ConnLdMesh      !< Load mesh for connection points on the structure [-]
     TYPE(MeshType)  :: FBMesh      !< Load mesh for rigid-body DOF [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: Fm      !< External forcing to the internal elastic modes [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: Fm      !< External forcing to the internal elastic modes [-]
   END TYPE ExtPtfm_InputType
 ! =======================
 ! =========  ExtPtfm_OutputType  =======
@@ -185,7 +185,7 @@ IMPLICIT NONE
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: F_at_t      !< The 6 interface loads and Craig-Bampton loads at t (force and moment acting at the platform reference (no added-mass effects); positive forces are in the direction of motion). [N, N-m]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: FConn_at_t      !< The 3DOF forces at each connection point defined by the user [N]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: F1      !< Interface/rigid-body mode forcing [-]
-    REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: F2      !< Internal elastic mode forcing [-]
+    REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: F2      !< Internal elastic mode forcing [-]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: Weight      !< Structure self-weight [-]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: FConn      !< Connection forces [N]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: FConnCB      !< Modal forces from connections []

@@ -136,7 +136,7 @@ typedef  ^                    ^          IntKi         OutParamLinIndx  {:}{:} -
 typedef  ^               InputType            MeshType PtfmMesh             -  -  -  "Displacements at the platform reference point" -
 typedef  ^                  ^                 MeshType ConnLdMesh           -  -  -  "Load mesh for connection points on the structure" -
 typedef  ^                  ^                 MeshType FBMesh               -  -  -  "Load mesh for rigid-body DOF" -
-typedef  ^                  ^                 ReKi     Fm                  {:} -  -  "External forcing to the internal elastic modes" -
+typedef  ^                  ^                 DbKi     Fm                  {:} -  -  "External forcing to the internal elastic modes" -
 
 
 # ..... Outputs ...................................................................................................................
@@ -155,7 +155,7 @@ typedef    ^              MiscVarType          R8Ki     uFlat   {18} - - "Flatte
 typedef    ^                  ^                ReKi     F_at_t   {:} - - "The 6 interface loads and Craig-Bampton loads at t (force and moment acting at the platform reference (no added-mass effects); positive forces are in the direction of motion)." "N, N-m"
 typedef    ^                  ^                ReKi     FConn_at_t {:} - - "The 3DOF forces at each connection point defined by the user" "N"
 typedef    ^                  ^                ReKi     F1       {:} - - "Interface/rigid-body mode forcing" -
-typedef    ^                  ^                ReKi     F2       {:} - - "Internal elastic mode forcing" -
+typedef    ^                  ^                DbKi     F2       {:} - - "Internal elastic mode forcing" -
 typedef    ^                  ^                ReKi     Weight   {:} - - "Structure self-weight" -
 typedef    ^                  ^                ReKi     FConn    {:} - - "Connection forces" "N"
 typedef    ^                  ^                ReKi     FConnCB  {:} - - "Modal forces from connections" ""
