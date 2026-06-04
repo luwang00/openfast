@@ -515,15 +515,15 @@ contains
    end subroutine ElementForce
 
    !====================================================================================================
-   !> Calculates static and dynamic forces for a given element, using K and M of the element, and 
-   !output quantities Udotdot and Y2 containing the 
-   !and K2 indicating wheter the 1st (1) or 2nd (2) node is to be picked
+   !> Calculates static and dynamic nodal forces for a given element using its stiffness and mass matrices.
+   !  Udotdot contains nodal accelerations and Y2 contains nodal displacements.
+   !  FirstOrSecond selects whether the node of interest is the first (1) or second (2) node of the element.
    !----------------------------------------------------------------------------------------------------
    SUBROUTINE CALC_NODE_FORCES(DIRCOS,Me,Ke,Udotdot,Y2 ,Fg, FirstOrSecond, FM_nod, FK_nod)
       Real(FEKi), DIMENSION (3,3),   INTENT(IN)  :: DIRCOS    !direction cosice matrix (global to local) (3x3)
       Real(FEKi), DIMENSION (12,12), INTENT(IN)  :: Me,Ke    !element M and K matrices (12x12) in GLOBAL REFERENCE (DIRCOS^T K DIRCOS)
-      Real(ReKi), DIMENSION (12),    INTENT(IN)  :: Udotdot, Y2     !acceleration and velocities, gravity forces
-      Real(FEKi), DIMENSION (12),    INTENT(IN)  :: Fg     !acceleration and velocities, gravity forces
+      Real(ReKi), DIMENSION (12),    INTENT(IN)  :: Udotdot, Y2     ! nodal accelerations and nodal displacements
+      Real(FEKi), DIMENSION (12),    INTENT(IN)  :: Fg     ! constant element load vector (gravity + cable)
       Integer(IntKi),                INTENT(IN)  :: FirstOrSecond !1 or 2 depending on node of interest
       REAL(ReKi), DIMENSION (6),    INTENT(OUT)  :: FM_nod, FK_nod  !output static and dynamic forces and moments
       !Locals
@@ -546,7 +546,7 @@ END SUBROUTINE SDOut_MapOutputs
 
 !====================================================================================================
 SUBROUTINE SDOut_CloseSum( UnSum, ErrStat, ErrMsg )
-   INTEGER,                 INTENT( IN    )   :: UnSum                ! the unit number for the SubDyn summary file          
+   INTEGER,                 INTENT( IN    )   :: UnSum                ! the unit number for the SubDyn summary file
    INTEGER,                 INTENT(   OUT )   :: ErrStat              ! returns a non-zero value when an error occurs  
    CHARACTER(*),            INTENT(   OUT )   :: ErrMsg               ! Error message if ErrStat /= ErrID_None
    ! Local variables
