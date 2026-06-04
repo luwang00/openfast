@@ -532,7 +532,7 @@ contains
 
       FM_glb = matmul(Me,Udotdot)   ! GLOBAL REFERENCE
       FF_glb = matmul(Ke,Y2)        ! GLOBAL REFERENCE
-      FF_glb = FF_glb - Fg          ! GLOBAL REFERENCE ! NOTE: Fg is now 0, only the "Kx" part in Fk
+      FF_glb = FF_glb - Fg          ! GLOBAL REFERENCE
       DO L=1,4 ! Transforming coordinates 3 at a time
          FM_elm((L-1)*3+1:L*3) =  matmul(DIRCOS, FM_glb( (L-1)*3+1:L*3 ) )
          FF_elm((L-1)*3+1:L*3) =  matmul(DIRCOS, FF_glb( (L-1)*3+1:L*3 ) ) 
