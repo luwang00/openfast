@@ -248,7 +248,10 @@ CONTAINS
       CALL ElemK(p%ElemProps(iElem),         pLst%Ke(:,:,iiNode,iStore))
       CALL ElemF(p%ElemProps(iElem), Init%g, pLst%Fg(:,iiNode,iStore), FCe)
       ! Apply superposition correction: include both the element gravity force vector 
-      ! and the cable pretension nodal force when evaluating internal member loads.
+      ! and the initial cable pretension nodal force when evaluating internal member loads.
+      ! Note: pLst%Fg stores only element gravity + cable (excludes lumped masses, which are
+      ! external point forces, not internal element loads). For floating systems, these forces
+      ! are rotated in ElementForce using RRg2b to account for platform rigid body motion.
       pLst%Fg(:,iiNode,iStore) = pLst%Fg(:,iiNode,iStore) + FCe(1:12) ! gravity force + cable element force
    END SUBROUTINE ConfigOutputNode_MKF_ID
 
@@ -498,6 +501,7 @@ contains
       integer(IntKi)                          :: FirstOrSecond !< 1 or 2  if first node or second node
       integer(IntKi), dimension(2)            :: ElemNodes  ! Node IDs for element under consideration (may not be consecutive numbers)
       real(ReKi)    , dimension(12)           :: X_e, Xdd_e ! Displacement and acceleration for an element
+      real(R8Ki)    , dimension(12)           :: Fg_e ! Gravity + initial cable pretension load vector (rotated for floating, static for fixed)
       integer(IntKi), dimension(2), parameter :: NodeNumber_To_Sign = (/-1, +1/)
 
       iElem         = pLst%ElmIDs(iiNode,JJ)             ! element number
@@ -508,10 +512,17 @@ contains
       X_e(7:12)     = m%U_full_elast (p%NodesDOF(ElemNodes(2))%List(1:6))   ! No additional transformation required
       Xdd_e(1:6)    = matmul(RRg2b,m%U_full_dotdot(p%NodesDOF(ElemNodes(1))%List(1:6)))   ! Transform acceleration to be back in the Guyan frame
       Xdd_e(7:12)   = matmul(RRg2b,m%U_full_dotdot(p%NodesDOF(ElemNodes(2))%List(1:6)))
+      ! For floating, gravity forces need rotation, but use only element gravity (pLst%Fg), not concentrated masses
+      if (p%Floating) then
+         Fg_e(1:6)   = matmul(RRg2b, real(pLst%Fg(1:6,iiNode,JJ), R8Ki))
+         Fg_e(7:12)  = matmul(RRg2b, real(pLst%Fg(7:12,iiNode,JJ), R8Ki))
+      else
+         Fg_e = real(pLst%Fg(:,iiNode,JJ), R8Ki)  ! Fixed-bottom: use static gravity + initial cable pretension (no rotation needed)
+      endif
       if (.not. bUseInputDirCos) then
          DIRCOS=transpose(p%ElemProps(iElem)%DirCos)! global to local
       endif
-      CALL CALC_NODE_FORCES( DIRCOS, pLst%Me(:,:,iiNode,JJ),pLst%Ke(:,:,iiNode,JJ), Xdd_e, X_e, pLst%Fg(:,iiNode,JJ), FirstOrSecond, FM_elm, FK_elm) 
+      CALL CALC_NODE_FORCES( DIRCOS, pLst%Me(:,:,iiNode,JJ),pLst%Ke(:,:,iiNode,JJ), Xdd_e, X_e, Fg_e, FirstOrSecond, FM_elm, FK_elm) 
    end subroutine ElementForce
 
    !====================================================================================================
@@ -523,7 +534,7 @@ contains
       Real(FEKi), DIMENSION (3,3),   INTENT(IN)  :: DIRCOS    !direction cosice matrix (global to local) (3x3)
       Real(FEKi), DIMENSION (12,12), INTENT(IN)  :: Me,Ke    !element M and K matrices (12x12) in GLOBAL REFERENCE (DIRCOS^T K DIRCOS)
       Real(ReKi), DIMENSION (12),    INTENT(IN)  :: Udotdot, Y2     ! nodal accelerations and nodal displacements
-      Real(FEKi), DIMENSION (12),    INTENT(IN)  :: Fg     ! constant element load vector (gravity + cable)
+      Real(FEKi), DIMENSION (12),    INTENT(IN)  :: Fg     ! element load vector from gravity and initial cable pretension
       Integer(IntKi),                INTENT(IN)  :: FirstOrSecond !1 or 2 depending on node of interest
       REAL(ReKi), DIMENSION (6),    INTENT(OUT)  :: FM_nod, FK_nod  !output static and dynamic forces and moments
       !Locals
