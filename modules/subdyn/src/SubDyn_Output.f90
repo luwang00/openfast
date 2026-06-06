@@ -501,7 +501,6 @@ contains
       real(ReKi)    , dimension(12)           :: X_e, Xdd_e ! Displacement and acceleration for an element
       real(FEKi)    , dimension(12)           :: Fg_e ! Gravity + initial cable pretension load vector (reorient for floating, constant for fixed-bottom)
       real(FEKi)    , dimension(3,3)          :: CurDirCos ! Current element direction cosine matrix in the floating body frame
-      real(R8Ki)    , dimension(3,3)          :: Rb2g ! Rotation matrix from body/Guyan to global frame (transpose of Rg2b)
       integer(IntKi), dimension(2), parameter :: NodeNumber_To_Sign = (/-1, +1/)
 
       iElem         = pLst%ElmIDs(iiNode,JJ)             ! element number
@@ -513,21 +512,23 @@ contains
       Xdd_e(1:6)    = matmul(RRg2b,m%U_full_dotdot(p%NodesDOF(ElemNodes(1))%List(1:6)))   ! Transform acceleration to be back in the Guyan frame
       Xdd_e(7:12)   = matmul(RRg2b,m%U_full_dotdot(p%NodesDOF(ElemNodes(2))%List(1:6)))
       ! Load the computed at initialization gravity + initial cable pretension load vector.
-      ! For floating systems, project the load vector into the current body/Guyan frame for Fx/Fy/Fz.
+      ! For floating systems, update the force components (Fx/Fy/Fz) from the initial body/Guyan frame to the current one.
       ! For the self-weight bending moments, recompute them based on the current element direction cosine matrix.
       Fg_e = real(pLst%Fg(:,iiNode,JJ), R8Ki)
       if (p%Floating) then
-         Fg_e(1:6)  = matmul(RRg2b, Fg_e(1:6))   ! project node-1 forces/moments into body frame
-         Fg_e(7:12) = matmul(RRg2b, Fg_e(7:12))  ! project node-2 forces/moments into body frame
+         ! Rotate only the force (Fx,Fy,Fz) components into the body frame
+         Fg_e(1:3)  = matmul(Rg2b, Fg_e(1:3))
+         Fg_e(7:9)  = matmul(Rg2b, Fg_e(7:9))
 
-         Rb2g = transpose(Rg2b) ! current body-to-global rotation needed for moment projection
-         CurDirCos = matmul(Rb2g, p%ElemProps(iElem)%DirCos)
-
-         ! Element self-weight bending moment contribution at the nodes:
+         ! Recompute bending moment components from current element orientation
+         ! CurDirCos = Rb2g * DirCos0 (DirCos0 is the element direction cosine matrix at initialization)
+         CurDirCos = matmul(transpose(Rg2b), p%ElemProps(iElem)%DirCos)
          Fg_e(4)  = -p%ElemProps(iElem)%Length**2 * p%ElemProps(iElem)%Rho * p%ElemProps(iElem)%Area * p%g / 12.0_FEKi * CurDirCos(2,3)
          Fg_e(5)  =  p%ElemProps(iElem)%Length**2 * p%ElemProps(iElem)%Rho * p%ElemProps(iElem)%Area * p%g / 12.0_FEKi * CurDirCos(1,3)
+         Fg_e(6)  = 0.0_FEKi   ! no torsional self-weight moment
          Fg_e(10) = -Fg_e(4)
          Fg_e(11) = -Fg_e(5)
+         Fg_e(12) = 0.0_FEKi
       endif
       if (.not. bUseInputDirCos) then
          DIRCOS=transpose(p%ElemProps(iElem)%DirCos)! global to local
