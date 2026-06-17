@@ -519,6 +519,7 @@ subroutine yaml_write_array2R4(fid, key, A, VarFmt, ErrStat, ErrMsg, level, comm
    Fmt=''
 
    ! Indent and Key
+   if (present(level)) Fmt = trim(Num2LStr(level*INDENT_SPACES))//'X,'
    if (present(comment)) then
       write(fid, '('//trim(Fmt)//'A,": # ",I0," x ",I0,1X,A)', iostat=ErrStat ) trim(key), nr, nc, trim(comment)
    else
@@ -571,6 +572,7 @@ subroutine yaml_write_array2R8(fid, key, A, VarFmt, ErrStat, ErrMsg, level, comm
    Fmt=''
 
    ! Indent and Key
+   if (present(level)) Fmt = trim(Num2LStr(level*INDENT_SPACES))//'X,'
    if (present(comment)) then
       write(fid, '('//trim(Fmt)//'A,": # ",I0," x ",I0,1X,A)', iostat=ErrStat ) trim(key), nr, nc, trim(comment)
    else
