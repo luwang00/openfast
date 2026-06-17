@@ -102,12 +102,14 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
       CALL AllocAry(pLst%Me, 12, 12, pLst%NoutCnt, 2, 'MOutLst(I)%Me'     , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%Ke, 12, 12, pLst%NoutCnt, 2, 'MOutLst(I)%Ke'     , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%Fg,     12, pLst%NoutCnt, 2, 'MOutLst(I)%Fg'     , ErrStat2, ErrMsg2); if(Failed()) return
+      CALL AllocAry(pLst%extrap,     pLst%NoutCnt   , 'MOutLst(I)%extrap' , ErrStat2, ErrMsg2); if(Failed()) return
 
       ! NOTE: len(MemberNodes) >2 if nDiv>1
       iMember = FINDLOCI(Init%Members(:,1), pLst%MemberID) ! Reindexing from MemberID to 1:nMembers
       pLst%NodeIDs(1:pLst%NoutCnt)=Init%MemberNodes(iMember, pLst%NodeCnt)  ! We are storing the actual node numbers corresponding to what the user ordinal number is requesting
       pLst%ElmIDs=0  !Initialize to 0
       pLst%ElmNds=0  !Initialize to 0
+      pLst%extrap=.false.
 
       DO J=1,pLst%NoutCnt ! loop on requested nodes for that member
          iNode        = pLst%NodeIDs(J)           ! Index of requested node in node list
@@ -120,8 +122,22 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
                IF (K2 == 2) EXIT ! we found both elements already, error...
                K2=K2+1
                call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=J, iStore=K2, NodeID2=iNode)
-            END IF    
+            END IF
          ENDDO  ! iiElem, nElemPerNode
+         if ( (K2==2_IntKi).or.(Init%NDiv==1_IntKi) ) cycle ! No need to proceed further if we have an interior node or only one element
+         ! Save neighboring element info for force extrapolation to an end node if more than 1 element per member
+         pLst%extrap(J) = .true.
+         if (iNode == Init%MemberNodes(iMember,1)) then                ! First node of the member
+            iNode = Init%MemberNodes(iMember,2)                        ! Index of the second node
+         else if (iNode == Init%MemberNodes(iMember,Init%NDiv+1)) then ! Last node of the member
+            iNode = Init%MemberNodes(iMember,Init%NDiv)                ! Index of the second to last node
+         end if
+         do iiElem = 1, 2 ! Should have exactly two elements connecting to an interior node
+            iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th element Number; no need to call ThisElementIsAlongMember since interior node
+            if (iElem /= pLst%ElmIDs(J,1_IntKi)) then
+                call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=J, iStore=2, NodeID2=iNode)
+            end if
+         end do  ! iiElem, nElemPerNode
       ENDDO !J, Noutcnt
    ENDDO  !I, NMOutputs
  
@@ -132,30 +148,45 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
       ALLOCATE ( p%MOutLst2(p%NMembers), STAT = ErrStat2 ); ErrMsg2 = 'Error allocating p%MOutLst2 array in SDOut_Init'; if(Failed()) return
 
       DO iMember=1,p%NMembers
-         pLst => p%MOutLst2(iMember) ! Alias
+         pLst => p%MOutLst2(iMember) ! Alias to shorten notations
+         CALL AllocAry(pLst%NodeIDs,    2   , 'MOutLst(I)%NodeIDs', ErrStat2, ErrMsg2); if(Failed()) return
+         CALL AllocAry(pLst%ElmIDs,     2, 2, 'MOutLst(I)%ElmIDs' , ErrStat2, ErrMsg2); if(Failed()) return
+         CALL AllocAry(pLst%ElmNds,     2, 2, 'MOutLst(I)%ElmNds' , ErrStat2, ErrMsg2); if(Failed()) return
+         CALL AllocAry(pLst%Me, 12, 12, 2, 2, 'MOutLst(I)%Me'     , ErrStat2, ErrMsg2); if(Failed()) return
+         CALL AllocAry(pLst%Ke, 12, 12, 2, 2, 'MOutLst(I)%Ke'     , ErrStat2, ErrMsg2); if(Failed()) return
+         CALL AllocAry(pLst%Fg,     12, 2, 2, 'MOutLst(I)%Fg'     , ErrStat2, ErrMsg2); if(Failed()) return
+         CALL AllocAry(pLst%extrap,     2   , 'MOutLst(I)%extrap' , ErrStat2, ErrMsg2); if(Failed()) return
          pLst%MemberID = Init%Members(iMember,1)
-         nNodesPerElem = count(Init%MemberNodes(iMember,:) >0 ) 
-         CALL AllocAry(pLst%NodeIDs, nNodesPerElem, 'MOutLst2(I)%NodeIDs', ErrStat2, ErrMsg2); if(Failed()) return
-         CALL AllocAry(pLst%ElmIDs,     2, 1, 'MOutLst2(I)%ElmIDs'     , ErrStat2, ErrMsg2); if(Failed()) return
-         CALL AllocAry(pLst%ElmNds,     2, 1, 'MOutLst2(I)%ElmNds'     , ErrStat2, ErrMsg2); if(Failed()) return
-         CALL AllocAry(pLst%Me, 12, 12, 2, 1, 'MOutLst2(I)%Me'         , ErrStat2, ErrMsg2); if(Failed()) return
-         CALL AllocAry(pLst%Ke, 12, 12, 2, 1, 'MOutLst2(I)%Ke'         , ErrStat2, ErrMsg2); if(Failed()) return
-         CALL AllocAry(pLst%Fg,     12, 2, 1, 'MOutLst2(I)%Fg'         , ErrStat2, ErrMsg2); if(Failed()) return
-         pLst%NodeIDs(1:nNodesPerElem) = Init%MemberNodes(iMember,1:nNodesPerElem) ! We are storing  the actual node numbers in the member
-         !ElmIDs could contain the same element twice if Ndiv=1
+         pLst%NodeIDs(1) = Init%MemberNodes(iMember,1)           ! First node of the member
+         pLst%NodeIDs(2) = Init%MemberNodes(iMember,Init%NDiv+1) ! Last node of the member
          pLst%ElmIDs=0  !Initialize to 0
-         DO J=1,nNodesPerElem,nNodesPerElem-1 ! loop on first and last node of member
+         pLst%ElmNds=0  !Initialize to 0
+         pLst%extrap=.true. ! Always extrapolate forces to end nodes if we can
+         DO J=1,2 ! loop on requested nodes for that member
             iNode        = pLst%NodeIDs(J)           ! Index of requested node in node list
-            nElemPerNode = Init%NodesConnE(iNode, 1) ! Number of elements connecting to the 1st or last node of the member
-            K2= J/(nNodesPerElem)+1  ! 1 (first node) or 2 (last node) depending on J
-            DO iiElem=1, nElemPerNode
-               iElem = Init%NodesConnE(iNode,iiElem+1) ! iiElem-th Element Number in the set of elements attached to the selected node
+            nElemPerNode = Init%NodesConnE(iNode, 1) ! Number of elements connecting to the j-th node
+            ! Finding the element that belongs to the member and connect to the node
+            DO iiElem = 1, nElemPerNode
+               iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th Element Number
                IF (ThisElementIsAlongMember(iElem, iNode, iMember)) THEN
-                  call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=K2, iStore=1, NodeID2=iNode)
-                  EXIT   !We found the element for that node, exit loop on elements
-               ENDIF
-            ENDDO
-         ENDDO ! Loop on divisions
+                  call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=J, iStore=1, NodeID2=iNode)
+                  exit ! End nodes can only have one connected element on the member
+               END IF
+            ENDDO  ! iiElem, nElemPerNode
+            if ( Init%NDiv==1_IntKi ) cycle ! No need to proceed further if we only have one element
+            ! Save neighboring element info for force extrapolation to an end node if more than 1 element per member
+            if (iNode == Init%MemberNodes(iMember,1)) then                ! First node of the member
+               iNode = Init%MemberNodes(iMember,2)                        ! Index of the second node
+            else if (iNode == Init%MemberNodes(iMember,Init%NDiv+1)) then ! Last node of the member
+               iNode = Init%MemberNodes(iMember,Init%NDiv)                ! Index of the second to last node
+            end if
+            do iiElem = 1,2 ! Should have exactly two elements connecting to an interior node
+               iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th element Number; no need to call ThisElementIsAlongMember since interior node
+               if (iElem /= pLst%ElmIDs(J,1_IntKi)) then
+                   call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=J, iStore=2, NodeID2=iNode)
+               end if
+            end do  ! iiElem, nElemPerNode
+         ENDDO !J, Noutcnt
       ENDDO ! Loop on members
    ENDIF ! OutAll
    !_____________________________________REACTIONS_____________________________________________
@@ -312,28 +343,34 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
    ! --- Requested member-outputs (Node kinematics and loads)
    ! --------------------------------------------------------------------------------
    ! p%MOutLst has the mapping for the member, node, elements per node, to be used
-   ! MXNYZZZ   will need to connects to p%MOutLst(X)%ElmIDs(Y,1:2) if it is a force or accel; else to u%UFL(p%MOutLst(X)%NodeIDs(Y)) 
+   ! MXNYZZZ   will need to connects to p%MOutLst(X)%ElmIDs(Y,1:2) if it is a force or accel; else to u%UFL(p%MOutLst(X)%NodeIDs(Y))
    if (p%NumOuts > 0) then  !bjj: some of these fields aren't allocated when NumOuts==0
       ! Loop over member-outputs requested
       DO iMemberOutput=1,p%NMOutputs
-         pLst=>p%MOutLst(iMemberOutput) ! List for a given member-output 
-         DO iiNode=1,pLst%NOutCnt !Iterate on requested nodes for that member 
-            ! --- Forces (potentially averaged on 2 elements) 
+         pLst=>p%MOutLst(iMemberOutput) ! List for a given member-output
+         DO iiNode=1,pLst%NOutCnt !Iterate on requested nodes for that member
+            ! --- Forces (potentially averaged across or extrapolated from 2 elements)
             call ElementForce(pLst, iiNode, 1, FM_elm, FK_elm, sgn, DIRCOS, .false.)
-            FM_elm2=sgn*FM_elm
-            FK_elm2=sgn*FK_elm
+            FM_elm=sgn*FM_elm
+            FK_elm=sgn*FK_elm
             IF (pLst%ElmIDs(iiNode,2) .NE. 0) THEN  ! Second element exist
-               ! NOTE: forces are computed in the coordinate system of the first element for averaging
-               call ElementForce(pLst, iiNode, 2, FM_elm, FK_elm, sgn, DIRCOS, .true.) ! True= we use DIRCOS from element above
-               FM_elm2=0.5*( FM_elm2 + sgn*FM_elm ) ! Now Average
-               FK_elm2=0.5*( FK_elm2 + sgn*FK_elm)  ! Now Average
+               if (pLst%extrap(iiNode)) then ! Linearly extrapolate forces to end nodes
+                  ! NOTE: forces are computed in the coordinate system of the first element for extrapolating
+                  call ElementForce(pLst, iiNode, 2, FM_elm2, FK_elm2, sgn, DIRCOS, .true.) ! True= we use DIRCOS from element above
+                  FK_elm(1:3) = 1.5_ReKi * FK_elm(1:3) - 0.5_ReKi * sgn*FK_elm2(1:3) ! Now extrapolate
+               else ! Average/interpolate forces and moments at internal nodes
+                  ! NOTE: forces are computed in the coordinate system of the first element for averaging
+                  call ElementForce(pLst, iiNode, 2, FM_elm2, FK_elm2, sgn, DIRCOS, .true.) ! True= we use DIRCOS from element above
+                  FM_elm = 0.5_ReKi * ( FM_elm + sgn*FM_elm2 ) ! Now Average
+                  FK_elm = 0.5_ReKi * ( FK_elm + sgn*FK_elm2 ) ! Now Average
+               end if
             ENDIF
             ! Static (elastic) component of reaction forces and moments at MαNβ along local member coordinate system
             !    "MαNβFKxe, MαNβFKye, MαNβFKze, MαNβMKxe, MαNβMKye, MαNβMKze"
-            AllOuts(MNfmKe  (:,iiNode,iMemberOutput)) = FK_elm2  !static forces and moments (6) Local Ref
+            AllOuts(MNfmKe  (:,iiNode,iMemberOutput)) = FK_elm  !static forces and moments (6) Local Ref
             ! Dynamic (inertial) component of reaction forces and moments at MαNβ along local member coordinate system
             !    "MαNβFMxe, MαNβFMye, MαNβFMze, MαNβMMxe, MαNβMMye, MαNβMMze"
-            AllOuts(MNfmMe  (:,iiNode,iMemberOutput)) = FM_elm2  !dynamic forces and moments (6) Local Ref
+            AllOuts(MNfmMe  (:,iiNode,iMemberOutput)) = FM_elm  !dynamic forces and moments (6) Local Ref
 
             ! --- Displacements and acceleration
             DOFList => p%NodesDOF(pLst%NodeIDs(iiNode))%List
@@ -353,14 +390,22 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
    END IF
   
    ! --------------------------------------------------------------------------------
-   ! --- All nodal loads from stiffness and mass matrix 
+   ! --- All nodal loads from stiffness and mass matrix
    ! --------------------------------------------------------------------------------
    ! "MaaaJbFKxe, MaaaJbMKxe MaaaJbFMxe, MaaaJbMMxe for member aaa and node b."
-   IF (p%OutAll) THEN 
+   IF (p%OutAll) THEN
       DO iMemberOutput=1,p%NMembers    !Cycle on all members
          pLst=>p%MOutLst2(iMemberOutput)
-         DO iiNode=1,2 !Iterate on requested nodes for that member (first and last)  
+         DO iiNode=1,2 !Iterate on requested nodes for that member (first and last)
+            ! --- Forces (potentially extrapolated from 2 elements)
             call ElementForce(pLst, iiNode, 1, FM_elm, FK_elm, sgn, DIRCOS, .false.)
+            FM_elm=sgn*FM_elm
+            FK_elm=sgn*FK_elm
+            if ( (pLst%ElmIDs(iiNode,2)/=0) .and. pLst%extrap(iiNode) ) then  ! Extrapolate forces to end nodes
+               ! NOTE: forces are computed in the coordinate system of the first element for extrapolating
+               call ElementForce(pLst, iiNode, 2, FM_elm2, FK_elm2, sgn, DIRCOS, .true.) ! True= we use DIRCOS from element above
+               FK_elm(1:3) = 1.5_ReKi * FK_elm(1:3) - 0.5_ReKi * sgn*FK_elm2(1:3) ! Now extrapolate
+            end if
             ! Store in All Outs
             L  = MaxOutPts+(iMemberOutput-1)*24+(iiNode-1)*12+1
             L2 = L+11

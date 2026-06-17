@@ -49,6 +49,7 @@ IMPLICIT NONE
     REAL(R8Ki) , DIMENSION(:,:,:,:), ALLOCATABLE  :: Me      !< Mass matrix connected to each joint element for outAll output [-]
     REAL(R8Ki) , DIMENSION(:,:,:,:), ALLOCATABLE  :: Ke      !< Mass matrix connected to each joint element for outAll output [-]
     REAL(R8Ki) , DIMENSION(:,:,:), ALLOCATABLE  :: Fg      !< Gravity load vector connected to each joint element for requested member output [-]
+    LOGICAL , DIMENSION(:), ALLOCATABLE  :: extrap      !< Whether to extrapolate force; true for member end nodes if member has more than 1 element [-]
   END TYPE MeshAuxDataType
 ! =======================
 ! =========  CB_MatArrays  =======
@@ -582,6 +583,18 @@ subroutine SD_CopyMeshAuxDataType(SrcMeshAuxDataTypeData, DstMeshAuxDataTypeData
       end if
       DstMeshAuxDataTypeData%Fg = SrcMeshAuxDataTypeData%Fg
    end if
+   if (allocated(SrcMeshAuxDataTypeData%extrap)) then
+      LB(1:1) = lbound(SrcMeshAuxDataTypeData%extrap)
+      UB(1:1) = ubound(SrcMeshAuxDataTypeData%extrap)
+      if (.not. allocated(DstMeshAuxDataTypeData%extrap)) then
+         allocate(DstMeshAuxDataTypeData%extrap(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstMeshAuxDataTypeData%extrap.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstMeshAuxDataTypeData%extrap = SrcMeshAuxDataTypeData%extrap
+   end if
 end subroutine
 
 subroutine SD_DestroyMeshAuxDataType(MeshAuxDataTypeData, ErrStat, ErrMsg)
@@ -612,6 +625,9 @@ subroutine SD_DestroyMeshAuxDataType(MeshAuxDataTypeData, ErrStat, ErrMsg)
    if (allocated(MeshAuxDataTypeData%Fg)) then
       deallocate(MeshAuxDataTypeData%Fg)
    end if
+   if (allocated(MeshAuxDataTypeData%extrap)) then
+      deallocate(MeshAuxDataTypeData%extrap)
+   end if
 end subroutine
 
 subroutine SD_PackMeshAuxDataType(RF, Indata)
@@ -628,6 +644,7 @@ subroutine SD_PackMeshAuxDataType(RF, Indata)
    call RegPackAlloc(RF, InData%Me)
    call RegPackAlloc(RF, InData%Ke)
    call RegPackAlloc(RF, InData%Fg)
+   call RegPackAlloc(RF, InData%extrap)
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -648,6 +665,7 @@ subroutine SD_UnPackMeshAuxDataType(RF, OutData)
    call RegUnpackAlloc(RF, OutData%Me); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%Ke); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%Fg); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%extrap); if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
 subroutine SD_CopyCB_MatArrays(SrcCB_MatArraysData, DstCB_MatArraysData, CtrlCode, ErrStat, ErrMsg)
