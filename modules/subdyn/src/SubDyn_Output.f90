@@ -318,16 +318,16 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
    INTEGER(IntKi)                 :: ErrStat2      ! Error status of the operation
    CHARACTER(ErrMsgLen)           :: ErrMsg2       ! Error message if ErrStat /= ErrID_None
 
-   ErrStat = ErrID_None   
+   ErrStat = ErrID_None
    ErrMsg  = ""
 
    if ( p%Floating ) then
+      ! For floating, m%U_full_dotdot is currently in the earth-fixed frame.
+      ! Need to transform back to the Guyan/rigid-body frame.
       if ( p%TP1IsRBRefPt ) then
          Rg2b = EulerConstructZYX(x%qR(4:6))
       else
-         ! For floating, m%U_full_dotdot is currently in the earth-fixed frame.
-         ! Need to transform back to the Guyan frame when computing MαNβFMxe, MαNβFMye, MαNβFMze, MαNβMMxe, MαNβMMye, MαNβMMze.
-         Rg2b = u%TPMesh(1)%Orientation(:,:,1)  ! global 2 body coordinates
+         Rg2b = u%TPMesh(1)%Orientation(:,:,1)
       endif
    else
       call Eye(Rg2b, ErrStat2, ErrMsg2)
@@ -387,7 +387,7 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
    ! --------------------------------------------------------------------------------
    ! --- All nodal loads from stiffness and mass matrix
    ! --------------------------------------------------------------------------------
-   ! "MaaaJbFKxe, MaaaJbMKxe MaaaJbFMxe, MaaaJbMMxe for member aaa and node b."
+   ! "MaaaJbFKxe, MaaaJbMKxe for member aaa and node b."
    IF (p%OutAll) THEN
       DO iMemberOutput=1,p%NMembers    !Cycle on all members
          pLst=>p%MOutLst2(iMemberOutput)
@@ -788,7 +788,7 @@ SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
    INTEGER                                   :: INDX                                      ! Index for valid arrays
    CHARACTER(ChanLen)                        :: OutListTmp                                ! A string to temporarily hold OutList(I).
    !CHARACTER(28), PARAMETER               :: OutPFmt    = "( I4, 3X,A 10,1 X, A10 )"   ! Output format parameter output list.
-   CHARACTER(ChanLen), DIMENSION(24)         :: ToTUnits,ToTNames,ToTNames0
+   CHARACTER(ChanLen), DIMENSION(12)         :: ToTUnits,ToTNames,ToTNames0
    LOGICAL                  :: InvalidOutput(0:MaxOutPts)                        ! This array determines if the output channel is valid for this configuration
    LOGICAL                  :: CheckOutListAgain
    ErrStat = ErrID_None   
@@ -919,16 +919,16 @@ SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
    END DO
    
    IF (p%OutAll) THEN   !Finish populating the OutParam with all the joint forces and moments
-       ToTNames0=RESHAPE(SPREAD( (/"FKxe", "FKye", "FKze", "MKxe", "MKye", "MKze", "FMxe", "FMye", "FMze", "MMxe", "MMye", "MMze"/), 2, 2), (/24/) )
-       ToTUnits=RESHAPE(SPREAD( (/"(N)  ","(N)  ","(N)  ", "(N*m)","(N*m)","(N*m)", "(N)  ","(N)  ","(N)  ", "(N*m)","(N*m)","(N*m)"/), 2, 2), (/24/) )
+       ToTNames0=RESHAPE(SPREAD( (/"FKxe" ,"FKye" ,"FKze" ,"MKxe" ,"MKye" ,"MKze" /), 2, 2), (/12/) )
+       ToTUnits =RESHAPE(SPREAD( (/"(N)  ","(N)  ","(N)  ","(N*m)","(N*m)","(N*m)"/), 2, 2), (/12/) )
        DO I=1,p%NMembers
            DO K=1,2
-            DO J=1,12  
-             TotNames(J+(K-1)*12)=TRIM("M"//Int2Lstr(I))//TRIM("J"//Int2Lstr(K))//TRIM(TotNames0(J))
+            DO J=1,6
+             TotNames(J+(K-1)*6)=TRIM("M"//Int2Lstr(I))//TRIM("J"//Int2Lstr(K))//TRIM(ToTNames0(J))
             ENDDO  
            ENDDO
-           p%OutParam(p%NumOuts+(I-1)*12*2+1:p%NumOuts+I*12*2)%Name  = ToTNames
-           p%OutParam(p%NumOuts+(I-1)*12*2+1:p%NumOuts+I*12*2)%Units = ToTUnits
+           p%OutParam(p%NumOuts+(I-1)*6*2+1:p%NumOuts+I*6*2)%Name  = ToTNames
+           p%OutParam(p%NumOuts+(I-1)*6*2+1:p%NumOuts+I*6*2)%Units = ToTUnits
        ENDDO
        p%OutParam(p%NumOuts+1:p%NumOuts+p%OutAllDims)%SignM = 1
        p%OutParam(p%NumOuts+1:p%NumOuts+p%OutAllDims)%Indx= MaxOutPts+(/(J, J=1, p%OutAllDims)/) 
