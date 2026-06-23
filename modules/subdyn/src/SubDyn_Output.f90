@@ -63,7 +63,7 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
    INTEGER(IntKi)                 :: iElem  ! Index of element in Element List
    INTEGER(IntKi)                 :: iNode  ! Index of node in Node list
    INTEGER(IntKi)                 :: iiElem ! Loop counter on element index
-   INTEGER(IntKi)                 :: nElemPerNode, nNodesPerElem ! Number of elements connecting to a node, Number of nodes per elem 
+   INTEGER(IntKi)                 :: nElemPerNode, nNodesPerMember ! Number of elements connecting to a node, number of nodes per member
    type(MeshAuxDataType), pointer :: pLst                                                   !< Alias to shorten notation and highlight code similarities
    real(ReKi), allocatable :: T_TIreact(:,:) ! Transpose of TIreact, temporary
    ErrStat = 0      
@@ -106,6 +106,7 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
 
       ! NOTE: len(MemberNodes) >2 if nDiv>1
       iMember = FINDLOCI(Init%Members(:,1), pLst%MemberID) ! Reindexing from MemberID to 1:nMembers
+      nNodesPerMember = count(Init%MemberNodes(iMember,:)>0_IntKi)
       pLst%NodeIDs(1:pLst%NoutCnt)=Init%MemberNodes(iMember, pLst%NodeCnt)  ! We are storing the actual node numbers corresponding to what the user ordinal number is requesting
       pLst%ElmIDs=0  !Initialize to 0
       pLst%ElmNds=0  !Initialize to 0
@@ -124,18 +125,18 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
                call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=J, iStore=K2, NodeID2=iNode)
             END IF
          ENDDO  ! iiElem, nElemPerNode
-         if ( (K2==2_IntKi).or.(Init%NDiv==1_IntKi) ) cycle ! No need to proceed further if we have an interior node or only one element
+         if ( (K2==2_IntKi).or.(nNodesPerMember==2_IntKi) ) cycle ! No need to proceed further if we have an interior node or only one element
          ! Save neighboring element info for force extrapolation to an end node if more than 1 element per member
-         pLst%extrap(J) = .true.
          if (iNode == Init%MemberNodes(iMember,1)) then                ! First node of the member
             iNode = Init%MemberNodes(iMember,2)                        ! Index of the second node
-         else if (iNode == Init%MemberNodes(iMember,Init%NDiv+1)) then ! Last node of the member
-            iNode = Init%MemberNodes(iMember,Init%NDiv)                ! Index of the second to last node
+         else if (iNode == Init%MemberNodes(iMember,nNodesPerMember)) then ! Last node of the member
+            iNode = Init%MemberNodes(iMember,nNodesPerMember-1_IntKi)      ! Index of the second to last node
          end if
          do iiElem = 1, 2 ! Should have exactly two elements connecting to an interior node
             iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th element Number; no need to call ThisElementIsAlongMember since interior node
             if (iElem /= pLst%ElmIDs(J,1_IntKi)) then
                 call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=J, iStore=2, NodeID2=iNode)
+                pLst%extrap(J) = .true.
             end if
          end do  ! iiElem, nElemPerNode
       ENDDO !J, Noutcnt
@@ -157,11 +158,12 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
          CALL AllocAry(pLst%Fg,     12, 2, 2, 'MOutLst(I)%Fg'     , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%extrap,     2   , 'MOutLst(I)%extrap' , ErrStat2, ErrMsg2); if(Failed()) return
          pLst%MemberID = Init%Members(iMember,1)
-         pLst%NodeIDs(1) = Init%MemberNodes(iMember,1)           ! First node of the member
-         pLst%NodeIDs(2) = Init%MemberNodes(iMember,Init%NDiv+1) ! Last node of the member
+         nNodesPerMember = count(Init%MemberNodes(iMember,:)>0_IntKi)
+         pLst%NodeIDs(1) = Init%MemberNodes(iMember,1)             ! First node of the member
+         pLst%NodeIDs(2) = Init%MemberNodes(iMember,nNodesPerMember) ! Last node of the member
          pLst%ElmIDs=0  !Initialize to 0
          pLst%ElmNds=0  !Initialize to 0
-         pLst%extrap=.true. ! Always extrapolate forces to end nodes if we can
+         pLst%extrap=.false.
          DO J=1,2 ! loop on requested nodes for that member
             iNode        = pLst%NodeIDs(J)           ! Index of requested node in node list
             nElemPerNode = Init%NodesConnE(iNode, 1) ! Number of elements connecting to the j-th node
@@ -173,17 +175,18 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
                   exit ! End nodes can only have one connected element on the member
                END IF
             ENDDO  ! iiElem, nElemPerNode
-            if ( Init%NDiv==1_IntKi ) cycle ! No need to proceed further if we only have one element
+            if ( nNodesPerMember==2_IntKi ) cycle ! No need to proceed further if we only have one element
             ! Save neighboring element info for force extrapolation to an end node if more than 1 element per member
             if (iNode == Init%MemberNodes(iMember,1)) then                ! First node of the member
                iNode = Init%MemberNodes(iMember,2)                        ! Index of the second node
-            else if (iNode == Init%MemberNodes(iMember,Init%NDiv+1)) then ! Last node of the member
-               iNode = Init%MemberNodes(iMember,Init%NDiv)                ! Index of the second to last node
+            else if (iNode == Init%MemberNodes(iMember,nNodesPerMember)) then ! Last node of the member
+               iNode = Init%MemberNodes(iMember,nNodesPerMember-1_IntKi)      ! Index of the second to last node
             end if
             do iiElem = 1,2 ! Should have exactly two elements connecting to an interior node
                iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th element Number; no need to call ThisElementIsAlongMember since interior node
                if (iElem /= pLst%ElmIDs(J,1_IntKi)) then
                    call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=J, iStore=2, NodeID2=iNode)
+                   pLst%extrap(J) = .true.
                end if
             end do  ! iiElem, nElemPerNode
          ENDDO !J, Noutcnt
