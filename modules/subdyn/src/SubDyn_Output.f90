@@ -409,7 +409,7 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
             ! Store in All Outs
             L  = MaxOutPts+(iMemberOutput-1)*24+(iiNode-1)*12+1
             L2 = L+11
-            AllOuts( L:L2 ) =sgn* (/FK_elm,FM_elm/)
+            AllOuts( L:L2 ) = (/FK_elm,FM_elm/)
          ENDDO !iiNode, nodes 1 and 2
       ENDDO ! iMemberOutput, Loop on members
    ENDIF
