@@ -223,7 +223,10 @@ CONTAINS
 
    !> Set different "data" for a given output node, and possibly store more than one "data" per node:
    !! The "data" is:
-   !!   - Mass, stiffness matrices and constant element force (gravity for beams and initial pretension for cables)
+   !!   - Mass, stiffness matrices and constant element force vector Fg:
+   !!       - Beam elements: gravity fixed-end bending moments only (force DOFs zeroed because self-weight forces
+   !!         are corrected elsewhere via force extrapolation that addresses hydro loads)
+   !!       - Cable elements: initial pretension nodal force vector (to recover total tension T_pretension + k*delta)
    !!   - A flag whether the node is the 1st or second node of an element
    !! The "data" is stored at the index (iiNode,iStore):
    !!   - iiNode: node index within the list of nodes that are to be used for output for this member
@@ -243,15 +246,23 @@ CONTAINS
       else
          pLst%ElmNds(iiNode,iStore) = 1 ! store whether first or second node of element
       endif
-      ! --- Element Me, Ke, Fg, Fce
+      ! --- Element Me, Ke, Fg, FCe
       CALL ElemM(p%ElemProps(iElem),         pLst%Me(:,:,iiNode,iStore))
       CALL ElemK(p%ElemProps(iElem),         pLst%Ke(:,:,iiNode,iStore))
       CALL ElemF(p%ElemProps(iElem), Init%g, pLst%Fg(:,iiNode,iStore), FCe)
-      ! Fg combines the self-weight (beam elements) and the initial cable pretension (cable elements).
-      ! For beam elements FCe=0, so Fg is the gravity force only.
-      ! For cable elements Fg_gravity=0, so Fg = FCe, recovering the total tension T_pretension + k*delta in CALC_NODE_FORCES.
-      ! Note: for floating systems, pLst%Fg loads will be rotated in ElementForce into the current body/Guyan frame.
-      pLst%Fg(:,iiNode,iStore) = pLst%Fg(:,iiNode,iStore) + FCe(1:12) ! gravity force (beam element) and initial pretension (cable element)
+      ! Fg is set differently depending on element type:
+      !   Beam: keep only the gravity fixed-end bending moments; zero the force DOFs (1:3, 7:9) because
+      !         self-weight forces are corrected elsewhere via force extrapolation that addresses hydro loads.
+      !   Cable: replace Fg with FCe (pretension), so CALC_NODE_FORCES recovers total tension T_pretension + k*delta.
+      ! Note: for floating systems, pLst%Fg is re-oriented in ElementForce into the current body/Guyan frame.
+      if (p%ElemProps(iElem)%eType == idMemberBeamCirc .or. &
+          p%ElemProps(iElem)%eType == idMemberBeamRect .or. &
+          p%ElemProps(iElem)%eType == idMemberBeamArb) then
+         pLst%Fg(1:3,iiNode,iStore) = 0.0_FeKi
+         pLst%Fg(7:9,iiNode,iStore) = 0.0_FeKi
+      else if (p%ElemProps(iElem)%eType == idMemberCable) then
+         pLst%Fg(:,iiNode,iStore) = FCe(1:12)
+      endif
    END SUBROUTINE ConfigOutputNode_MKF_ID
 
 
@@ -512,21 +523,20 @@ contains
       X_e(7:12)     = m%U_full_elast (p%NodesDOF(ElemNodes(2))%List(1:6))   ! No additional transformation required
       Xdd_e(1:6)    = matmul(RRg2b,m%U_full_dotdot(p%NodesDOF(ElemNodes(1))%List(1:6)))   ! Transform acceleration to be back in the Guyan frame
       Xdd_e(7:12)   = matmul(RRg2b,m%U_full_dotdot(p%NodesDOF(ElemNodes(2))%List(1:6)))
-      ! Load Fg: gravity force (beam elements) or initial pretension (cable elements), computed at initialization.
+      ! Load Fg: gravity force (beam elements self-weight) or initial pretension (cable elements), computed at initialization.
       ! For floating systems:
-      !   - Force components (Fx/Fy/Fz) are rotated from the initial to the current body/Guyan frame for all element types.
-      !   - Self-weight bending moment components are recomputed from the current element orientation (beam elements only).
+      !   - Force components (Fx/Fy/Fz) are rotated from the initial to the current body/Guyan frame.
+      !   - Beam self-weight bending moment components are recomputed from the current element orientation.
       Fg_e = real(pLst%Fg(:,iiNode,JJ), R8Ki)
       if (p%Floating) then
-         ! Rotate only the force (Fx,Fy,Fz) components into the body frame
-         Fg_e(1:3)  = matmul(Rg2b, Fg_e(1:3))
-         Fg_e(7:9)  = matmul(Rg2b, Fg_e(7:9))
-
-         ! Recompute bending moment components from current element orientation (beam elements only)
-         ! CurDirCos = Rb2g * DirCos0 (DirCos0 is the element direction cosine matrix at initialization)
-         if (p%ElemProps(iElem)%eType == idMemberBeamCirc .or. &
-             p%ElemProps(iElem)%eType == idMemberBeamRect .or. &
-             p%ElemProps(iElem)%eType == idMemberBeamArb) then
+         if (p%ElemProps(iElem)%eType == idMemberCable) then
+            ! Rotate cable pretension force components into the current body/Guyan frame
+            ! Beam elements self-weight forces were zeroed out. Otherwise, they would require this rotation as well
+            Fg_e(1:3) = matmul(Rg2b, Fg_e(1:3))
+            Fg_e(7:9) = matmul(Rg2b, Fg_e(7:9))
+         else
+            ! Recompute self-weight bending moments from current element orientation (beam elements only)
+            ! CurDirCos = Rb2g * DirCos0 (DirCos0 is the element direction cosine matrix at initialization)
             CurDirCos = matmul(transpose(Rg2b), p%ElemProps(iElem)%DirCos)
             Fg_e(4)  = -p%ElemProps(iElem)%Length**2 * p%ElemProps(iElem)%Rho * p%ElemProps(iElem)%Area * p%g / 12.0_FEKi * CurDirCos(2,3)
             Fg_e(5)  =  p%ElemProps(iElem)%Length**2 * p%ElemProps(iElem)%Rho * p%ElemProps(iElem)%Area * p%g / 12.0_FEKi * CurDirCos(1,3)
