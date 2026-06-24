@@ -66,21 +66,21 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
    INTEGER(IntKi)                 :: nElemPerNode, nNodesPerMember ! Number of elements connecting to a node, number of nodes per member
    type(MeshAuxDataType), pointer :: pLst                                                   !< Alias to shorten notation and highlight code similarities
    real(ReKi), allocatable :: T_TIreact(:,:) ! Transpose of TIreact, temporary
-   ErrStat = 0      
+   ErrStat = 0
    ErrMsg=""
 
    p%OutAllDims=6*p%NMembers*2    !size of AllOut Member Joint forces
 
-   ! Check that the variables in OutList are valid      
+   ! Check that the variables in OutList are valid
    CALL SDOut_ChkOutLst( Init%SSOutList, p,  ErrStat2, ErrMsg2 ); if(Failed()) return
 
    ! --- Allocation (size 0 if not outputs)
-   !IF ( ALLOCATED( p%OutParam ) .AND. p%NumOuts > 0 ) THEN           ! Output has been requested           
+   !IF ( ALLOCATED( p%OutParam ) .AND. p%NumOuts > 0 ) THEN           ! Output has been requested
    ! Allocate SDWrOuput which is used to store a time step's worth of output channels, prior to writing to a file.
    CALL AllocAry(misc%SDWrOutput       , p%NumOuts + p%OutAllInt*p%OutAllDims, 'SDWrOutupt' , ErrStat2, ErrMsg2) ; if(Failed()) return
-   ! Allocate WriteOuput  
+   ! Allocate WriteOuput
    CALL AllocAry(y%WriteOutput         , p%NumOuts + p%OutAllInt*p%OutAllDims, 'WriteOutput', ErrStat2, ErrMsg2); if(Failed()) return
-   allocate(misc%AllOuts(0:MaxOutPts + p%OutAllInt*p%OutAllDims)) ! Need to start at 0... 
+   allocate(misc%AllOuts(0:MaxOutPts + p%OutAllInt*p%OutAllDims)) ! Need to start at 0...
    ! Header, and Units, copy of data already available in the OutParam data structure ! TODO TODO TODO remove copy
    CALL AllocAry(InitOut%WriteOutputHdr, p%NumOuts + p%OutAllint*p%OutAllDims, 'WriteOutputHdr', ErrStat2, ErrMsg2); if(Failed()) return
    CALL AllocAry(InitOut%WriteOutputUnt, p%NumOuts + p%OutAllint*p%OutAllDims, 'WriteOutputUnt', ErrStat2, ErrMsg2); if(Failed()) return
@@ -90,9 +90,9 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
    y%WriteOutput = 0
    DO I = 1,p%NumOuts+p%OutAllint*p%OutAllDims
       InitOut%WriteOutputHdr(I) = TRIM( p%OutParam(I)%Name  )
-      InitOut%WriteOutputUnt(I) = TRIM( p%OutParam(I)%Units )      
-   END DO  
-     
+      InitOut%WriteOutputUnt(I) = TRIM( p%OutParam(I)%Units )
+   END DO
+
    !_________________________________ OUTPUT FOR REQUESTED MEMBERS _______________________________
    DO I=1,p%NMOutputs
       pLst => p%MOutLst(I) ! Alias to shorten notations
@@ -141,9 +141,9 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
          end do  ! iiElem, nElemPerNode
       ENDDO !J, Noutcnt
    ENDDO  !I, NMOutputs
- 
+
    !_________________________________ OUTPUT FOR ALL MEMBERS __________________________________
-   IF (p%OutAll) THEN  !I need to store all member end forces and moments 
+   IF (p%OutAll) THEN  !I need to store all member end forces and moments
 
       ! MOutLst2: nodal output info by members, for all members, First and Last Node
       ALLOCATE ( p%MOutLst2(p%NMembers), STAT = ErrStat2 ); ErrMsg2 = 'Error allocating p%MOutLst2 array in SDOut_Init'; if(Failed()) return
@@ -197,7 +197,7 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
    p%OutReact = .FALSE.
    DO I=1,p%NumOuts
       if ( ANY( p%OutParam(I)%Indx == ReactSS) ) THEN ! bjj: removed check of first 5 characters being "React" because (1) cases matter and (2) we can also ask for "-React*" or "mREACT"
-         p%OutReact   =.TRUE.  
+         p%OutReact   =.TRUE.
          EXIT
       ENDIF
    ENDDO
@@ -215,8 +215,8 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
          CALL AllocAry(pLst%Ke, 12, 12 , 1, nElemPerNode, ' p%MOutLst3(I)%Ke'    , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%Fg,     12 , 1, nElemPerNode, ' p%MOutLst3(I)%Fg'    , ErrStat2, ErrMsg2); if(Failed()) return
          DO iiElem = 1, nElemPerNode
-            iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th Element Number in the set of elements attached to the selected node 
-            call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=1, iStore=iiElem, NodeID2=iNode) 
+            iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th Element Number in the set of elements attached to the selected node
+            call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=1, iStore=iiElem, NodeID2=iNode)
          ENDDO
       ENDDO
       ! Compute p%TIreact, rigid transf. matrix from reaction DOFs to base structure point (0,0,-WD)
@@ -230,13 +230,13 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
 
 CONTAINS
    LOGICAL FUNCTION Failed()
-        call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, 'SDOut_Init') 
+        call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, 'SDOut_Init')
         Failed =  ErrStat >= AbortErrLev
    END FUNCTION Failed
 
    !> Returns true if an element is connected to node iNode, and along member iMember
    LOGICAL FUNCTION ThisElementIsAlongMember(iElem, iNode, iMember)
-      integer(IntKi), intent(in) :: iElem   !< Element index 
+      integer(IntKi), intent(in) :: iElem   !< Element index
       integer(IntKi), intent(in) :: iNode   !< Node index
       integer(IntKi), intent(in) :: iMember !< Member index
       integer(IntKi), dimension(2) :: ElemNodes  ! Node IDs for element under consideration (may not be consecutive numbers)
@@ -249,7 +249,7 @@ CONTAINS
          iOtherNode=ElemNodes(1)
       else
          ThisElementIsAlongMember=.false. ! Not along member since nodes don't match
-         return 
+         return
       endif
       ! Being along the member means the second node of the element is in the node list of the member
       ThisElementIsAlongMember= ANY(Init%MemberNodes(iMember,:) == iOtherNode)
@@ -257,11 +257,14 @@ CONTAINS
 
    !> Set different "data" for a given output node, and possibly store more than one "data" per node:
    !! The "data" is:
-   !!   - Mass, stiffness matrices and constant element force (gravity and cable)
-   !!   - A flag whether the node is the 1st or second node of an element 
+   !!   - Mass, stiffness matrices and constant element force vector Fg:
+   !!       - Beam elements: gravity fixed-end bending moments only (force DOFs zeroed because self-weight forces
+   !!         are corrected elsewhere via force extrapolation that addresses hydro loads)
+   !!       - Cable elements: initial pretension nodal force vector (to recover total tension T_pretension + k*delta)
+   !!   - A flag whether the node is the 1st or second node of an element
    !! The "data" is stored at the index (iiNode,iStore):
    !!   - iiNode: node index within the list of nodes that are to be used for output for this member
-   !!   - iStore: index over the number of "data" stored per node. E.g. Member1 and 2 connecting to a node  
+   !!   - iStore: index over the number of "data" stored per node. E.g. Member1 and 2 connecting to a node
    SUBROUTINE ConfigOutputNode_MKF_ID(pLst, iElem, iiNode, iStore, NodeID2)
       type(MeshAuxDataType), intent(inout)       :: pLst   !< Info for one member output
       integer(IntKi)       , intent(in)          :: iElem  !< Element index to which the node belong
@@ -272,8 +275,8 @@ CONTAINS
       REAL(FEKi)                   :: FCe(12) ! Pretension force from cable element
       pLst%ElmIDs(iiNode,iStore) = iElem              ! This array has for each joint requested  the elements' ID to get results for
       ElemNodes = p%Elems(iElem,2:3) ! 1st and 2nd node of the k-th element
-      if (ElemNodes(2) == NodeID2) then 
-         pLst%ElmNds(iiNode,iStore) = 2 ! store whether first or second node of element  
+      if (ElemNodes(2) == NodeID2) then
+         pLst%ElmNds(iiNode,iStore) = 2 ! store whether first or second node of element
       else
          pLst%ElmNds(iiNode,iStore) = 1 ! store whether first or second node of element
       endif
@@ -281,10 +284,19 @@ CONTAINS
       ! CALL ElemM(p%ElemProps(iElem),         pLst%Me(:,:,iiNode,iStore))
       CALL ElemK(p%ElemProps(iElem),         pLst%Ke(:,:,iiNode,iStore))
       CALL ElemF(p%ElemProps(iElem), Init%g, pLst%Fg(:,iiNode,iStore), FCe)
-      ! NOTE: Removing this force contribution for now 
-      ! The output of subdyn will just be the "Kx" part for now
-      !pLst%Fg(:,iiNode,iStore) = pLst%Fg(:,iiNode,iStore) + FCe(1:12) ! Adding cable element force 
-      pLst%Fg(:,iiNode,iStore) = FCe(1:12) ! Adding cable element force 
+      ! Fg is set differently depending on element type:
+      !   Beam: keep only the gravity fixed-end bending moments; zero the force DOFs (1:3, 7:9) because
+      !         self-weight forces are corrected elsewhere via force extrapolation that addresses hydro loads.
+      !   Cable: replace Fg with FCe (pretension), so CALC_NODE_FORCES recovers total tension T_pretension + k*delta.
+      ! Note: for floating systems, pLst%Fg is re-oriented in ElementForce into the current body/Guyan frame.
+      if (p%ElemProps(iElem)%eType == idMemberBeamCirc .or. &
+          p%ElemProps(iElem)%eType == idMemberBeamRect .or. &
+          p%ElemProps(iElem)%eType == idMemberBeamArb) then
+         pLst%Fg(1:3,iiNode,iStore) = 0.0_FeKi
+         pLst%Fg(7:9,iiNode,iStore) = 0.0_FeKi
+      else if (p%ElemProps(iElem)%eType == idMemberCable) then
+         pLst%Fg(:,iiNode,iStore) = FCe(1:12)
+      endif
    END SUBROUTINE ConfigOutputNode_MKF_ID
 
 
@@ -293,7 +305,7 @@ END SUBROUTINE SDOut_Init
 !> Writes the data stored in the y variable to the correct indexed postions in WriteOutput
 !! This is called by SD_CalcOutput() at each time step.
 !! This routine does fill Allouts
-!! note that this routine assumes m%u_TP and m%udotdot_TP have been set before calling 
+!! note that this routine assumes m%u_TP and m%udotdot_TP have been set before calling
 !!     this routine (which is done in SD_CalcOutput() and SD CalcContStateDeriv)
 SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
    type(SD_InputType),            intent( in )     :: u                    ! SubDyn module's input data
@@ -341,7 +353,7 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
    RRb2g = transpose(RRg2b)
 
    AllOuts = 0.0_ReKi  ! initialize for those outputs that aren't valid (and thus aren't set in this routine)
-         
+
    ! --------------------------------------------------------------------------------
    ! --- Requested member-outputs (Node kinematics and loads)
    ! --------------------------------------------------------------------------------
@@ -386,7 +398,7 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
         ENDDO  ! iiNode, Loop on requested nodes for that member
      ENDDO ! iMemberOutput, Loop on member outputs
    END IF
-  
+
    ! --------------------------------------------------------------------------------
    ! --- All nodal loads from stiffness and mass matrix
    ! --------------------------------------------------------------------------------
@@ -410,7 +422,7 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
          ENDDO !iiNode, nodes 1 and 2
       ENDDO ! iMemberOutput, Loop on members
    ENDIF
-  
+
    ! --------------------------------------------------------------------------------
    ! --- Interface kinematics and loads (TP/platform reference point)
    ! --------------------------------------------------------------------------------
@@ -426,7 +438,7 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
       AllOuts(IntfSS(1:6,iTP)) = - (/y%Y1Mesh(iTP)%Force(:,1), y%Y1Mesh(iTP)%Moment(:,1)/) !-y%Y1  !Note this is the force that the TP applies to the Jacket, opposite to what the GLue Code needs thus "-" sign
    end do
 
-   ! Interface translations and rotations in SS coordinate system 
+   ! Interface translations and rotations in SS coordinate system
    !    "IntfTDXss, IntfTDYss, IntfTDZss, IntfRDXss, IntfRDYss IntfRDZss"
    do iTP = 1,nTP
       AllOuts(IntfTRss(1:3,iTP)) = u%TPMesh(iTP)%TranslationDisp(:,1)
@@ -473,13 +485,13 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
    ! --- Modal parameters "SSqmXX, SSqmdotXX, SSqmddXX" amplitude, speed and acceleration
    ! --------------------------------------------------------------------------------
    maxOutModes = min(p%nDOFM,99) ! We only have space for the first 99 values
-   IF ( maxOutModes > 0 ) THEN 
+   IF ( maxOutModes > 0 ) THEN
       !BJJ: TODO: is there a check to see if we requested these channels but didn't request the modes? (i.e., retain 2 modes but asked for 75th mode?)
       AllOuts(SSqm01  :SSqm01  +maxOutModes-1) = x%qm      (1:maxOutModes)
       AllOuts(SSqmd01 :SSqmd01 +maxOutModes-1) = x%qmdot   (1:maxOutModes)
       AllOuts(SSqmdd01:SSqmdd01+maxOutModes-1) = m%qmdotdot(1:maxOutModes)
    END IF
-   
+
    ! --------------------------------------------------------------------------------}
    ! --- Base reaction loads
    ! --------------------------------------------------------------------------------{
@@ -526,18 +538,20 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
 contains
 
    subroutine ElementForce(pLst, iiNode, JJ, FK_elm, sgn, DIRCOS, bUseInputDirCos)
-      type(MeshAuxDataType), intent(in)          :: pLst   !< Info for one member output
-      integer(IntKi)       , intent(in)          :: iiNode !< Index over the nodes of a given member (>2 if nDIV>1)
-      integer(IntKi)       , intent(in)          :: JJ     !< TODO: interpretation: index over other member connected to the current member (for averaging)
+      type(MeshAuxDataType),       intent(in)    :: pLst   !< Info for one member output
+      integer(IntKi),              intent(in)    :: iiNode !< Index over the nodes of a given member (>2 if nDIV>1)
+      integer(IntKi),              intent(in)    :: JJ     !< TODO: interpretation: index over other member connected to the current member (for averaging)
       real(FEKi), dimension (3,3), intent(inout) :: DIRCOS  !direction cosice matrix (global to local) (3x3)
-      real(ReKi), dimension (6), intent(out)     :: FK_elm  !output elastic forces and moments
-      integer(IntKi), intent(out)                :: sgn !+1/-1 for node force calculations
-      logical, intent(in)                        :: bUseInputDirCos !< If True, use DIRCOS from input, otherwise, use element DirCos
+      real(ReKi), dimension (6),   intent(out)   :: FK_elm  !output elastic forces and moments
+      integer(IntKi),              intent(out)   :: sgn !+1/-1 for node force calculations
+      logical,                     intent(in)    :: bUseInputDirCos !< If True, use DIRCOS from input, otherwise, use element DirCos
       ! Local
       integer(IntKi)                          :: iElem !< Element index/number
       integer(IntKi)                          :: FirstOrSecond !< 1 or 2  if first node or second node
       integer(IntKi), dimension(2)            :: ElemNodes  ! Node IDs for element under consideration (may not be consecutive numbers)
       real(ReKi)    , dimension(12)           :: X_e        ! Deflection of an element
+      real(FEKi)    , dimension(12)           :: Fg_e ! Gravity force (beam elements) or initial pretension (cable elements), re-oriented for floating systems
+      real(FEKi)    , dimension(3,3)          :: CurDirCos ! Current element direction cosine matrix in the floating body frame
       integer(IntKi), dimension(2), parameter :: NodeNumber_To_Sign = (/-1, +1/)
 
       iElem         = pLst%ElmIDs(iiNode,JJ)             ! element number
@@ -546,44 +560,68 @@ contains
       ElemNodes     = p%Elems(iElem,2:3)                ! first and second node ID associated with element iElem
       X_e(1:6)      = m%U_full_elast (p%NodesDOF(ElemNodes(1))%List(1:6))   ! For floating, m%U_full_elast is the CB+SIM elastic deformation only in the Guyan (rigid-body) frame
       X_e(7:12)     = m%U_full_elast (p%NodesDOF(ElemNodes(2))%List(1:6))   ! No additional transformation required
+
+      ! Load Fg: gravity force (beam elements self-weight) or initial pretension (cable elements), computed at initialization.
+      ! For floating systems:
+      !   - Force components (Fx/Fy/Fz) are rotated from the initial to the current body/Guyan frame.
+      !   - Beam self-weight bending moment components are recomputed from the current element orientation.
+      Fg_e = real(pLst%Fg(:,iiNode,JJ), R8Ki)
+      if (p%Floating) then
+         if (p%ElemProps(iElem)%eType == idMemberCable) then
+            ! Rotate cable pretension force components into the current body/Guyan frame
+            ! Beam elements self-weight forces were zeroed out. Otherwise, they would require this rotation as well
+            Fg_e(1:3) = matmul(Rg2b, Fg_e(1:3))
+            Fg_e(7:9) = matmul(Rg2b, Fg_e(7:9))
+         else
+            ! Recompute self-weight bending moments from current element orientation (beam elements only)
+            ! CurDirCos = Rb2g * DirCos0 (DirCos0 is the element direction cosine matrix at initialization)
+            CurDirCos = matmul(transpose(Rg2b), p%ElemProps(iElem)%DirCos)
+            Fg_e(4)  = -p%ElemProps(iElem)%Length**2 * p%ElemProps(iElem)%Rho * p%ElemProps(iElem)%Area * p%g / 12.0_FEKi * CurDirCos(2,3)
+            Fg_e(5)  =  p%ElemProps(iElem)%Length**2 * p%ElemProps(iElem)%Rho * p%ElemProps(iElem)%Area * p%g / 12.0_FEKi * CurDirCos(1,3)
+            Fg_e(6)  = 0.0_FEKi   ! no torsional self-weight moment
+            Fg_e(10) = -Fg_e(4)
+            Fg_e(11) = -Fg_e(5)
+            Fg_e(12) = 0.0_FEKi
+         endif
+      endif
       if (.not. bUseInputDirCos) then
          DIRCOS=transpose(p%ElemProps(iElem)%DirCos)! global to local
       endif
-      CALL CALC_NODE_FORCES( DIRCOS, pLst%Ke(:,:,iiNode,JJ), X_e, pLst%Fg(:,iiNode,JJ), FirstOrSecond, FK_elm)
+      CALL CALC_NODE_FORCES( DIRCOS, pLst%Ke(:,:,iiNode,JJ), X_e, Fg_e, FirstOrSecond, FK_elm)
    end subroutine ElementForce
 
    !====================================================================================================
    !> Calculates elastic forces for a given element, using K of the element
+   !  Fg is the beam element gravity and the initial cable pretension load vector.
+   !  FirstOrSecond selects whether the node of interest is the first (1) or second (2) node of the element.
    !----------------------------------------------------------------------------------------------------
    SUBROUTINE CALC_NODE_FORCES(DIRCOS, Ke, Y2, Fg, FirstOrSecond, FK_nod)
-      Real(FEKi), DIMENSION (3,3),   INTENT(IN)  :: DIRCOS    ! direction cosice matrix (global to local) (3x3)
-      Real(FEKi), DIMENSION (12,12), INTENT(IN)  :: Ke        ! element K matrices (12x12) in GLOBAL REFERENCE (DIRCOS^T K DIRCOS)
-      Real(ReKi), DIMENSION (12),    INTENT(IN)  :: Y2        ! element elastic deflection
-      Real(FEKi), DIMENSION (12),    INTENT(IN)  :: Fg        ! gravity forces
-      Integer(IntKi),                INTENT(IN)  :: FirstOrSecond ! 1 or 2 depending on node of interest
-      REAL(ReKi), DIMENSION (6),     INTENT(OUT) :: FK_nod    ! output elastic forces and moments
+      Real(FEKi), DIMENSION (3,3),   INTENT(IN)  :: DIRCOS          ! direction cosice matrix (global to local) (3x3)
+      Real(FEKi), DIMENSION (12,12), INTENT(IN)  :: Ke              ! element K matrices (12x12) in GLOBAL REFERENCE (DIRCOS^T K DIRCOS)
+      Real(ReKi), DIMENSION (12),    INTENT(IN)  :: Y2              ! element elastic deflection
+      Real(FEKi), DIMENSION (12),    INTENT(IN)  :: Fg              ! element load vector from gravity and initial cable pretension (orientation dependent for floating, constant for fixed-bottom)
+      Integer(IntKi),                INTENT(IN)  :: FirstOrSecond   ! 1 or 2 depending on node of interest
+      REAL(ReKi), DIMENSION (6),     INTENT(OUT) :: FK_nod          ! output elastic forces and moments
       !Locals
-      INTEGER(IntKi) :: L !counter
-      REAL(DbKi), DIMENSION(12)                    :: FF_glb, FF_elm  ! temporary storage
+      INTEGER(IntKi)                             :: L               !counter
+      REAL(DbKi), DIMENSION(12)                  :: FF_glb, FF_elm  ! temporary storage
 
-      FF_glb = matmul(Ke,Y2) - Fg          ! GLOBAL REFERENCE
+      FF_glb = matmul(Ke,Y2) - Fg ! GLOBAL REFERENCE (Guyan/rigid-body frame if floating)
       DO L=1,4 ! Transforming coordinates 3 at a time
          FF_elm((L-1)*3+1:L*3) =  matmul(DIRCOS, FF_glb( (L-1)*3+1:L*3 ) ) 
       ENDDO
       FK_nod = FF_elm(6*(FirstOrSecond-1)+1:FirstOrSecond*6) 
-
-   END SUBROUTINE CALC_NODE_FORCES 
+   END SUBROUTINE CALC_NODE_FORCES
 END SUBROUTINE SDOut_MapOutputs
-
 
 !====================================================================================================
 SUBROUTINE SDOut_CloseSum( UnSum, ErrStat, ErrMsg )
-   INTEGER,                 INTENT( IN    )   :: UnSum                ! the unit number for the SubDyn summary file          
-   INTEGER,                 INTENT(   OUT )   :: ErrStat              ! returns a non-zero value when an error occurs  
+   INTEGER,                 INTENT( IN    )   :: UnSum                ! the unit number for the SubDyn summary file
+   INTEGER,                 INTENT(   OUT )   :: ErrStat              ! returns a non-zero value when an error occurs
    CHARACTER(*),            INTENT(   OUT )   :: ErrMsg               ! Error message if ErrStat /= ErrID_None
    ! Local variables
-   INTEGER                                     :: Stat                 ! status from I/) operation 
-   ErrStat = ErrID_None         
+   INTEGER                                     :: Stat                 ! status from I/) operation
+   ErrStat = ErrID_None
    ErrMsg  = ""
    ! Write any closing information in the summary file
    IF ( UnSum > 0 ) THEN
@@ -599,31 +637,31 @@ SUBROUTINE SDOut_CloseSum( UnSum, ErrStat, ErrMsg )
          ErrMsg  = TRIM(ErrMsg)//' Problem closing summary file.'
       END IF
       IF ( ErrStat /= ErrID_None ) ErrMsg = 'SDOut_CloseSum'//TRIM(ErrMsg)
-   END IF                      
-END SUBROUTINE SDOut_CloseSum            
+   END IF
+END SUBROUTINE SDOut_CloseSum
 
 !====================================================================================================
 SUBROUTINE SDOut_OpenSum( UnSum, SummaryName, SD_Prog, ErrStat, ErrMsg )
-   INTEGER,                 INTENT(   OUT )   :: UnSum                ! the unit number for the SubDyn summary file          
+   INTEGER,                 INTENT(   OUT )   :: UnSum                ! the unit number for the SubDyn summary file
    CHARACTER(*),            INTENT( IN    )   :: SummaryName          ! the name of the SubDyn summary file
    TYPE(ProgDesc),          INTENT( IN    )   :: SD_Prog              ! the name/version/date of the  program
-   INTEGER,                 INTENT(   OUT )   :: ErrStat              ! returns a non-zero value when an error occurs  
+   INTEGER,                 INTENT(   OUT )   :: ErrStat              ! returns a non-zero value when an error occurs
    CHARACTER(*),            INTENT(   OUT )   :: ErrMsg               ! Error message if ErrStat /= ErrID_None
    integer                                    :: ErrStat2
-   ErrStat = ErrID_None         
-   ErrMsg  = ""       
+   ErrStat = ErrID_None
+   ErrMsg  = ""
 
    CALL GetNewUnit( UnSum )
-   CALL OpenFOutFile ( UnSum, SummaryName, ErrStat, ErrMsg ) 
+   CALL OpenFOutFile ( UnSum, SummaryName, ErrStat, ErrMsg )
    IF ( ErrStat >= AbortErrLev ) THEN
       ErrMsg  = 'Failed to open SubDyn summary file: '//TRIM(ErrMsg)
       RETURN
    END IF
-      
+
    ! Write the summary file header
    WRITE (UnSum,'(/,A/)', IOSTAT=ErrStat2)  '#This summary file was generated by '//TRIM( SD_Prog%Name )//&
                      ' '//TRIM( SD_Prog%Ver )//' on '//CurDate()//' at '//CurTime()//'.'
-END SUBROUTINE SDOut_OpenSum 
+END SUBROUTINE SDOut_OpenSum
 
 !====================================================================================================
 SUBROUTINE SDOut_OpenOutput( ProgVer, OutRootName,  p, InitOut, ErrStat, ErrMsg )
@@ -633,17 +671,17 @@ SUBROUTINE SDOut_OpenOutput( ProgVer, OutRootName,  p, InitOut, ErrStat, ErrMsg 
    ! Passed variables
    TYPE(ProgDesc),                INTENT( IN    ) :: ProgVer
    CHARACTER(*),                  INTENT( IN    ) :: OutRootName          ! Root name for the output file
-   TYPE(SD_ParameterType),        INTENT( INOUT ) :: p   
+   TYPE(SD_ParameterType),        INTENT( INOUT ) :: p
    TYPE(SD_InitOutPutType ),      INTENT( IN    ) :: InitOut              !
-   INTEGER,                       INTENT(   OUT ) :: ErrStat              ! a non-zero value indicates an error occurred           
+   INTEGER,                       INTENT(   OUT ) :: ErrStat              ! a non-zero value indicates an error occurred
    CHARACTER(*),                  INTENT(   OUT ) :: ErrMsg               ! Error message if ErrStat /= ErrID_None
    ! Local variables
-   INTEGER                                        :: I                    ! Generic loop counter      
+   INTEGER                                        :: I                    ! Generic loop counter
    CHARACTER(1024)                                :: OutFileName          ! The name of the output file  including the full path.
    CHARACTER(200)                                 :: Frmt                 ! a string to hold a format statement
-   INTEGER                                        :: ErrStat2              
+   INTEGER                                        :: ErrStat2
 
-   ErrStat = ErrID_None  
+   ErrStat = ErrID_None
    ErrMsg  = ""
 
    ! Initialize to -1 to indicate that the output file unit is not valid
@@ -654,28 +692,28 @@ SUBROUTINE SDOut_OpenOutput( ProgVer, OutRootName,  p, InitOut, ErrStat, ErrMsg 
       call WrScr('SubDyn: no outputs were requested, so separate output file will not be generated.')
       return
    end if
-   
+
    ! Open the file for output
    OutFileName = TRIM(OutRootName)//'.out'
    call GetNewUnit( p%UnJckF )
 
-   call OpenFOutFile ( p%UnJckF, OutFileName, ErrStat, ErrMsg ) 
+   call OpenFOutFile ( p%UnJckF, OutFileName, ErrStat, ErrMsg )
    if (ErrStat >= AbortErrLev) then
       ErrMsg = ' Error opening SubDyn-level output file: '//TRIM(ErrMsg)
       return
    end if
-      
+
    ! Write the output file header
    write(p%UnJckF,'(/,A/)', IOSTAT=ErrStat2)  'These predictions were generated by '//TRIM(GETNVD(ProgVer))//&
                   ' on '//CurDate()//' at '//CurTime()//'.'
-   
+
    write(p%UnJckF, '(//)') ! add 3 lines to make file format consistant with FAST v8 (headers on line 7; units on line 8) [this allows easier post-processing]
-   
+
    ! Write the names of the output parameters:
    Frmt = '(A8,'//TRIM(Int2LStr(p%NumOuts+p%OutAllInt*p%OutAllDims))//'(:,A,'//TRIM( p%OutSFmt )//'))'
    write(p%UnJckF,Frmt, IOSTAT=ErrStat2)  TRIM( 'Time' ), ( p%Delim, TRIM( InitOut%WriteOutputHdr(I) ), I=1,p%NumOuts+p%OutAllInt*p%OutAllDims )
-   
-   ! Write the units of the output parameters:                 
+
+   ! Write the units of the output parameters:
    write(p%UnJckF,Frmt, IOSTAT=ErrStat2)  TRIM( 's'), ( p%Delim, TRIM( InitOut%WriteOutputUnt(I) ), I=1,p%NumOuts+p%OutAllInt*p%OutAllDims )
 END SUBROUTINE SDOut_OpenOutput
 
@@ -711,19 +749,19 @@ SUBROUTINE SDOut_WriteOutputNames( UnJckF, p, ErrStat, ErrMsg )
 
    INTEGER,                      INTENT( IN    ) :: UnJckF            ! file unit for the output file
    TYPE(SD_ParameterType),  INTENT( IN    ) :: p                    ! SubDyn module's parameter data
-   INTEGER,                      INTENT(   OUT ) :: ErrStat              ! returns a non-zero value when an error occurs  
+   INTEGER,                      INTENT(   OUT ) :: ErrStat              ! returns a non-zero value when an error occurs
    CHARACTER(*),                 INTENT(   OUT ) :: ErrMsg               ! Error message if ErrStat /= ErrID_None
-   
+
    CHARACTER(200)                         :: Frmt                        ! a string to hold a format statement
    INTEGER                                :: I                           ! Generic loop counter
-   
-   ErrStat = ErrID_None   
+
+   ErrStat = ErrID_None
    ErrMsg  = ""
-   
+
    Frmt = '(A8,'//TRIM(Int2LStr(p%NumOuts+p%OutAllInt*p%OutAllDims))//'(:,A,'//TRIM( p%OutSFmt )//'))'
 
    WRITE(UnJckF,Frmt)  TRIM( p%OutParam(0)%Name ), ( p%Delim, TRIM( p%OutParam(I)%Name ), I=1,p%NumOuts+p%OutAllInt*p%OutAllDims )
-      
+
 END SUBROUTINE SDOut_WriteOutputNames
 
 !====================================================================================================
@@ -731,35 +769,35 @@ END SUBROUTINE SDOut_WriteOutputNames
 SUBROUTINE SDOut_WriteOutputUnits( UnJckF, p, ErrStat, ErrMsg )
    INTEGER,                      INTENT( IN    ) :: UnJckF            ! file unit for the output file
    TYPE(SD_ParameterType),  INTENT( IN    ) :: p                    ! SubDyn module's parameter data
-   INTEGER,                      INTENT(   OUT ) :: ErrStat              ! returns a non-zero value when an error occurs  
+   INTEGER,                      INTENT(   OUT ) :: ErrStat              ! returns a non-zero value when an error occurs
    CHARACTER(*),                 INTENT(   OUT ) :: ErrMsg               ! Error message if ErrStat /= ErrID_None
    CHARACTER(200)                         :: Frmt                        ! a string to hold a format statement
    INTEGER                                :: I                           ! Generic loop counter
-   ErrStat = ErrID_None   
+   ErrStat = ErrID_None
    ErrMsg  = ""
-   
+
    Frmt = '(A8,'//TRIM(Int2LStr(p%NumOuts+p%OutAllInt*p%OutAllDims))//'(:,A,'//TRIM( p%OutSFmt )//'))'
 
    WRITE(UnJckF,Frmt)  TRIM( p%OutParam(0)%Units ), ( p%Delim, TRIM( p%OutParam(I)%Units ), I=1,p%NumOuts+p%OutAllInt*p%OutAllDims )
-      
+
 END SUBROUTINE SDOut_WriteOutputUnits
 
 !====================================================================================================
 SUBROUTINE SDOut_WriteOutputs( UnJckF, Time, SDWrOutput, p, ErrStat, ErrMsg )
 ! This subroutine writes the data stored in WriteOutputs (and indexed in OutParam) to the file
 ! opened in SDOut_Init()
-!---------------------------------------------------------------------------------------------------- 
+!----------------------------------------------------------------------------------------------------
    INTEGER,                      INTENT( IN    ) :: UnJckF               ! file unit for the output file
    REAL(DbKi),                   INTENT( IN    ) :: Time                 ! Time for this output
    REAL(ReKi),                   INTENT( IN    ) :: SDWrOutput(:)        ! SubDyn module's output data
    TYPE(SD_ParameterType),       INTENT( IN    ) :: p                    ! SubDyn module's parameter data
-   INTEGER,                      INTENT(   OUT ) :: ErrStat              ! returns a non-zero value when an error occurs  
+   INTEGER,                      INTENT(   OUT ) :: ErrStat              ! returns a non-zero value when an error occurs
    CHARACTER(*),                 INTENT(   OUT ) :: ErrMsg               ! Error message if ErrStat /= ErrID_None
    ! Local variables
    INTEGER                                :: I                           ! Generic loop counter
    CHARACTER(200)                         :: Frmt                        ! a string to hold a format statement
 
-   ErrStat = ErrID_None   
+   ErrStat = ErrID_None
    ErrMsg  = ""
 
    ! If output file is not open, return
@@ -778,13 +816,13 @@ END SUBROUTINE SDOut_WriteOutputs
 !====================================================================================================
 SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
 ! This routine checks the names of inputted output channels, checks to see if any of them are ill-
-! conditioned (returning an error if so), and assigns the OutputDataType settings (i.e, the index,  
-! name, and units of the output channels). 
+! conditioned (returning an error if so), and assigns the OutputDataType settings (i.e, the index,
+! name, and units of the output channels).
 ! NOTE OutParam is populated here
-!----------------------------------------------------------------------------------------------------    
+!----------------------------------------------------------------------------------------------------
    TYPE(SD_ParameterType),   INTENT( INOUT ) :: p                    ! SubDyn module parameter data
-   CHARACTER(ChanLen),       INTENT( IN    ) :: OutList (:)          ! An array holding the names of the requested output channels.         
-   INTEGER,                  INTENT(   OUT ) :: ErrStat              ! a non-zero value indicates an error occurred           
+   CHARACTER(ChanLen),       INTENT( IN    ) :: OutList (:)          ! An array holding the names of the requested output channels.
+   INTEGER,                  INTENT(   OUT ) :: ErrStat              ! a non-zero value indicates an error occurred
    CHARACTER(*),             INTENT(   OUT ) :: ErrMsg               ! Error message if ErrStat /= ErrID_None
    ! Local variables.
    INTEGER                                   :: I,J,K                                         ! Generic loop-counting index.
@@ -794,9 +832,9 @@ SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
    CHARACTER(ChanLen), DIMENSION(12)         :: ToTUnits,ToTNames,ToTNames0
    LOGICAL                  :: InvalidOutput(0:MaxOutPts)                        ! This array determines if the output channel is valid for this configuration
    LOGICAL                  :: CheckOutListAgain
-   ErrStat = ErrID_None   
+   ErrStat = ErrID_None
    ErrMsg  = ""
-   
+
    InvalidOutput            = .FALSE.
 
       ! mark invalid output channels:
@@ -805,7 +843,7 @@ SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
       InvalidOutput(SSqmd01 +k-1) = .true.
       InvalidOutput(SSqmdd01+k-1) = .true.
    END DO
-         
+
    DO I=1,99
           !I know el # and whether it is 1st node or second node
       if (I <= p%NMOutputs) then
@@ -813,8 +851,8 @@ SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
       else
          INDX = 1
       end if
-            
-      DO J=INDX,9 !Iterate on requested nodes for that member 
+
+      DO J=INDX,9 !Iterate on requested nodes for that member
          !Forces and moments
          InvalidOutput(MNfmKe  (:,J,I)) = .true.  !elastic forces and moments (6) Local Ref
          !Displacement
@@ -840,32 +878,32 @@ SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
          InvalidOutput(IntfTRAss(:,I)) = .true.
       END DO
    END IF
-  
+
    !-------------------------------------------------------------------------------------------------
    ! ALLOCATE the OutParam array
-   !-------------------------------------------------------------------------------------------------    
+   !-------------------------------------------------------------------------------------------------
    ALLOCATE ( p%OutParam(1:p%NumOuts+p%OutAllInt*p%OutAllDims) , STAT=ErrStat )
    IF ( ErrStat /= 0 )  THEN
       ErrMsg  = ' Error allocating memory for the OutParam array.'
       ErrStat = ErrID_Fatal
       RETURN
    END IF
-     
-   
+
+
    !-------------------------------------------------------------------------------------------------
    ! Set index, name, and units for the output channels
    ! If a selected output channel is not available in this module, set error flag and return.
-   !-------------------------------------------------------------------------------------------------   
+   !-------------------------------------------------------------------------------------------------
    !!!p%OutParam(0)%Name  = 'Time'    ! OutData(0) is the time channel by default.
    !!!p%OutParam(0)%Units = '(sec)'   !
    !!!p%OutParam(0)%Indx  = Time
    !!!p%OutParam(0)%SignM = 1
-     
+
    DO I = 1,p%NumOuts
-   
-      p%OutParam(I)%Name = OutList(I)   
+
+      p%OutParam(I)%Name = OutList(I)
       OutListTmp         = OutList(I)
-   
+
       CALL Conv2UC( OutListTmp )    ! Convert OutListTmp to upper case
 
       ! Interface output backward compatibility
@@ -876,9 +914,9 @@ SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
 
       ! Reverse the sign (+/-) of the output channel if the user prefixed the
       !   channel name with a '-', '_', 'm', or 'M' character indicating "minus".
-      
+
       CheckOutListAgain = .FALSE.
-      
+
       IF      ( INDEX( '-_', OutListTmp(1:1) ) > 0 ) THEN
          p%OutParam(I)%SignM = -1     ! ex, '-TipDxc1' causes the sign of TipDxc1 to be switched.
          OutListTmp                   = OutListTmp(2:)
@@ -888,39 +926,39 @@ SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
       ELSE
          p%OutParam(I)%SignM = 1
       END IF
-      
+
       if ( INDEX( 'mM', OutListTmp(1:1) ) > 0 .and. INDEX( '0123456789', OutListTmp(2:2) ) > 0 .and. INDEX( 'nN', OutListTmp(3:3) ) > 0 ) then ! an old-style output without the leading zero on the member number
          OutListTmp = OutListTmp(1:1)//'0'//OutListTmp(2:)
          CheckOutListAgain  = .FALSE.
       end if
 
       Indx =  IndexCharAry( OutListTmp(1:OutStrLenM1), ValidParamAry )
-      
-      IF ( CheckOutListAgain .AND. Indx < 1 ) THEN    ! Let's assume that "M" really meant "minus" and then test again         
+
+      IF ( CheckOutListAgain .AND. Indx < 1 ) THEN    ! Let's assume that "M" really meant "minus" and then test again
          p%OutParam(I)%SignM = -1            ! ex, 'MTipDxc1' causes the sign of TipDxc1 to be switched.
          OutListTmp                   = OutListTmp(2:)
-         
-         Indx = IndexCharAry( OutListTmp(1:10), ValidParamAry )         
+
+         Indx = IndexCharAry( OutListTmp(1:10), ValidParamAry )
       END IF
-      
+
       IF ( Indx > 0 ) THEN
          p%OutParam(I)%Indx = ParamIndxAry(Indx)
          IF ( InvalidOutput( ParamIndxAry(Indx) ) ) THEN
-            p%OutParam(I)%Units = 'INVALID' 
-            p%OutParam(I)%SignM =  0           
+            p%OutParam(I)%Units = 'INVALID'
+            p%OutParam(I)%SignM =  0
          ELSE
             p%OutParam(I)%Units = ParamUnitsAry(Indx)
          END IF
       ELSE
          ErrMsg  = p%OutParam(I)%Name//' is not an available output channel.'
          ErrStat = ErrID_Fatal
-         p%OutParam(I)%Units = 'INVALID'  
+         p%OutParam(I)%Units = 'INVALID'
          p%OutParam(I)%Indx  =  0
          p%OutParam(I)%SignM =  0                              ! this will print all zeros
       END IF
-      
+
    END DO
-   
+
    IF (p%OutAll) THEN   !Finish populating the OutParam with all the joint forces and moments
        ToTNames0=RESHAPE(SPREAD( (/"FKxe" ,"FKye" ,"FKze" ,"MKxe" ,"MKye" ,"MKze" /), 2, 2), (/12/) )
        ToTUnits =RESHAPE(SPREAD( (/"(N)  ","(N)  ","(N)  ","(N*m)","(N*m)","(N*m)"/), 2, 2), (/12/) )
@@ -934,7 +972,7 @@ SUBROUTINE SDOut_ChkOutLst( OutList, p, ErrStat, ErrMsg )
            p%OutParam(p%NumOuts+(I-1)*6*2+1:p%NumOuts+I*6*2)%Units = ToTUnits
        ENDDO
        p%OutParam(p%NumOuts+1:p%NumOuts+p%OutAllDims)%SignM = 1
-       p%OutParam(p%NumOuts+1:p%NumOuts+p%OutAllDims)%Indx= MaxOutPts+(/(J, J=1, p%OutAllDims)/) 
+       p%OutParam(p%NumOuts+1:p%NumOuts+p%OutAllDims)%Indx= MaxOutPts+(/(J, J=1, p%OutAllDims)/)
    ENDIF
 
 END SUBROUTINE SDOut_ChkOutLst
