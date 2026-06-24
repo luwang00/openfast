@@ -99,7 +99,7 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
       CALL AllocAry(pLst%NodeIDs,    pLst%NoutCnt   , 'MOutLst(I)%NodeIDs', ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%ElmIDs,     pLst%NoutCnt, 2, 'MOutLst(I)%ElmIDs' , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%ElmNds,     pLst%NoutCnt, 2, 'MOutLst(I)%ElmNds' , ErrStat2, ErrMsg2); if(Failed()) return
-      CALL AllocAry(pLst%Me, 12, 12, pLst%NoutCnt, 2, 'MOutLst(I)%Me'     , ErrStat2, ErrMsg2); if(Failed()) return
+      !CALL AllocAry(pLst%Me, 12, 12, pLst%NoutCnt, 2, 'MOutLst(I)%Me'     , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%Ke, 12, 12, pLst%NoutCnt, 2, 'MOutLst(I)%Ke'     , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%Fg,     12, pLst%NoutCnt, 2, 'MOutLst(I)%Fg'     , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%extrap,     pLst%NoutCnt   , 'MOutLst(I)%extrap' , ErrStat2, ErrMsg2); if(Failed()) return
@@ -133,8 +133,8 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
             iNode = Init%MemberNodes(iMember,nNodesPerMember-1_IntKi)      ! Index of the second to last node
          end if
          do iiElem = 1, 2 ! Should have exactly two elements connecting to an interior node
-            iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th element Number; no need to call ThisElementIsAlongMember since interior node
-            if (iElem /= pLst%ElmIDs(J,1_IntKi)) then
+            iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th element Number; no need to call ThisElementIsAlongMember since interior node but kept for safety for now
+            if ( ThisElementIsAlongMember(iElem, iNode, iMember) .and. iElem /= pLst%ElmIDs(J,1_IntKi)) then
                 call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=J, iStore=2, NodeID2=iNode)
                 pLst%extrap(J) = .true.
             end if
@@ -153,7 +153,7 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
          CALL AllocAry(pLst%NodeIDs,    2   , 'MOutLst(I)%NodeIDs', ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%ElmIDs,     2, 2, 'MOutLst(I)%ElmIDs' , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%ElmNds,     2, 2, 'MOutLst(I)%ElmNds' , ErrStat2, ErrMsg2); if(Failed()) return
-         CALL AllocAry(pLst%Me, 12, 12, 2, 2, 'MOutLst(I)%Me'     , ErrStat2, ErrMsg2); if(Failed()) return
+         !CALL AllocAry(pLst%Me, 12, 12, 2, 2, 'MOutLst(I)%Me'     , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%Ke, 12, 12, 2, 2, 'MOutLst(I)%Ke'     , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%Fg,     12, 2, 2, 'MOutLst(I)%Fg'     , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%extrap,     2   , 'MOutLst(I)%extrap' , ErrStat2, ErrMsg2); if(Failed()) return
@@ -183,8 +183,8 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
                iNode = Init%MemberNodes(iMember,nNodesPerMember-1_IntKi)      ! Index of the second to last node
             end if
             do iiElem = 1,2 ! Should have exactly two elements connecting to an interior node
-               iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th element Number; no need to call ThisElementIsAlongMember since interior node
-               if (iElem /= pLst%ElmIDs(J,1_IntKi)) then
+               iElem = Init%NodesConnE(iNode, iiElem+1) ! iiElem-th element Number; no need to call ThisElementIsAlongMember since interior node but kept for safety for now
+               if ( ThisElementIsAlongMember(iElem, iNode, iMember) .and. iElem /= pLst%ElmIDs(J,1_IntKi)) then
                    call ConfigOutputNode_MKF_ID(pLst, iElem, iiNode=J, iStore=2, NodeID2=iNode)
                    pLst%extrap(J) = .true.
                end if
@@ -211,7 +211,7 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
          nElemPerNode = Init%NodesConnE(iNode,1) ! Number of elements connecting to the joint
          CALL AllocAry(pLst%ElmIDs,      1, nElemPerNode, ' p%MOutLst3(I)%ElmIds', ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%ElmNds,      1, nElemPerNode, ' p%MOutLst3(I)%ElmNds', ErrStat2, ErrMsg2); if(Failed()) return
-         CALL AllocAry(pLst%Me, 12, 12 , 1, nElemPerNode, ' p%MOutLst3(I)%Me'    , ErrStat2, ErrMsg2); if(Failed()) return
+         !CALL AllocAry(pLst%Me, 12, 12 , 1, nElemPerNode, ' p%MOutLst3(I)%Me'    , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%Ke, 12, 12 , 1, nElemPerNode, ' p%MOutLst3(I)%Ke'    , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%Fg,     12 , 1, nElemPerNode, ' p%MOutLst3(I)%Fg'    , ErrStat2, ErrMsg2); if(Failed()) return
          DO iiElem = 1, nElemPerNode
@@ -278,7 +278,7 @@ CONTAINS
          pLst%ElmNds(iiNode,iStore) = 1 ! store whether first or second node of element
       endif
       ! --- Element Me, Ke, Fg, Fce
-      CALL ElemM(p%ElemProps(iElem),         pLst%Me(:,:,iiNode,iStore))
+      ! CALL ElemM(p%ElemProps(iElem),         pLst%Me(:,:,iiNode,iStore))
       CALL ElemK(p%ElemProps(iElem),         pLst%Ke(:,:,iiNode,iStore))
       CALL ElemF(p%ElemProps(iElem), Init%g, pLst%Fg(:,iiNode,iStore), FCe)
       ! NOTE: Removing this force contribution for now 
