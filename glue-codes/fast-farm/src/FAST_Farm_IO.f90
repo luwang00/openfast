@@ -775,11 +775,11 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, OutList
 
    CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%NumDFull, "NumDFull", &
       "Distance of full wake propagation, expressed as a multiple of RotorDiamRef [>0.0] or DEFAULT [DEFAULT=15]", &
-      15_IntKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+      15.0_ReKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
 
    CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%NumDBuff, "NumDBuff", &
       "Length of wake propagation buffer region, expressed as a multiple of RotorDiamRef [>=0.0] or DEFAULT [DEFAULT=5]", &
-       5_IntKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+       5.0_ReKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
 
    WD_InitInp%RotorDiamRef = p%RotorDiamRef
 

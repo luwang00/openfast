@@ -1412,7 +1412,7 @@ subroutine Init_RotInflow( p, RotInflow, errStat, ErrMsg )
       if (Failed()) return
       RotInflow%Blade(k)%InflowVel = 0.0_ReKi
 
-      if (p%MHK > 0) then
+      if (p%MHK /= MHK_None) then
          call AllocAry( RotInflow%Blade(k)%InflowAcc, 3_IntKi, p%NumBlNds, 'RotInflow%Blade(k)%InflowAcc', ErrStat2, ErrMsg2 )
          if (Failed()) return
          RotInflow%Blade(k)%InflowAcc = 0.0_ReKi
@@ -1422,7 +1422,7 @@ subroutine Init_RotInflow( p, RotInflow, errStat, ErrMsg )
    call AllocAry( RotInflow%Tower%InflowVel, 3_IntKi, p%NumTwrNds, 'RotInflow%Tower%InflowVel', ErrStat2, ErrMsg2 ) ! could be size zero
    if (Failed()) return
 
-   if (p%MHK > 0) then
+   if (p%MHK /= MHK_None) then
       call AllocAry( RotInflow%Tower%InflowAcc, 3_IntKi, p%NumTwrNds, 'RotInflow%Tower%InflowAcc', ErrStat2, ErrMsg2 ) ! could be size zero
       if (Failed()) return
    end if
@@ -2031,7 +2031,7 @@ subroutine AD_CalcWind_Rotor(t, u, FlowField, p, p_AD, m, RotInflow, StartNode, 
    if (.not. associated(FlowField)) return  ! use the initial (or input) values for these inputs
 
    ! If rotor is MHK, add water depth to z coordinate
-   if (p%MHK > 0) then
+   if (p%MHK /= MHK_None) then
       PosOffset = [0.0_ReKi, 0.0_ReKi, p%WtrDpth]
    else
       PosOffset = 0.0_ReKi
@@ -4541,7 +4541,7 @@ SUBROUTINE ValidateInputData( InitInp, InputFileData, NumBl, calcCrvAngle, ErrSt
       ! .............................
       ! check tower mesh data:
       ! .............................
-   if (InputFileData%TwrPotent /= TwrPotent_none .or. InputFileData%TwrShadow /= TwrShadow_none .or. InputFileData%TwrAero /= TwrAero_none .or. InitInp%MHK > 0) then
+   if (InputFileData%TwrPotent /= TwrPotent_none .or. InputFileData%TwrShadow /= TwrShadow_none .or. InputFileData%TwrAero /= TwrAero_none .or. InitInp%MHK /= MHK_None) then
       do iR = 1,size(NumBl)
          if (InputFileData%rotors(iR)%NumTwrNds <= 0) cycle !bjj: this could be removed since the loops here already take into account the number of tower nodes
       

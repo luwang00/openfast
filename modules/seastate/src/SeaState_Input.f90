@@ -925,6 +925,11 @@ subroutine SeaStateInput_ProcessInitData( InitInp, p, InputFileData, ErrStat, Er
 
 
       ! CurrMod - Current profile model switch
+   if ( ( InputFileData%Current%CurrMod /= 0 ) .AND. ( InitInp%MHK /= MHK_None ) ) then
+      call SetErrStat( ErrID_Fatal,'CurrMod must be set to 0 for an MHK turbine.',ErrStat,ErrMsg,RoutineName)
+      return
+   end if
+   
    if ( InitInp%hasCurrField ) then
       call SetErrStat( ErrID_Warn,'Expecting current field from InflowWind. Setting CurrMod to 0.',ErrStat,ErrMsg,RoutineName)
       InputFileData%Current%CurrMod = 0
@@ -940,10 +945,6 @@ subroutine SeaStateInput_ProcessInitData( InitInp, p, InputFileData, ErrStat, Er
       return
    end if
 
-   ! if ( ( InputFileData%Current%CurrMod /= 0 ) .AND. ( InitInp%MHK /= MHK_None ) ) then
-   !    call SetErrStat( ErrID_Fatal,'CurrMod must be set to 0 for an MHK turbine.',ErrStat,ErrMsg,RoutineName)
-   !    return
-   ! end if
 
 
    if ( InputFileData%Current%CurrMod == 1 )  then  ! .TRUE if we have standard current.

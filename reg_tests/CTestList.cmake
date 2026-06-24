@@ -504,6 +504,7 @@ hd_regression("hd_ExctnMod1_ExctnDisp2"                     "hydrodyn;offshore")
 hd_regression("hd_ExctnMod1_ExctnDisp2_PtfmYMod1"           "hydrodyn;offshore")
 hd_regression("hd_5MW_OC4Semi_WSt_WavesWN_PtfmYMod0_LargeYaw" "hydrodyn;offshore")
 hd_regression("hd_5MW_OC4Semi_WSt_WavesWN_PtfmYMod1_LargeYaw" "hydrodyn;offshore")
+hd_regression("hd_NonlinearFKHst"                           "hydrodyn;offshore")
 
 # Py-HydroDyn regression tests
 py_hd_regression("py_hd_5MW_OC4Semi_WSt_WavesWN"            "hydrodyn;offshore;python")
@@ -571,6 +572,8 @@ md_regression("md_waterkin3"                                  "moordyn")
 py_md_regression("py_md_5MW_OC4Semi"                          "moordyn;python")
 # the following tests are excessively slow in double precision, so skip these in normal testing
 #md_regression("md_Single_Line_Quasi_Static_Test"              "moordyn")
+md_regression("md_viscoelastic"                               "moordyn")
+md_regression("md_syrope"                                     "moordyn")
 
 #  OpenFAST IO Library regression tests
 py_openfast_io_library_pytest("openfast_io_library" "openfast_io;python")

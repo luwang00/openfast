@@ -479,6 +479,9 @@ SUBROUTINE SD_Init( InitInput, u, p, x, xd, z, OtherState, y, m, Interval, InitO
    ! Initialize the outputs & Store mapping between nodes and elements  
    CALL SDOUT_Init( Init, y, p, m, InitOut, InitInput%WtrDpth, ErrStat2, ErrMsg2 ); if(Failed()) return
    
+   ! Flag from glue code: if SoilDyn is returning nonlinear loads
+   p%SlDNonLinear = InitInput%SlDNonLinear
+
    ! Determine if we need to perform output file handling
    IF ( p%OutSwtch == 1 .OR. p%OutSwtch == 3 ) THEN  
        CALL SDOUT_OpenOutput( SD_ProgDesc, Init%RootName, p, InitOut, ErrStat2, ErrMsg2 ); if(Failed()) return
@@ -4222,10 +4225,10 @@ SUBROUTINE WriteJSONCommon(FileName, Init, p, m, InitInput, FileKind, UnSum, Err
    do i = 1, size(p%ElemProps)
       if (p%ElemProps(i)%eType == idMemberBeamRect) then
          ! Rectangular beam: MType = 1r. eType = -1
-         write(UnSum, '(A,I0,A,F8.4,A,F8.4,A, F10.6,A,F10.6,A,F10.6,A)', advance='no') '  {"shape": "rectangle", "type": ',p%ElemProps(i)%eType, ', "SideA":',p%ElemProps(i)%Sa(1), ', "SideB":',p%ElemProps(i)%Sb(1), ', "SideA_dir":[',p%ElemProps(i)%DirCos(1,1), ',',p%ElemProps(i)%DirCos(2,1), ',',p%ElemProps(i)%DirCos(3,1),']}'
+         write(UnSum, '(A,I0,A,F8.4,A,F8.4,A,F10.6,A,F10.6,A,F10.6,A)', advance='no') '  {"shape": "rectangle", "type": ',p%ElemProps(i)%eType, ', "SideA":',p%ElemProps(i)%Sa(1), ', "SideB":',p%ElemProps(i)%Sb(1), ', "SideA_dir": [',p%ElemProps(i)%DirCos(1,1), ',',p%ElemProps(i)%DirCos(2,1), ',',p%ElemProps(i)%DirCos(3,1),']}'
       else
          ! Cylindrical shapes (MType = 1 or 1c [cylindrical beam], 2 [cable element], 3 [rigid link]. eType = 1, 2, 3)
-         write(UnSum, '(A,I0,A,F8.4,A)', advance='no') '  {"shape": "cylinder", "type": ',p%ElemProps(i)%eType, ', "Diam":',p%ElemProps(i)%D(1),'}'
+         write(UnSum, '(A,I0,A,F8.4,A,F10.6,A,F10.6,A,F10.6,A)', advance='no') '  {"shape": "cylinder", "type": ',p%ElemProps(i)%eType, ', "Diam":',p%ElemProps(i)%D(1), ', "x_e": [',p%ElemProps(i)%DirCos(1,1), ',',p%ElemProps(i)%DirCos(2,1), ',',p%ElemProps(i)%DirCos(3,1),']}'
       endif
       if (i<size(p%ElemProps)) write(UnSum, '(A)', advance='no')','//NewLine 
    enddo

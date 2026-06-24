@@ -443,39 +443,45 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
    ! --------------------------------------------------------------------------------{
    ! Total base reaction forces and moments at the (0.,0.,-WtrDpth) location in SS coordinate system
    !    "ReactFXss, ReactFYss, ReactFZss, ReactMXss, ReactMYss, ReactMZss"
-   IF (p%OutReact) THEN 
-      ALLOCATE ( ReactNs(6*p%nNodes_C), STAT = ErrStat )
-      IF ( ErrStat /= ErrID_None ) THEN
-         ErrMsg  = ' Error allocating space for ReactNs array.'
-         ErrStat = ErrID_Fatal
-         RETURN
-      END IF
-      ReactNs = 0.0_ReKi !Initialize
-      DO I=1,p%nNodes_C   !Do for each constrained node, they are ordered as given in the input file and so as in the order of y2mesh
-         FK_elm2=0._ReKi !Initialize for cumulative force
-         FM_elm2=0._ReKi !Initialize
-         pLst => p%MOutLst3(I)
-         !Find the joint forces
-         DO J=1,SIZE(pLst%ElmIDs(1,:))  !for all the elements connected (normally 1)
-            iiNode = 1
-            call ElementForce(pLst, iiNode, J, FM_elm, FK_elm, sgn, DIRCOS, .false.)
-            !transform back to global, need to do 3 at a time since cosine matrix is 3x3
-            DO L=1,2  
-               FM_elm2((L-1)*3+1:L*3) = FM_elm2((L-1)*3+1:L*3) + matmul(transpose(DIRCOS),FM_elm((L-1)*3+1:L*3))  !sum forces at joint in GLOBAL REF
-               FK_elm2((L-1)*3+1:L*3) = FK_elm2((L-1)*3+1:L*3) + matmul(transpose(DIRCOS),FK_elm((L-1)*3+1:L*3))  !signs may be wrong, we will fix that later;  
-               ! I believe this is all fixed in terms of signs now ,RRD 5/20/13
-            ENDDO           
+   IF (p%OutReact) THEN
+      IF (p%SlDNonLinear) THEN
+         ! When SoilDyn nonlinear loads are active (e.g., SoilDyn CalcOption = 3), SubDyn reaction loads are incomplete (only the linear part is included)
+         ! The total reaction at each base reaction joint is available in the SoilDyn output sensors (e.g., "Sld1Fxg Sld1Fyg Sld1Fzg Sld1Mxg Sld1Myg Sld1Mzg")
+         AllOuts( ReactSS(1:nDOFL_TP) ) = NaN
+      ELSE
+         ALLOCATE ( ReactNs(6*p%nNodes_C), STAT = ErrStat )
+         IF ( ErrStat /= ErrID_None ) THEN
+            ErrMsg  = ' Error allocating space for ReactNs array.'
+            ErrStat = ErrID_Fatal
+            RETURN
+         END IF
+         ReactNs = 0.0_ReKi !Initialize
+         DO I=1,p%nNodes_C   !Do for each constrained node, they are ordered as given in the input file and so as in the order of y2mesh
+            FK_elm2=0._ReKi !Initialize for cumulative force
+            FM_elm2=0._ReKi !Initialize
+            pLst => p%MOutLst3(I)
+            !Find the joint forces
+            DO J=1,SIZE(pLst%ElmIDs(1,:))  !for all the elements connected (normally 1)
+               iiNode = 1
+               call ElementForce(pLst, iiNode, J, FM_elm, FK_elm, sgn, DIRCOS, .false.)
+               !transform back to global, need to do 3 at a time since cosine matrix is 3x3
+               DO L=1,2
+                  FM_elm2((L-1)*3+1:L*3) = FM_elm2((L-1)*3+1:L*3) + matmul(transpose(DIRCOS),FM_elm((L-1)*3+1:L*3))  !sum forces at joint in GLOBAL REF
+                  FK_elm2((L-1)*3+1:L*3) = FK_elm2((L-1)*3+1:L*3) + matmul(transpose(DIRCOS),FK_elm((L-1)*3+1:L*3))  !signs may be wrong, we will fix that later;
+                  ! I believe this is all fixed in terms of signs now ,RRD 5/20/13
+               ENDDO
+            ENDDO
+            ! FK_elm2 ! + FM_elm2  !removed the inertial component 12/13 !Not sure why I need an intermediate step here, but the sum would not work otherwise
+            ! NEED TO ADD HYDRODYNAMIC FORCES AT THE RESTRAINT NODES
+            iSDNode   = p%Nodes_C(I,1)
+            iMeshNode = iSDNode ! input and Y2 mesh nodes are the same as subdyn
+            Fext =  (/ u%LMesh%Force(:,iMeshNode), u%LMesh%Moment(:,iMeshNode) /) + p%FG(p%NodesDOF(iMeshNode)%List(1:6))
+            Fext(1:3) = Fext(1:3) + p%FC(p%NodesDOF(iMeshNode)%List(1:3))
+            ReactNs((I-1)*6+1:6*I) = FK_elm2 - Fext  !Accumulate reactions from all nodes in GLOBAL COORDINATES
          ENDDO
-         ! FK_elm2 ! + FM_elm2  !removed the inertial component 12/13 !Not sure why I need an intermediate step here, but the sum would not work otherwise
-         ! NEED TO ADD HYDRODYNAMIC FORCES AT THE RESTRAINT NODES
-         iSDNode   = p%Nodes_C(I,1) 
-         iMeshNode = iSDNode ! input and Y2 mesh nodes are the same as subdyn
-         Fext =  (/ u%LMesh%Force(:,iMeshNode), u%LMesh%Moment(:,iMeshNode) /) + p%FG(p%NodesDOF(iMeshNode)%List(1:6))
-         Fext(1:3) = Fext(1:3) + p%FC(p%NodesDOF(iMeshNode)%List(1:3))
-         ReactNs((I-1)*6+1:6*I) = FK_elm2 - Fext  !Accumulate reactions from all nodes in GLOBAL COORDINATES
-      ENDDO
-      ! Store into AllOuts
-      AllOuts( ReactSS(1:nDOFL_TP) ) = matmul(p%TIreact,ReactNs)
+         ! Store into AllOuts
+         AllOuts( ReactSS(1:nDOFL_TP) ) = matmul(p%TIreact,ReactNs)
+      ENDIF
    ENDIF
    if (allocated(ReactNs)) deallocate(ReactNs)
 contains

@@ -44,8 +44,8 @@ IMPLICIT NONE
   TYPE, PUBLIC :: WD_InputFileType
     REAL(ReKi)  :: dr = 0.0_ReKi      !< Radial increment of radial finite-difference grid [>0.0] [m]
     INTEGER(IntKi)  :: NumRadii = 0_IntKi      !< Number of radii in the radial finite-difference grid [>=2] [-]
-    INTEGER(IntKi)  :: NumDFull = 0_IntKi      !< Distance of full wake propagation as a multiple of RotorDiamRef [-]
-    INTEGER(IntKi)  :: NumDBuff = 0_IntKi      !< Length of wake propagation buffer region as a multiple of RotorDiamRef [-]
+    REAL(ReKi)  :: NumDFull = 0.0_ReKi      !< Distance of full wake propagation as a multiple of RotorDiamRef [-]
+    REAL(ReKi)  :: NumDBuff = 0.0_ReKi      !< Length of wake propagation buffer region as a multiple of RotorDiamRef [-]
     INTEGER(IntKi)  :: Mod_Wake = 0_IntKi      !< Switch between wake formulations 1=Polar, 2=Cartesian, 3=Curl [-]
     REAL(ReKi)  :: f_c = 0.0_ReKi      !< Cut-off frequency of the low-pass time-filter for the wake advection, deflection, and meandering model [>0.0] [Hz]
     REAL(ReKi)  :: C_HWkDfl_O = 0.0_ReKi      !< Calibrated parameter in the correction for wake deflection defining the horizontal offset at the rotor [m]

@@ -622,14 +622,22 @@ CONTAINS
 
 
       ! apply wave kinematics (if there are any)
-
-      DO i=0,N
-         CALL getWaterKin(p, m, Rod%r(1,i), Rod%r(2,i), Rod%r(3,i), Rod%time, Rod%U(:,i), Rod%Ud(:,i), Rod%zeta(i), Rod%PDyn(i), ErrStat2, ErrMsg2)
-         ! TODO: Handle error messages. Roads broadly needs error flags to be supported
-         
-         !F(i) = 1.0 ! set VOF value to one for now (everything submerged - eventually this should be element-based!!!) <<<<
-         ! <<<< currently F is not being used and instead a VOF variable is used within the node loop
-      END DO
+      ! For SeaState (WaterKin==3), skip during IC_gen (otherwise will never find steady state because of waves)
+      ! and skip if inside a coupling timestep (because external kinematics do not change between coupling steps)
+      if (p%WaterKin == 3 .and. (m%IC_gen .or. &
+         (abs(MOD(Rod%time - 0.5*p%dtCoupling, p%dtCoupling) - 0.5*p%dtCoupling) >= 0.5*p%dtM0) .and. Rod%time > 0.0_DbKi)) then
+         ! retain existing kinematics values
+         ! This does introduce some error, as the interpolation location does not track the motion exactly. But the change between 
+         ! coupling steps should be small enough that the error is negligible. 
+      else
+         DO i=0,N
+            CALL getWaterKin(p, m, Rod%r(1,i), Rod%r(2,i), Rod%r(3,i), Rod%time, Rod%U(:,i), Rod%Ud(:,i), Rod%zeta(i), Rod%PDyn(i), ErrStat2, ErrMsg2)
+            ! TODO: Handle error messages. Roads broadly needs error flags to be supported
+            
+            !F(i) = 1.0 ! set VOF value to one for now (everything submerged - eventually this should be element-based!!!) <<<<
+            ! <<<< currently F is not being used and instead a VOF variable is used within the node loop
+         END DO
+      end if
       
       ! Calculated h0 (note this should be deprecated/replced)           
       zeta = Rod%zeta(N)  ! temporary      

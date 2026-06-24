@@ -107,6 +107,8 @@ When setting up the wave grid, it is necessary to make sure the wave grid is lar
 
 OpenFAST precomputes and saves the wave-field velocity, acceleration, dynamic pressure, and wave elevation at the start of the simulation. Generating and maintaining the wave grid can be memory intensive for long simulations. Users should set the wave grid to be no larger or finer than necessary to reduce memory use. Reducing **WaveTMax** or increasing **WaveDT** (see WAVES section below) also reduces memory use. For long crested waves (no directional spreading) aligned with the *X*-direction (or *Y*-direction), **NY** (or **NX**) can be reduced to the minimum allowed value of 2 to save memory.
 
+.. _sea-waves:
+
 Waves
 -----
 
@@ -211,7 +213,8 @@ time-averaged current velocity at the still water level. For applicable **WindTy
 InflowWind, users should ensure that the flow-field grid from InflowWind reaches the still 
 water level. **WvCrntMod** has no effect when **WaveMod** = 0 or 6, or when there is no 
 current from either SeaState (**CurrMod** = 0) or InflowWind if simulating marine 
-hydrokinetic turbines.
+hydrokinetic turbines. See :ref:`inflow_superposition`
+for additional context around wave-current coupling when simulating MHK turbines.
 
 **WaveTMax** sets the length of the incident wave kinematics time
 series, but it also determines the frequency step used in the inverse
