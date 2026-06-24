@@ -99,7 +99,6 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
       CALL AllocAry(pLst%NodeIDs,    pLst%NoutCnt   , 'MOutLst(I)%NodeIDs', ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%ElmIDs,     pLst%NoutCnt, 2, 'MOutLst(I)%ElmIDs' , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%ElmNds,     pLst%NoutCnt, 2, 'MOutLst(I)%ElmNds' , ErrStat2, ErrMsg2); if(Failed()) return
-      !CALL AllocAry(pLst%Me, 12, 12, pLst%NoutCnt, 2, 'MOutLst(I)%Me'     , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%Ke, 12, 12, pLst%NoutCnt, 2, 'MOutLst(I)%Ke'     , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%Fg,     12, pLst%NoutCnt, 2, 'MOutLst(I)%Fg'     , ErrStat2, ErrMsg2); if(Failed()) return
       CALL AllocAry(pLst%extrap,     pLst%NoutCnt   , 'MOutLst(I)%extrap' , ErrStat2, ErrMsg2); if(Failed()) return
@@ -153,7 +152,6 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
          CALL AllocAry(pLst%NodeIDs,    2   , 'MOutLst(I)%NodeIDs', ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%ElmIDs,     2, 2, 'MOutLst(I)%ElmIDs' , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%ElmNds,     2, 2, 'MOutLst(I)%ElmNds' , ErrStat2, ErrMsg2); if(Failed()) return
-         !CALL AllocAry(pLst%Me, 12, 12, 2, 2, 'MOutLst(I)%Me'     , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%Ke, 12, 12, 2, 2, 'MOutLst(I)%Ke'     , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%Fg,     12, 2, 2, 'MOutLst(I)%Fg'     , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%extrap,     2   , 'MOutLst(I)%extrap' , ErrStat2, ErrMsg2); if(Failed()) return
@@ -211,7 +209,6 @@ SUBROUTINE SDOut_Init( Init, y,  p, misc, InitOut, WtrDpth, ErrStat, ErrMsg )
          nElemPerNode = Init%NodesConnE(iNode,1) ! Number of elements connecting to the joint
          CALL AllocAry(pLst%ElmIDs,      1, nElemPerNode, ' p%MOutLst3(I)%ElmIds', ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%ElmNds,      1, nElemPerNode, ' p%MOutLst3(I)%ElmNds', ErrStat2, ErrMsg2); if(Failed()) return
-         !CALL AllocAry(pLst%Me, 12, 12 , 1, nElemPerNode, ' p%MOutLst3(I)%Me'    , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%Ke, 12, 12 , 1, nElemPerNode, ' p%MOutLst3(I)%Ke'    , ErrStat2, ErrMsg2); if(Failed()) return
          CALL AllocAry(pLst%Fg,     12 , 1, nElemPerNode, ' p%MOutLst3(I)%Fg'    , ErrStat2, ErrMsg2); if(Failed()) return
          DO iiElem = 1, nElemPerNode
