@@ -380,7 +380,14 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
             AllOuts(MNfmKe  (:,iiNode,iMemberOutput)) = FK_elm  !elastic forces and moments (6) Local Ref
 
             ! --- Displacements and acceleration
-            DOFList => p%NodesDOF(pLst%NodeIDs(iiNode))%List
+            ! Revolute joints can have more than 6 DOF. Need element-based DOF look-up instead.
+            ! DOFList => p%NodesDOF(pLst%NodeIDs(iiNode))%List
+            select case (pLst%ElmNds(iiNode,1_IntKi))
+            case (1_IntKi) ! First node of the element
+               DOFList => p%ElemsDOF(1:6 ,pLst%ElmIDs(iiNode,1_IntKi))
+            case (2_IntKi) ! Second node of the element
+               DOFList => p%ElemsDOF(7:12,pLst%ElmIDs(iiNode,1_IntKi))
+            end select
             ! Displacement- Translational -no need for averaging since it is a node translation - In global reference SS
             !     "MαNβTDxss, MαNβTDyss, MαNβTDzss"
             AllOuts(MNTDss (:,iiNode,iMemberOutput))       = m%U_full(DOFList(1:3))
