@@ -555,8 +555,11 @@ contains
       FirstOrSecond = pLst%ElmNds(iiNode,JJ)             ! first or second node of the element to be considered
       sgn           = NodeNumber_To_Sign(FirstOrSecond) ! Assign sign depending if it's the 1st or second node
       ElemNodes     = p%Elems(iElem,2:3)                ! first and second node ID associated with element iElem
-      X_e(1:6)      = m%U_full_elast (p%NodesDOF(ElemNodes(1))%List(1:6))   ! For floating, m%U_full_elast is the CB+SIM elastic deformation only in the Guyan (rigid-body) frame
-      X_e(7:12)     = m%U_full_elast (p%NodesDOF(ElemNodes(2))%List(1:6))   ! No additional transformation required
+      ! Note that a node can have more than 6DOF if it is a revolute joint; must use element-based DOF lookup instead
+      ! X_e(1:6)      = m%U_full_elast (p%NodesDOF(ElemNodes(1))%List(1:6))   ! For floating, m%U_full_elast is the CB+SIM elastic deformation only in the Guyan (rigid-body) frame
+      ! X_e(7:12)     = m%U_full_elast (p%NodesDOF(ElemNodes(2))%List(1:6))   ! No additional transformation required
+      X_e(1:6)      = m%U_full_elast (p%ElemsDOF(1:6 ,iElem))   ! For floating, m%U_full_elast is the CB+SIM elastic deformation only in the Guyan (rigid-body) frame
+      X_e(7:12)     = m%U_full_elast (p%ElemsDOF(7:12,iElem))   ! No additional transformation required
 
       ! Load Fg: gravity force (beam elements self-weight) or initial pretension (cable elements), computed at initialization.
       ! For floating systems:
