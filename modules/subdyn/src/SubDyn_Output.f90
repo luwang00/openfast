@@ -284,8 +284,9 @@ CONTAINS
       ! Fg is set differently depending on element type:
       !   Beam: keep only the gravity fixed-end bending moments; zero the force DOFs (1:3, 7:9) because
       !         self-weight forces are corrected elsewhere via force extrapolation that addresses hydro loads.
-      !   Cable: replace Fg with FCe (pretension), so CALC_NODE_FORCES recovers total tension T_pretension + k*delta.
-      ! Note: for floating systems, pLst%Fg is re-oriented in ElementForce into the current body/Guyan frame.
+      !   Cable: replace Fg with FCe (pretension), so CALC_NODE_FORCES recovers total tension: T_pretension + k*delta.
+      ! Note: for floating systems, pLst%Fg bending moments for beams are recomputed in ElementForce
+      !       using the current element orientation. Translational force DOFs are zeroed and not used.
       if (p%ElemProps(iElem)%eType == idMemberBeamCirc .or. &
           p%ElemProps(iElem)%eType == idMemberBeamRect .or. &
           p%ElemProps(iElem)%eType == idMemberBeamArb) then
@@ -570,17 +571,19 @@ contains
 
       ! Load Fg: gravity force (beam elements self-weight) or initial pretension (cable elements), computed at initialization.
       ! For floating systems:
-      !   - Force components (Fx/Fy/Fz) are rotated from the initial to the current body/Guyan frame.
-      !   - Beam self-weight bending moment components are recomputed from the current element orientation.
+      !   - Beam self-weight force components are rotated from the initial to the current body/Guyan frame.
+      !   - Beam self-weight bending moment components are recomputed using the current element orientation.
+      !   - Cable pretension force is already expressed along the local z-axis. No need to rotate.
       Fg_e = real(pLst%Fg(:,iiNode,JJ), R8Ki)
       if (p%Floating) then
-         if (p%ElemProps(iElem)%eType == idMemberCable) then
-            ! Rotate cable pretension force components into the current body/Guyan frame
+         if (p%ElemProps(iElem)%eType == idMemberBeamCirc .or. &
+             p%ElemProps(iElem)%eType == idMemberBeamRect .or. &
+             p%ElemProps(iElem)%eType == idMemberBeamArb) then
             ! Beam elements self-weight forces were zeroed out. Otherwise, they would require this rotation as well
-            Fg_e(1:3) = matmul(Rg2b, Fg_e(1:3))
-            Fg_e(7:9) = matmul(Rg2b, Fg_e(7:9))
-         else
-            ! Recompute self-weight bending moments from current element orientation (beam elements only)
+            ! Fg_e(1:3) = matmul(Rg2b, Fg_e(1:3))
+            ! Fg_e(7:9) = matmul(Rg2b, Fg_e(7:9))
+
+            ! Recompute beam self-weight bending moments using the current element orientation
             ! CurDirCos = Rb2g * DirCos0 (DirCos0 is the element direction cosine matrix at initialization)
             CurDirCos = matmul(transpose(Rg2b), p%ElemProps(iElem)%DirCos)
             Fg_e(4)  = -p%ElemProps(iElem)%Length**2 * p%ElemProps(iElem)%Rho * p%ElemProps(iElem)%Area * p%g / 12.0_FEKi * CurDirCos(2,3)
