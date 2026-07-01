@@ -2668,7 +2668,7 @@ SUBROUTINE FAST_InitOutput( p_FAST, y_FAST, Init, ErrStat, ErrMsg )
                   ' bytes of memory ('//TRIM(Num2LStr(AllOutData_bytes/(1024_B8Ki*1024_B8Ki)))//' MB).'// &
                   ' This exceeds the 2 GB limit for binary output stored in memory.'// &
                   ' Reduce TMax, increase DT_Out, reduce output channels, or switch to text output (OutFileFmt=1).'// &
-                  ' (NumOuts='//TRIM(Num2LStr(NumOuts-1))//', NOutSteps='//TRIM(Num2LStr(y_FAST%NOutSteps))//')'
+                  ' (NumOutChans='//TRIM(Num2LStr(NumOuts-1))//', NOutSteps='//TRIM(Num2LStr(y_FAST%NOutSteps))//')'
          RETURN
       END IF
 
