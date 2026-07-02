@@ -4011,13 +4011,13 @@ SUBROUTINE OutModes(Init, p, m, InitInput, CBparams, Modes, Omega, Omega_Gy, Err
    CHARACTER(ErrMsgLen)   :: ErrMsg2        ! Temporary storage for local errors
    CHARACTER(1024)        :: FileName       ! name of the filename for modes
    INTEGER(IntKi) :: I, nModes
-   real(ReKi), allocatable, dimension(:)   :: U         ! Mode
-   real(ReKi), allocatable, dimension(:)   :: U_red     ! Mode
-   real(ReKi), allocatable, dimension(:,:) :: U_Gy      ! All Guyan Modes
-   real(ReKi), allocatable, dimension(:,:) :: U_Gy_red  ! All Guyan Modes reduced
-   real(ReKi), allocatable, dimension(:,:) :: U_Intf    ! Guyan modes at interface
-   real(ReKi), allocatable, dimension(:,:) :: NodesDisp ! Mode
-   integer(IntKi), allocatable, dimension(:) :: Ix, Iy, Iz
+   real(ReKi), allocatable, dimension(:)   :: U                   ! Mode
+   real(ReKi), allocatable, dimension(:)   :: U_red               ! Mode
+   real(ReKi), allocatable, dimension(:,:) :: U_Gy                ! All Guyan Modes
+   real(ReKi), allocatable, dimension(:,:) :: U_Gy_red            ! All Guyan Modes reduced
+   real(ReKi), allocatable, dimension(:,:) :: U_Intf              ! Guyan modes at interface
+   real(ReKi), allocatable, dimension(:,:) :: NodesDisp, NodesRot ! Mode
+   integer(IntKi), allocatable, dimension(:) :: Ix, Iy, Iz, Irx, Iry, Irz
    real(ReKi) :: dx, dy, dz, maxDisp, maxAmplitude
    character(len=*),parameter :: ReFmt='ES13.6E2'
    ErrStat = ErrID_None
@@ -4029,16 +4029,23 @@ SUBROUTINE OutModes(Init, p, m, InitInput, CBparams, Modes, Omega, Omega_Gy, Err
    call AllocAry( Ix       , p%nNodes,   'Ix'   , ErrStat2, ErrMsg2); if(Failed()) return
    call AllocAry( Iy       , p%nNodes,   'Iy'   , ErrStat2, ErrMsg2); if(Failed()) return
    call AllocAry( Iz       , p%nNodes,   'Iz'   , ErrStat2, ErrMsg2); if(Failed()) return
+   call AllocAry( Irx      , p%nNodes,   'Irx'  , ErrStat2, ErrMsg2); if(Failed()) return
+   call AllocAry( Iry      , p%nNodes,   'Iry'  , ErrStat2, ErrMsg2); if(Failed()) return
+   call AllocAry( Irz      , p%nNodes,   'Irz'  , ErrStat2, ErrMsg2); if(Failed()) return
    call AllocAry( NodesDisp, p%nNodes, 3,'NodesDisp', ErrStat2, ErrMsg2); if(Failed()) return
+   call AllocAry( NodesRot , p%nNodes, 3,'NodesRot' , ErrStat2, ErrMsg2); if(Failed()) return
    call AllocAry( U_Gy     , p%nDOF    , size(CBparams%PhiR,2), 'U_Gy'    , ErrStat2, ErrMsg2); if(Failed()) return
    call AllocAry( U_Gy_red , p%nDOF_red, size(CBparams%PhiR,2), 'U_Gy_red', ErrStat2, ErrMsg2); if(Failed()) return
    call AllocAry( U_Intf   , p%nDOF    , 6           ,          'U_Intf'  , ErrStat2, ErrMsg2); if(Failed()) return
    ! --- Preparation for Modes
-   ! Creating index of "x, y z displacements" in DOF vector for each node
+   ! Creating index of "x, y z displacements" and "x, y z rotations" in DOF vector for each node
    do i = 1, p%nNodes
-      Ix(i) = p%NodesDOF(i)%List(1)
-      Iy(i) = p%NodesDOF(i)%List(2)
-      Iz(i) = p%NodesDOF(i)%List(3)
+      Ix(i)  = p%NodesDOF(i)%List(1)
+      Iy(i)  = p%NodesDOF(i)%List(2)
+      Iz(i)  = p%NodesDOF(i)%List(3)
+      Irx(i) = p%NodesDOF(i)%List(4)
+      Iry(i) = p%NodesDOF(i)%List(5)
+      Irz(i) = p%NodesDOF(i)%List(6)
    enddo
    ! Computing max displacements
    dx = maxval(Init%Nodes(:,2))-minval(Init%Nodes(:,2))
@@ -4133,7 +4140,7 @@ contains
       integer(IntKi)  , intent(in) :: iMode
       integer(IntKi)  , intent(in) :: nModes
       logical         , intent(in) :: reduced
-      write(UnSum, '(A,A,I0,A,E13.6,A,E13.6,A)', advance='no') '  {"name": "',trim(Prefix),iMode, '", "frequency": ',omegaMode/(TwoPi), ', "omega": ', omegaMode, ', '
+      write(UnSum, '(A,A,I0,A,E13.6,A,E13.6,A)', advance='no') '  {"name": "',trim(Prefix),iMode, '", "frequency": ',omegaMode/(TwoPi), ', "omega": ', omegaMode, ','
       ! U_full
       if(reduced) then
          U = matmul(p%T_red, U_red)
@@ -4144,13 +4151,20 @@ contains
       NodesDisp(:,1) = U(Ix)
       NodesDisp(:,2) = U(Iy)
       NodesDisp(:,3) = U(Iz)
+      ! Rotations (rx,ry,rz)
+      NodesRot(:,1) = U(Irx)
+      NodesRot(:,2) = U(Iry)
+      NodesRot(:,3) = U(Irz)
       ! Normalizing
       maxAmplitude = maxval(abs(NodesDisp))
       if (maxAmplitude>1e-5) then
          NodesDisp(:,:) = NodesDisp(:,:)*maxDisp/maxAmplitude
       endif
+      write(UnSum, '(A)', advance='no') NewLine//'   '
       call json_write_array(UnSum, '"Displ"', NodesDisp, ReFmt, ErrStat2, ErrMsg2);  
-      write(UnSum, '(A)', advance='no')'}'
+      write(UnSum, '(A)', advance='no')','//NewLine//'   '
+      call json_write_array(UnSum, '"Rot"', NodesRot, ReFmt, ErrStat2, ErrMsg2);
+      write(UnSum, '(A)', advance='no')NewLine//'  }'
       if (iMode<nModes) write(UnSum, '(A)', advance='no')','//NewLine 
    END SUBROUTINE WriteOneMode
 
