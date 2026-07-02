@@ -4159,6 +4159,7 @@ contains
       maxAmplitude = maxval(abs(NodesDisp))
       if (maxAmplitude>1e-5) then
          NodesDisp(:,:) = NodesDisp(:,:)*maxDisp/maxAmplitude
+         NodesRot(:,:)  = NodesRot(:,:) *maxDisp/maxAmplitude ! Same scaling for rotations
       endif
       write(UnSum, '(A)', advance='no') NewLine//'   '
       call json_write_array(UnSum, '"Displ"', NodesDisp, ReFmt, ErrStat2, ErrMsg2);  
