@@ -25,7 +25,8 @@ param ^                    -               INTEGER         Mod_Wake_Cartesian   
 # ..... InputFile Data .......................................................................................................
 typedef  ^                 WD_InputFileType  ReKi            dr             - - -  "Radial increment of radial finite-difference grid [>0.0]" m
 typedef  ^                 WD_InputFileType  IntKi           NumRadii       - - -  "Number of radii in the radial finite-difference grid [>=2]" -
-typedef  ^                 WD_InputFileType  IntKi           NumPlanes      - - -  "Number of wake planes [>=2]" -
+typedef  ^                 WD_InputFileType  ReKi            NumDFull       - - -  "Distance of full wake propagation as a multiple of RotorDiamRef" -
+typedef  ^                 WD_InputFileType  ReKi            NumDBuff       - - -  "Length of wake propagation buffer region as a multiple of RotorDiamRef" -
 typedef  ^                 WD_InputFileType  IntKi           Mod_Wake       - - -  "Switch between wake formulations 1=Polar, 2=Cartesian, 3=Curl" -
 typedef  ^                 WD_InputFileType  ReKi            f_c            - - -  "Cut-off frequency of the low-pass time-filter for the wake advection, deflection, and meandering model [>0.0]" Hz
 typedef  ^                 WD_InputFileType  ReKi            C_HWkDfl_O     - - -  "Calibrated parameter in the correction for wake deflection defining the horizontal offset at the rotor" m
@@ -55,7 +56,6 @@ typedef  ^                 WD_InputFileType  ReKi            k_vCurl        - - 
 typedef  ^                 WD_InputFileType  Logical         OutAllPlanes   - - -  "Output all planes" - 
 # wake added turbulence (WAT) inputs
 typedef  ^                 WD_InputFileType  Logical         WAT            -  - - "Switch for turning on and off wake-added turbulence" -
-#typedef  ^                 WD_InputFileType  ReKi            WAT_k_Def     {5} - - "Calibrated parameters for the influence of the maximum wake deficit on wake-added turbulence (set of 5 parameters: k_Def , FMin, DMin, DMax, Exp) (-) [>=0.0, >=0.0 and <=1.0, >=0.0, >DMin, >0.0] or DEFAULT [DEFAULT=[0.6, 0.0, 0.0, 2.0, 1.0 ]]" -
 typedef  ^                 WD_InputFileType  ReKi            WAT_k_Def_k_c  -  - - "Calibrated parameter for the influence of the maximum wake deficit on wake-added turblence (-) [>=0] or DEFAULT [DEFAULT=0.6]" -
 typedef  ^                 WD_InputFileType  ReKi            WAT_k_Def_FMin - - -  "Calibrated parameter in the eddy viscosity filter function for the WAT maximum wake deficit defining the value in the minimum region [>=0.0 and <=1.0] or DEFAULT [DEFAULT=0.0]" -
 typedef  ^                 WD_InputFileType  ReKi            WAT_k_Def_DMin - - -  "Calibrated parameter in the eddy viscosity filter function for the WAT maximum wake deficit defining the transitional diameter fraction between the minimum and exponential regions [>=0.0] or DEFAULT [DEFAULT=0.0]" -
@@ -67,6 +67,7 @@ typedef  ^                 WD_InputFileType  ReKi            WAT_k_Grad_FMin - -
 typedef  ^                 WD_InputFileType  ReKi            WAT_k_Grad_DMin - - -  "Calibrated parameter in the eddy viscosity filter function for the WAT radial velocity gradient of the wake deficit defining the transitional diameter fraction between the minimum and exponential regions [>=0.0] or DEFAULT [DEFAULT=0.0]" -
 typedef  ^                 WD_InputFileType  ReKi            WAT_k_Grad_DMax - - -  "Calibrated parameter in the eddy viscosity filter function for the WAT radial velocity gradient of the wake deficit defining the transitional diameter fraction between the exponential and maximum regions [> WAT_k_Grad_DMin] or DEFAULT [DEFAULT=12.0]" -
 typedef  ^                 WD_InputFileType  ReKi            WAT_k_Grad_Exp  - - -  "Calibrated parameter in the eddy viscosity filter function for the WAT radial velocity gradient of the wake deficit defining the exponent in the exponential region [> 0.0] or DEFAULT [DEFAULT=0.65]" -
+typedef ^                  WD_InputFileType  ReKi            RotorDiamRef    - - -  "Reference rotor diameter"   m
 
 # ..... Initialization data .......................................................................................................
 # Define inputs that the initialization routine may need here:
@@ -74,7 +75,7 @@ typedef  ^                 WD_InputFileType  ReKi            WAT_k_Grad_Exp  - -
 typedef ^  InitInputType WD_InputFileType InputFileData  - - -   "FAST.Farm input-file data for wake dynamics" -
 typedef ^  InitInputType IntKi            TurbNum        - 0 -   "Turbine ID number (start with 1; end with number of turbines)"      -
 typedef ^  InitInputType CHARACTER(1024)  OutFileRoot    -  - -  "The root name derived from the primary FAST.Farm input file" -
-
+typedef ^  InitInputType IntKi            MaxNumPlanes   -  - -  "Maximum number of wake planes allowed"     -
 
 # Define outputs from the initialization routine here:
 typedef   ^               InitOutputType CHARACTER(ChanLen) WriteOutputHdr  {:} - -   "Names of the output-to-file channels" -
@@ -87,6 +88,7 @@ typedef   ^               InitOutputType ProgDesc           Ver              -  
 typedef    ^              ContinuousStateType ReKi     DummyContState - - -  "Remove this variable if you have continuous states" -
 
 # Define discrete (nondifferentiable) states here:
+typedef ^  DiscreteStateType   ReKi  NumPlanes          -     - -   "Number of active wake planes (>=2)"     -
 typedef ^  DiscreteStateType   ReKi  xhat_plane        {:}{:} - -   "Orientations of wake planes, normal to wake planes"      -
 typedef ^  DiscreteStateType   ReKi  YawErr_filt       {:}    - -   "Time-filtered nacelle-yaw error at the wake planes"      rad
 typedef ^  DiscreteStateType   ReKi  psi_skew_filt      -     - -   "Time-filtered azimuth angle from skew vertical axis"      rad
@@ -138,15 +140,18 @@ typedef   ^         MiscVarType   ReKi  Vx_polar {:}    - -  "Vx as function of 
 typedef   ^         MiscVarType   ReKi  Vt_wake {:}    - -   "Vr as function of r for Cartesian implementation"    
 typedef   ^         MiscVarType   ReKi  GammaCurl  -   - -   "Circulation used in Curled wake model"     
 typedef   ^         MiscVarType   ReKi  Ct_avg     -   - -   "Circulation used in Curled wake model"     
- 
+
 
 # ..... Parameters ................................................................................................................
 # Define parameters here:
 # Time step for integration of continuous states (if a fixed-step integrator is used) and update of discrete states:
 typedef ^ ParameterType  DbKi             dt_low         -  - -   "Time interval for wake dynamics calculations {or default}"      s
 #typedef  ^ ParameterType DbKi            tmax           -  - -   "Total run time" seconds
-typedef ^ ParameterType  IntKi            NumPlanes      -  - -   "Number of wake planes"      -
+typedef ^ ParameterType  IntKi            MaxNumPlanes   -  - -   "Maximum number of wake planes"      -
 typedef ^ ParameterType  IntKi            NumRadii       -  - -   "Number of radii in the radial finite-difference grid"      -
+typedef ^ ParameterType  ReKi             x_Full         -  - -   "Distance of full wake propagation"    m
+typedef ^ ParameterType  ReKi             x_Buff         -  - -   "Distance of full wake propagation plus buffer region"    m
+typedef ^ ParameterType  ReKi             d_Buff         -  - -   "Length of buffer region"   m
 typedef ^ ParameterType  ReKi             dr             -  - -   "Radial increment of radial finite-difference grid"      m
 typedef ^ ParameterType  ReKi             r             {:} - -   "Discretization of radial finite-difference grid"        m
 typedef ^ ParameterType  ReKi             y             {:} - -   "Horizontal discretization of each wake plane (size ny=2nr-1)"        m
@@ -183,7 +188,6 @@ typedef ^ ParameterType  CHARACTER(1024)  OutFileVTKDir  - - -    "The parent di
 typedef ^ ParameterType  IntKi            TurbNum        - 0 -    "Turbine ID number (start with 1; end with number of turbines)"      -
 # wake added turbulence (WAT) parameters
 typedef ^ ParameterType  Logical          WAT            -  - -   "Switch for turning on and off wake-added turbulence" -
-#typedef  ^ ParameterType  ReKi            WAT_k_Def     {5} - - "Calibrated parameters for the influence of the maximum wake deficit on wake-added turbulence (set of 5 parameters: k_Def , FMin, DMin, DMax, Exp) (-) [>=0.0, >=0.0 and <=1.0, >=0.0, >DMin, >0.0] or DEFAULT [DEFAULT=[0.6, 0.0, 0.0, 2.0, 1.0 ]]" -
 typedef  ^ ParameterType  ReKi            WAT_k_Def_k_c  -  - - "Calibrated parameter for the influence of the maximum wake deficit on wake-added turblence (-) [>=0] or DEFAULT [DEFAULT=0.6]" -
 typedef  ^ ParameterType  ReKi            WAT_k_Def_FMin - - -  "Calibrated parameter in the eddy viscosity filter function for the WAT maximum wake deficit defining the value in the minimum region [>=0.0 and <=1.0] or DEFAULT [DEFAULT=0.0]" -
 typedef  ^ ParameterType  ReKi            WAT_k_Def_DMin - - -  "Calibrated parameter in the eddy viscosity filter function for the WAT maximum wake deficit defining the transitional diameter fraction between the minimum and exponential regions [>=0.0] or DEFAULT [DEFAULT=0.0]" -
@@ -213,6 +217,7 @@ typedef      ^      InputType          ReKi       Cq_azavg             {:}     -
 
 # ..... Outputs ...................................................................................................................
 # Define outputs that are contained on the mesh here:
+typedef      ^      OutputType         ReKi       NumPlanes             -      -      -      "Number of active wake planes (>=2)" -
 typedef      ^      OutputType         ReKi       xhat_plane           {:}{:}  -      -      "Orientations of wake planes, normal to wake planes"      -
 typedef      ^      OutputType         ReKi       p_plane              {:}{:}  -      -      "Center positions of wake planes"      m
 typedef      ^      OutputType         ReKi       Vx_wake              {:}{:}  -      -      "Axial wake velocity deficit at wake planes, distributed radially"      m/s

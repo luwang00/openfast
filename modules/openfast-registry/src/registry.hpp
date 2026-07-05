@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <array>
 
 std::string tolower(std::string s);
 
@@ -307,6 +308,94 @@ struct DataType
             // Derived data type and all of its fields only contain reals
             return true;
         }
+
+        void get_field_names_paths(const std::string &name_prefix, const std::string &path_prefix, int index_num, std::vector<Field> &fields)
+        {
+            // Loop through fields
+            for (const auto &field : this->fields)
+            {
+                std::string array_index;
+                switch (field.rank)
+                {
+                case 5:
+                    array_index = ", DL%i" + std::to_string(index_num + 5) + array_index;
+                case 4:
+                    array_index = ", DL%i" + std::to_string(index_num + 4) + array_index;
+                case 3:
+                    array_index = ", DL%i" + std::to_string(index_num + 3) + array_index;
+                case 2:
+                    array_index = ", DL%i" + std::to_string(index_num + 2) + array_index;
+                case 1:
+                    array_index = "(DL%i" + std::to_string(index_num + 1) + array_index + ")";
+                }
+
+                // If field is not derived or it is a mesh
+                if (field.data_type->tag != Tag::Derived)
+                {
+                    auto new_field = field;
+                    new_field.name = name_prefix + "_" + field.name;
+                    new_field.desc = path_prefix + "%" + field.name;
+                    fields.push_back(new_field);
+                }
+                else if ((tolower(field.data_type->derived.name).compare("meshtype") == 0))
+                {
+                    auto new_field = field;
+                    new_field.name = name_prefix + "_" + field.name;
+                    new_field.desc = path_prefix + "%" + field.name + array_index;
+                    fields.push_back(new_field);
+                }
+                else
+                {
+                    field.data_type->derived.get_field_names_paths(name_prefix + "_" + field.name,
+                                                                   path_prefix + "%" + field.name + array_index,
+                                                                   index_num + field.rank, fields);
+                }
+            }
+        }
+
+        void get_mesh_names_paths(const std::string &name_prefix, const std::string &path_prefix, int index_num, std::vector<std::string> &names, std::vector<std::string> &paths)
+        {
+            // Loop through fields
+            for (const auto &field : this->fields)
+            {
+                // Skip fields that aren't derived types or don't contain meshes
+                if ((field.data_type->tag != Tag::Derived) || !field.data_type->derived.contains_mesh)
+                {
+                    continue;
+                }
+
+                auto &ddt = field.data_type->derived;
+
+                std::string array_index;
+                switch (field.rank)
+                {
+                case 5:
+                    array_index = ", DL%i" + std::to_string(index_num + 5) + array_index;
+                case 4:
+                    array_index = ", DL%i" + std::to_string(index_num + 4) + array_index;
+                case 3:
+                    array_index = ", DL%i" + std::to_string(index_num + 3) + array_index;
+                case 2:
+                    array_index = ", DL%i" + std::to_string(index_num + 2) + array_index;
+                case 1:
+                    array_index = "(DL%i" + std::to_string(index_num + 1) + array_index + ")";
+                }
+
+                // If this field is a mesh, add field name to vector
+                // otherwise get mesh names within derived type
+                if (tolower(ddt.name).compare("meshtype") == 0)
+                {
+                    names.push_back(name_prefix + "_" + field.name);
+                    paths.push_back(path_prefix + "%" + field.name + array_index);
+                }
+                else
+                {
+                    field.data_type->derived.get_mesh_names_paths(name_prefix + "_" + field.name,
+                                                                  path_prefix + "%" + field.name + array_index,
+                                                                  index_num + field.rank, names, paths);
+                }
+            }
+        }
     };
     Derived derived;
 
@@ -438,9 +527,11 @@ struct Registry
     std::map<std::string, std::shared_ptr<InterfaceData>, ci_less> interface_map;
     std::map<std::string, std::shared_ptr<Module>, ci_less> modules;
     std::map<std::string, std::shared_ptr<DataType>, ci_less> data_types;
+    std::map<std::string, std::shared_ptr<DataType>, ci_less> data_types_isocbinding;
     bool gen_c_code = false;
     bool no_extrap_interp = false;
     bool gen_inc_subs = false;
+    bool use_isocbinding = false;
 
     Registry()
     {
@@ -453,6 +544,10 @@ struct Registry
         auto R8Ki = std::make_shared<DataType>("R8Ki", "REAL(R8Ki)", DataType::Tag::Real, 64);
         auto DbKi = std::make_shared<DataType>("DbKi", "REAL(DbKi)", DataType::Tag::Real, 64);
         auto logical = std::make_shared<DataType>("Logical", "LOGICAL", DataType::Tag::Logical);
+        auto c_int    = std::make_shared<DataType>("c_int",   "INTEGER(c_int)",    DataType::Tag::Integer, 32);
+        auto c_float  = std::make_shared<DataType>("c_float", "REAL(c_float)",     DataType::Tag::Real, 32);
+        auto c_double = std::make_shared<DataType>("c_double","REAL(c_double)",    DataType::Tag::Real, 64);
+        auto c_char   = std::make_shared<DataType>("c_char",  "CHARACTER(c_char)", DataType::Tag::Character);
 
         // Derived types
         auto mesh = std::make_shared<DataType>(nullptr, "MeshType", "MeshType", "MeshType");
@@ -473,6 +568,10 @@ struct Registry
             {"logical", logical},
             {"meshtype", mesh},
             {"dll_type", dll},
+            {"c_int",c_int},
+            {"c_float",c_float},
+            {"c_double",c_double},
+            {"c_char",c_char},
         };
 
         this->interface_map = std::map<std::string, std::shared_ptr<InterfaceData>, ci_less>{
@@ -500,6 +599,15 @@ struct Registry
             {"PartialConstrStatePInputType",
              std::make_shared<InterfaceData>("PartialConstrStatePInputType", "dZdu", true)},
         };
+
+        // Map of ISO_C_BINDING types (for checks only)
+        this->data_types_isocbinding = std::map<std::string, std::shared_ptr<DataType>, ci_less>{
+            {"c_int",c_int},
+            {"c_float",c_float},
+            {"c_double",c_double},
+            {"c_char",c_char},
+        };
+
     }
 
     // Parsing
@@ -512,12 +620,20 @@ struct Registry
         // Pointer to type
         std::shared_ptr<DataType> data_type;
 
+        // if using ISO_C_BINDING, search these types first
+        auto it = data_types_isocbinding.find(type_name);
+        if (it != data_types_isocbinding.end())
+        {
+            this->use_isocbinding = true;
+            return it->second;
+        }
+
         // Get map of data types to search
         // If module was provided, search it; otherwise, search registry
         auto &data_types = mod == nullptr ? this->data_types : mod->data_types;
 
         // Search for type in registry, return if found
-        auto it = data_types.find(type_name);
+        it = data_types.find(type_name);
         if (it != data_types.end())
         {
             return it->second;

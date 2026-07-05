@@ -88,7 +88,7 @@ CONTAINS
      
       ! allocate segment scalar quantities
       if (Rod%N == 0) then                                ! special case of zero-length Rod
-         ALLOCATE(Rod%l(1), Rod%V(N), STAT=ErrStat2);  if(AllocateFailed("Rod: l and V")) return
+         ALLOCATE(Rod%l(1), Rod%V(1), STAT=ErrStat2);  if(AllocateFailed("Rod: l and V")) return
       else                                                ! normal case
          ALLOCATE(Rod%l(N), Rod%V(N), STAT=ErrStat2);  if(AllocateFailed("Rod: l and V")) return
       end if
@@ -105,12 +105,14 @@ CONTAINS
       ! allocate mass and inverse mass matrices for each node (including ends)
       ALLOCATE(Rod%M(3, 3, 0:N), STAT=ErrStat2);  if(AllocateFailed("Rod: M")) return
 
+      ALLOCATE(Rod%VOF(0:N), STAT=ErrStat2)  ! allocate VOF array (volume of fluid) for each node
 
       ! set to zero initially (important of wave kinematics are not being used)
       Rod%U    = 0.0_DbKi
       Rod%Ud   = 0.0_DbKi
       Rod%zeta = 0.0_DbKi
       Rod%PDyn = 0.0_DbKi
+      Rod%VOF  = 0.0_DbKi
 
       ! ------------------------- set some geometric properties and the starting kinematics -------------------------
 
@@ -148,7 +150,7 @@ CONTAINS
       Rod%OrMat = CalcOrientation(phi, beta, 0.0_DbKi)        ! get rotation matrix to put things in global rather than rod-axis orientations
       
             
-      IF (wordy > 0) print *, "Set up Rod ",Rod%IdNum, ", type ", Rod%typeNum
+      IF (wordy > 0) CALL WrScr("Set up Rod "//trim(num2lstr(Rod%IdNum))//", type "//trim(num2lstr(Rod%typeNum)))
 
       ! need to add cleanup sub <<<
 
@@ -184,7 +186,7 @@ CONTAINS
 !      REAL(DbKi)                            :: rRef(3)     ! reference position of mesh node
 !      REAL(DbKi)                            :: OrMat(3,3)  ! DCM for body orientation based on r6_in
    
-      IF (wordy > 0) print *, "initializing Rod ", Rod%idNum
+      IF (wordy > 0) CALL WrScr("initializing Rod "//trim(num2lstr(Rod%idNum)))
 
       ! the r6 and v6 vectors should have already been set
       ! r and rd of ends have already been set by setup function or by parent object   <<<<< right? <<<<<
@@ -208,12 +210,12 @@ CONTAINS
       
          states(1:3)   = 0.0_DbKi     ! zero velocities for initialization
          states(4:6)   = Rod%q        ! rod direction unit vector
-         
-      end if
       
+      end if
+
       ! note: this may also be called by a coupled rod (type = -1) in which case states will be empty
       
-      
+
    END SUBROUTINE Rod_Initialize
    !--------------------------------------------------------------
 
@@ -587,6 +589,9 @@ CONTAINS
       Real(DbKi)                 :: depth                  ! local interpolated depth from bathymetry grid [m]
       Real(DbKi)                 :: nvec(3)        ! local seabed surface normal vector (positive out)
 
+      INTEGER(IntKi)                   :: ErrStat2
+      CHARACTER(ErrMsgLen)             :: ErrMsg2   
+
 
       N = Rod%N
 
@@ -617,12 +622,22 @@ CONTAINS
 
 
       ! apply wave kinematics (if there are any)
-
-      DO i=0,N
-         CALL getWaterKin(p, Rod%r(1,i), Rod%r(2,i), Rod%r(3,i), Rod%time, m%WaveTi, Rod%U(:,i), Rod%Ud(:,i), Rod%zeta(i), Rod%PDyn(i))
-         !F(i) = 1.0 ! set VOF value to one for now (everything submerged - eventually this should be element-based!!!) <<<<
-         ! <<<< currently F is not being used and instead a VOF variable is used within the node loop
-      END DO
+      ! For SeaState (WaterKin==3), skip during IC_gen (otherwise will never find steady state because of waves)
+      ! and skip if inside a coupling timestep (because external kinematics do not change between coupling steps)
+      if (p%WaterKin == 3 .and. (m%IC_gen .or. &
+         (abs(MOD(Rod%time - 0.5*p%dtCoupling, p%dtCoupling) - 0.5*p%dtCoupling) >= 0.5*p%dtM0) .and. Rod%time > 0.0_DbKi)) then
+         ! retain existing kinematics values
+         ! This does introduce some error, as the interpolation location does not track the motion exactly. But the change between 
+         ! coupling steps should be small enough that the error is negligible. 
+      else
+         DO i=0,N
+            CALL getWaterKin(p, m, Rod%r(1,i), Rod%r(2,i), Rod%r(3,i), Rod%time, Rod%U(:,i), Rod%Ud(:,i), Rod%zeta(i), Rod%PDyn(i), ErrStat2, ErrMsg2)
+            ! TODO: Handle error messages. Roads broadly needs error flags to be supported
+            
+            !F(i) = 1.0 ! set VOF value to one for now (everything submerged - eventually this should be element-based!!!) <<<<
+            ! <<<< currently F is not being used and instead a VOF variable is used within the node loop
+         END DO
+      end if
       
       ! Calculated h0 (note this should be deprecated/replced)           
       zeta = Rod%zeta(N)  ! temporary      
@@ -634,7 +649,7 @@ CONTAINS
       else if ((Rod%r(3,N) < zeta) .and. (Rod%r(3,0) > zeta)) then   ! check if it's crossing the water plane but upside down
          Rod%h0 = -(zeta - Rod%r(3,0))/Rod%q(3)                       ! negative distance along rod centerline from end A to the waterplane
       else 
-         Rod%h0 = 0.0_DbKi                                           ! fully unsubmerged case (ever applicable?)
+         Rod%h0 = 0.0_DbKi                                           ! fully unsubmerged case (ever applicable?). (Rod%r(3,0) > zeta) .and. (Rod%r(3,N) > zeta)
       end if
 
    
@@ -703,17 +718,16 @@ CONTAINS
                zA = Rod%r(3,I) - 0.6666666666 * Rod%d* (sin(al))**3 / (2.0*al - sin(2.0*al))
             end if
          end if
-         
-         VOF = VOF0*cosPhi**2 + A/(0.25*Pi*Rod%d**2)*sinPhi**2  ! this is a more refined VOF-type measure that can work for any incline
 
+         Rod%VOF(I) = VOF0*cosPhi**2 + A/(0.25*Pi*Rod%d**2)*sinPhi**2  ! this is a more refined VOF-type measure that can work for any incline
 
          ! build mass and added mass matrix
          DO J=1,3
             DO K=1,3
                IF (J==K) THEN
-                  Rod%M(K,J,I) = m_i + VOF*p%rhoW*v_i*( Rod%Can*(1 - Rod%q(J)*Rod%q(K)) + Rod%Cat*Rod%q(J)*Rod%q(K) )
+                  Rod%M(K,J,I) = m_i + Rod%VOF(I)*p%rhoW*v_i*( Rod%Can*(1 - Rod%q(J)*Rod%q(K)) + Rod%Cat*Rod%q(J)*Rod%q(K) )
                ELSE
-                  Rod%M(K,J,I) = VOF*p%rhoW*v_i*( Rod%Can*(-Rod%q(J)*Rod%q(K)) + Rod%Cat*Rod%q(J)*Rod%q(K) )
+                  Rod%M(K,J,I) = Rod%VOF(I)*p%rhoW*v_i*( Rod%Can*(-Rod%q(J)*Rod%q(K)) + Rod%Cat*Rod%q(J)*Rod%q(K) )
                END IF
             END DO
          END DO
@@ -734,7 +748,7 @@ CONTAINS
             Rod%W(:,I) = (/ 0.0_DbKi, 0.0_DbKi, -m_i * p%g /)   ! assuming g is positive
             
             ! radial buoyancy force from sides (now calculated based on outside pressure, for submerged portion only)
-            Ftemp = -VOF * v_i * p%rhoW*p%g * sinPhi   ! magnitude of radial buoyancy force at this node
+            Ftemp = -Rod%VOF(I) * v_i * p%rhoW*p%g * sinPhi   ! magnitude of radial buoyancy force at this node
             Rod%Bo(:,I) = (/ Ftemp*cosBeta*cosPhi, Ftemp*sinBeta*cosPhi, -Ftemp*sinPhi /)            
 
             !relative flow velocities
@@ -761,7 +775,7 @@ CONTAINS
             MagVq = sqrt(SumSqVq)
 
             ! transverse and tangenential drag
-            Rod%Dp(:,I) = VOF * 0.5*p%rhoW*Rod%Cdn*    Rod%d* dL * MagVp * Vp 
+            Rod%Dp(:,I) = Rod%VOF(I) * 0.5*p%rhoW*Rod%Cdn*    Rod%d* dL * MagVp * Vp 
             Rod%Dq(:,I) = 0.0_DbKi ! 0.25*p%rhoW*Rod%Cdt* Pi*Rod%d* dL * MagVq * Vq <<< should these axial side loads be included?
 
             ! transverse and tangential damping force (note this is the force per node)
@@ -774,7 +788,7 @@ CONTAINS
             aq = DOT_PRODUCT(Rod%Ud(:,I), Rod%q) * Rod%q  ! tangential component of fluid acceleration
             ap = Rod%Ud(:,I) - aq                         ! normal component of fluid acceleration
             ! transverse and axial fluid inertia force
-            Rod%Ap(:,I) = VOF * p%rhoW*(1.0+Rod%Can)* v_i * ap  ! 
+            Rod%Ap(:,I) = Rod%VOF(I) * p%rhoW*(1.0+Rod%Can)* v_i * ap  ! 
             Rod%Aq(:,I) = 0.0_DbKi  ! p%rhoW*(1.0+Rod%Cat)* v_i * aq  ! <<< just put a taper-based term here eventually?
 
             ! dynamic pressure
@@ -818,28 +832,28 @@ CONTAINS
          ! >>> eventually should consider a VOF approach for the ends    hTilt = 0.5*Rod%d/cosPhi <<<
          
             ! buoyancy force
-            Ftemp = -VOF * 0.25*Pi*Rod%d*Rod%d * p%rhoW*p%g* zA
+            Ftemp = -Rod%VOF(I) * 0.25*Pi*Rod%d*Rod%d * p%rhoW*p%g* zA
             Rod%Bo(:,I) = Rod%Bo(:,I) + (/ Ftemp*cosBeta*sinPhi, Ftemp*sinBeta*sinPhi, Ftemp*cosPhi /) 
                   
             ! buoyancy moment
-            Mtemp = -VOF * 1.0/64.0*Pi*Rod%d**4 * p%rhoW*p%g * sinPhi 
+            Mtemp = -Rod%VOF(I) * 1.0/64.0*Pi*Rod%d**4 * p%rhoW*p%g * sinPhi 
             Rod%Mext = Rod%Mext + (/ Mtemp*sinBeta, -Mtemp*cosBeta, 0.0_DbKi /) 
          
             ! axial drag
-            Rod%Dq(:,I) = Rod%Dq(:,I) + 0.5 * VOF * 0.25* Pi*Rod%d*Rod%d * p%rhoW*Rod%CdEnd * MagVq * Vq
+            Rod%Dq(:,I) = Rod%Dq(:,I) + 0.5 * Rod%VOF(I) * 0.25* Pi*Rod%d*Rod%d * p%rhoW*Rod%CdEnd * MagVq * Vq
          
             ! >>> what about rotational drag?? <<<   eqn will be  Pi* Rod%d**4/16.0 omega_rel?^2...  *0.5 * Cd...
 
             ! long-wave diffraction force
-            Rod%Aq(:,I) = Rod%Aq(:,I) + VOF * p%rhoW* Rod%CaEnd * (2.0/3.0*Pi*Rod%d**3 /8.0) * aq
+            Rod%Aq(:,I) = Rod%Aq(:,I) + Rod%VOF(I) * p%rhoW* Rod%CaEnd * (2.0/3.0*Pi*Rod%d**3 /8.0) * aq
             
             ! Froude-Krylov force
-            Rod%Pd(:,I) = Rod%Pd(:,I) + VOF * 0.25* Pi*Rod%d*Rod%d * Rod%PDyn(I) * Rod%q
+            Rod%Pd(:,I) = Rod%Pd(:,I) + Rod%VOF(I) * 0.25* Pi*Rod%d*Rod%d * Rod%PDyn(I) * Rod%q
             
             ! added mass
             DO J=1,3
                DO K=1,3
-                  Rod%M(K,J,I) = Rod%M(K,J,I) + VOF*p%rhoW* Rod%CaEnd* (2.0/3.0*Pi*Rod%d**3 /8.0) *Rod%q(J)*Rod%q(K) 
+                  Rod%M(K,J,I) = Rod%M(K,J,I) + Rod%VOF(I)*p%rhoW* Rod%CaEnd* (2.0/3.0*Pi*Rod%d**3 /8.0) *Rod%q(J)*Rod%q(K) 
                END DO
             END DO
          
@@ -848,26 +862,26 @@ CONTAINS
          IF ((I==N) .and. (z1lo < Rod%zeta(I))) THEN    ! if this end B and it is at least partially submerged (note, if N=0, both this and previous if statement are true)
          
             ! buoyancy force
-            Ftemp = VOF * 0.25*Pi*Rod%d*Rod%d * p%rhoW*p%g* zA
+            Ftemp = Rod%VOF(I) * 0.25*Pi*Rod%d*Rod%d * p%rhoW*p%g* zA
             Rod%Bo(:,I) = Rod%Bo(:,I) + (/ Ftemp*cosBeta*sinPhi, Ftemp*sinBeta*sinPhi, Ftemp*cosPhi /) 
          
             ! buoyancy moment
-            Mtemp = VOF * 1.0/64.0*Pi*Rod%d**4 * p%rhoW*p%g * sinPhi 
+            Mtemp = Rod%VOF(I) * 1.0/64.0*Pi*Rod%d**4 * p%rhoW*p%g * sinPhi 
             Rod%Mext = Rod%Mext + (/ Mtemp*sinBeta, -Mtemp*cosBeta, 0.0_DbKi /) 
            
             ! axial drag
-            Rod%Dq(:,I) = Rod%Dq(:,I) + 0.5 * VOF * 0.25* Pi*Rod%d*Rod%d * p%rhoW*Rod%CdEnd * MagVq * Vq
+            Rod%Dq(:,I) = Rod%Dq(:,I) + 0.5 * Rod%VOF(I) * 0.25* Pi*Rod%d*Rod%d * p%rhoW*Rod%CdEnd * MagVq * Vq
             
             ! long-wave diffraction force
-            Rod%Aq(:,I) = Rod%Aq(:,I) + VOF * p%rhoW* Rod%CaEnd * (2.0/3.0*Pi*Rod%d**3 /8.0) * aq
+            Rod%Aq(:,I) = Rod%Aq(:,I) + Rod%VOF(I) * p%rhoW* Rod%CaEnd * (2.0/3.0*Pi*Rod%d**3 /8.0) * aq
             
             ! Froud-Krylov force
-            Rod%Pd(:,I) = Rod%Pd(:,I) - VOF * 0.25* Pi*Rod%d*Rod%d * Rod%PDyn(I) * Rod%q
+            Rod%Pd(:,I) = Rod%Pd(:,I) - Rod%VOF(I) * 0.25* Pi*Rod%d*Rod%d * Rod%PDyn(I) * Rod%q
             
             ! added mass
             DO J=1,3
                DO K=1,3
-                  Rod%M(K,J,I) = Rod%M(K,J,I) + VOF*p%rhoW* Rod%CaEnd* (2.0/3.0*Pi*Rod%d**3 /8.0) *Rod%q(J)*Rod%q(K) 
+                  Rod%M(K,J,I) = Rod%M(K,J,I) + Rod%VOF(I)*p%rhoW* Rod%CaEnd* (2.0/3.0*Pi*Rod%d**3 /8.0) *Rod%q(J)*Rod%q(K) 
                END DO
             END DO
             
@@ -879,6 +893,22 @@ CONTAINS
          Rod%Fnet(:,I) = Rod%W(:,I) + Rod%Bo(:,I) + Rod%Dp(:,I) + Rod%Dq(:,I) &
                          + Rod%Ap(:,I) + Rod%Aq(:,I) + Rod%Pd(:,I) + Rod%B(:,I) + Rod%Bp(:,I) + Rod%Bq(:,I)
          
+         DO J=1,3
+            IF (Is_NaN(Rod%Fnet(J,I)) .AND. wordy>1) THEN
+               CALL WrScr("NaN detected in Rod%Fnet at node "//trim(num2lstr(I)))
+               CALL WrScr("Rod%IDNum: "//trim(Int2LStr(Rod%IdNum)))
+               CALL WrScr("Rod%W("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%W(J,I))))
+               CALL WrScr("Rod%Bo("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%Bo(J,I))))
+               CALL WrScr("Rod%Dp("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%Dp(J,I))))
+               CALL WrScr("Rod%Dq("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%Dq(J,I))))
+               CALL WrScr("Rod%Ap("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%Ap(J,I))))
+               CALL WrScr("Rod%Aq("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%Aq(J,I))))
+               CALL WrScr("Rod%Pd("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%Pd(J,I))))
+               CALL WrScr("Rod%B("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%B(J,I))))
+               CALL WrScr("Rod%Bp("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%Bp(J,I))))
+               CALL WrScr("Rod%Bq("//trim(num2lstr(J))//","//trim(num2lstr(I))//"): "//trim(num2lstr(Rod%Bq(J,I))))
+            END IF
+         ENDDO
 
       END DO  ! I  - done looping through nodes
 
@@ -985,8 +1015,25 @@ CONTAINS
       Rod%F6net(1:3) = Rod%F6net(1:3) + Fcentripetal 
       Rod%F6net(4:6) = Rod%F6net(4:6) + Mcentripetal + Rod%Mext
 
+      DO J=1,3
+         IF ((Is_NaN(Rod%F6net(J)) .OR. Is_NaN(Rod%F6net(J+3))) .AND. wordy>1) THEN ! convoluted logic to check 1:6 with a 1:3 loop
+            CALL WrScr("NaN detected in Rod%F6net("//trim(num2lstr(J))//") after adding centripetal force/moment")
+            CALL WrScr("Rod%IDNum: "//trim(num2lstr(Rod%IdNum)))
+            CALL WrScr("Fcentripetal("//trim(num2lstr(J))//"): "//trim(num2lstr(Fcentripetal(J))))
+            CALL WrScr("Mcentripetal("//trim(num2lstr(J))//"): "//trim(num2lstr(Mcentripetal(J))))
+            CALL WrScr("Rod%Mext("//trim(num2lstr(J))//"): "//trim(num2lstr(Rod%Mext(J))))
+         END IF
+      ENDDO
+
       ! add in user defined external forces to end A
       Rod%F6net(1:3) = Rod%F6net(1:3) + Rod%FextU
+      DO J=1,3
+         IF (Is_NaN(Rod%F6net(J)) .AND. wordy>1) THEN
+            CALL WrScr("NaN detected in Rod%F6net("//trim(num2lstr(J))//") after adding Rod%FextU")
+            CALL WrScr("Rod%IDNum: "//trim(num2lstr(Rod%IdNum)))
+            CALL WrScr("Rod%FextU("//trim(num2lstr(J))//"): "//trim(num2lstr(Rod%FextU(J))))
+         END IF
+      ENDDO
             
       ! Note: F6net saves the Rod's net forces and moments (excluding inertial ones) for use in later output
       !       (this is what the rod will apply to whatever it's attached to, so should be zero moments if pinned).
@@ -1109,36 +1156,44 @@ CONTAINS
    
 
    ! this function handles assigning a line to a point node
-   SUBROUTINE Rod_AddLine(Rod, lineID, TopOfLine, endB)
+   SUBROUTINE Rod_AddLine(Rod, lineID, TopOfLine, endB, ErrStat, ErrMsg)
 
       Type(MD_Rod), INTENT (INOUT)   :: Rod        ! the Point object
 
       Integer(IntKi),   INTENT( IN )     :: lineID
       Integer(IntKi),   INTENT( IN )     :: TopOfLine
       Integer(IntKi),   INTENT( IN )     :: endB   ! add line to end B if 1, end A if 0
+      integer(IntKi),      intent(  out) :: ErrStat
+      character(ErrMsgLen),intent(  out) :: ErrMsg
 
       if (endB==1) then   ! attaching to end B
 
-         IF (wordy > 0) Print*, "L", lineID, "->R", Rod%IdNum , "b"
+         IF (wordy > 0) CALL WrScr("L"//trim(num2lstr(lineID))//"->R"//trim(num2lstr(Rod%IdNum))//"b")
          
          IF (Rod%nAttachedB <10) THEN ! this is currently just a maximum imposed by a fixed array size.  could be improved.
             Rod%nAttachedB = Rod%nAttachedB + 1  ! add the line to the number connected
             Rod%AttachedB(Rod%nAttachedB) = lineID
             Rod%TopB(Rod%nAttachedB) = TopOfLine  ! attached to line ... 1 = top/fairlead(end B), 0 = bottom/anchor(end A)
+            ErrStat = ErrID_None
+            ErrMsg  = ""
          ELSE
-            call WrScr("too many lines connected to Rod "//trim(num2lstr(Rod%IdNum))//" in MoorDyn!")
+            ErrStat = ErrID_Fatal
+            ErrMsg  = "too many lines connected to Rod "//trim(num2lstr(Rod%IdNum))//" in MoorDyn!"
          END IF
 
       else              ! attaching to end A
       
-         IF (wordy > 0) Print*, "L", lineID, "->R", Rod%IdNum , "a"
+         IF (wordy > 0) CALL WrScr("L"//trim(num2lstr(lineID))//"->R"//trim(num2lstr(Rod%IdNum))//"a")
          
          IF (Rod%nAttachedA <10) THEN ! this is currently just a maximum imposed by a fixed array size.  could be improved.
             Rod%nAttachedA = Rod%nAttachedA + 1  ! add the line to the number connected
             Rod%AttachedA(Rod%nAttachedA) = lineID
             Rod%TopA(Rod%nAttachedA) = TopOfLine  ! attached to line ... 1 = top/fairlead(end B), 0 = bottom/anchor(end A)
+            ErrStat = ErrID_None
+            ErrMsg  = ""
          ELSE
-            call WrScr("too many lines connected to Rod "//trim(num2lstr(Rod%IdNum))//" in MoorDyn!")
+            ErrStat = ErrID_Fatal
+            ErrMsg  = "too many lines connected to Rod "//trim(num2lstr(Rod%IdNum))//" in MoorDyn!"
          END IF
          
       end if
@@ -1298,7 +1353,7 @@ CONTAINS
       ! check for failed where /= 0 is fatal
       logical function Failed0(txt)
          character(*), intent(in) :: txt
-         if (errStat /= 0) then
+         if (ErrStat2 /= 0) then
             ErrStat2 = ErrID_Fatal
             ErrMsg2  = "Could not allocate "//trim(txt)
             call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)

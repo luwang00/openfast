@@ -41,7 +41,7 @@ option(BUILD_SHARED_LIBS "Enable building shared libraries" off)
 option(DOUBLE_PRECISION "Treat REAL as double precision" on)
 option(USE_DLL_INTERFACE "Enable runtime loading of dynamic libraries" on)
 option(FPE_TRAP_ENABLED "Enable FPE trap in compiler options" off)
-option(ORCA_DLL_LOAD "Enable OrcaFlex Library Load" on)
+option(WIN_DLL_LOAD "Enable loading of Windows only DLL's (OrcaFlex, SoilDyn)" on)  # This is mostly for testing purposes
 option(BUILD_FASTFARM "Enable building FAST.Farm" off)
 option(BUILD_OPENFAST_CPP_API "Enable building OpenFAST - C++ API" off)
 option(BUILD_OPENFAST_CPP_DRIVER "Enable building OpenFAST C++ driver using C++ CFD API" off)
@@ -125,6 +125,11 @@ if (OPENMP)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     link_libraries("${OpenMP_CXX_LIBRARIES}")
   endif()
+elseif (NOT BLA_VENDOR)
+  # If we're not using OpenMP, and a specific BLAS vendor has not been set, 
+  # set MKL threading to sequential to avoid potential issues with 
+  # small calculations taking longer due to threading overhead (turbsim).
+  set(MKL_THREADING "sequential")
 endif()
 
 #-------------------------------------------------------------------------------
@@ -142,7 +147,7 @@ if (USE_LOCAL_STATIC_LAPACK)
   set(LAPACK_LIB_PATH ${CMAKE_BINARY_DIR}/dependencies/src/lapack-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}lapack${CMAKE_STATIC_LIBRARY_SUFFIX})
   include(ExternalProject)
   ExternalProject_Add(lapack
-    URL http://www.netlib.org/lapack/lapack.tgz
+    URL https://github.com/Reference-LAPACK/lapack/archive/refs/tags/v3.12.1.tar.gz
     CMAKE_ARGS 
       -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_SOURCE_DIR}/install 
       -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
@@ -160,6 +165,35 @@ else()
     message(FATAL_ERROR "Unable to find BLAS and LAPACK")
   endif()
 endif()
+
+#-------------------------------------------------------------------------------
+# AMReX reader inclusion in FAST.Farm
+#-------------------------------------------------------------------------------
+# Included as an external project, cloned to `dependencies` directory
+
+option(AMREX_READER "Include AMReX reader in FAST.Farm" off)
+if (AMREX_READER)
+  if (WIN32)
+    message(FATAL_ERROR "AMREX_READER option not available on Windows (AMReX incompatible)")
+  endif()
+  include(FetchContent)
+  FetchContent_Declare(
+    AMReX
+    GIT_REPOSITORY https://github.com/AMReX-Codes/amrex.git
+    GIT_TAG        26.02
+  )
+  set(AMReX_AMRLEVEL Off CACHE BOOL "" FORCE)
+  set(AMReX_EXPORT_DYNAMIC Off CACHE BOOL "" FORCE)
+  set(AMReX_LINEAR_SOLVERS Off CACHE BOOL "" FORCE)
+  set(AMReX_LINEAR_SOLVERS_EM Off CACHE BOOL "" FORCE)
+  set(AMReX_LINEAR_SOLVERS_INCLFO Off CACHE BOOL "" FORCE)
+  set(AMReX_MPI Off CACHE BOOL "" FORCE)
+  set(AMReX_PARTICLES Off CACHE BOOL "" FORCE)
+  set(AMReX_FORTRAN On CACHE BOOL "" FORCE)
+  set(AMReX_FORTRAN_INTERFACES On CACHE BOOL "" FORCE)
+  set(AMReX_PRECISION DOUBLE CACHE STRING "" FORCE)
+  FetchContent_MakeAvailable(AMReX)
+endif ()
 
 #-------------------------------------------------------------------------------
 # Simulink
@@ -192,6 +226,7 @@ set(OPENFAST_MODULES
   aerodyn
   aerodisk
   servodyn
+  soildyn
   elastodyn
   beamdyn
   subdyn
@@ -208,7 +243,6 @@ set(OPENFAST_MODULES
   lindyn
   map
   turbsim
-  supercontroller
   externalinflow
   openfast-library
   simple-elastodyn
@@ -285,9 +319,7 @@ if(BUILD_TESTING)
 
   # unit tests
   if(BUILD_UNIT_TESTING)
-    if(NOT (${CMAKE_Fortran_COMPILER_ID} STREQUAL "Flang"))
-      add_subdirectory(unit_tests)
-    endif()
+    add_subdirectory(unit_tests)
   endif()
 endif()
 
@@ -299,4 +331,3 @@ option(BUILD_DOCUMENTATION "Build documentation." OFF)
 if(BUILD_DOCUMENTATION)
   add_subdirectory(docs)
 endif()
-

@@ -29,7 +29,7 @@ def default_StC_vt():
     StC['StC_X_M']      = 0     #  - StC X mass (kg) [must equal StC_Y_M for StC_DOF_MODE = 2]
     StC['StC_Y_M']      = 0     #  - StC Y mass (kg) [must equal StC_X_M for StC_DOF_MODE = 2]
     StC['StC_Z_M']      = 0     #  - StC Z mass (kg) [used only when StC_DOF_MODE=1 and StC_Z_DOF=TRUE]
-    StC['StC_XY_M']     = 0     #  - StC Z mass (kg) [used only when StC_DOF_MODE=2]
+    StC['StC_Omni_M']   = 0     #  - StC omni mass (kg) [used only when StC_DOF_MODE=2 or 3]
     StC['StC_X_K']      = 0     #  - StC X stiffness (N/m)
     StC['StC_Y_K']      = 0     #  - StC Y stiffness (N/m)
     StC['StC_Z_K']      = 0     #  - StC Z stiffness (N/m) [used only when StC_DOF_MODE=1 and StC_Z_DOF=TRUE]

@@ -90,9 +90,9 @@ CONTAINS
       ! copy over elasticity data
       Line%ElasticMod = LineProp%ElasticMod
 
-      if (Line%ElasticMod > 3) then
+      if (Line%ElasticMod > 4) then
          ErrStat = ErrID_Fatal
-         ErrMsg = "Line ElasticMod > 3. This is not possible."
+         ErrMsg = "Line ElasticMod > 4. This is not possible."
          RETURN
       endif
       
@@ -101,6 +101,20 @@ CONTAINS
          Line%stiffXs(I) = LineProp%stiffXs(I)
          Line%stiffYs(I) = LineProp%stiffYs(I)  ! note: this does not convert to E (not EA) like done in C version
       END DO
+
+      ! find static strain of the slow spring on the original working curve if Syrope model is used
+      if (Line%ElasticMod == 4) then
+         DO I = 1,Line%nEApoints
+            Line%stiffZs(I) = Line%stiffXs(I) - 1.0 / Line%vbeta * log(1.0 + Line%vbeta / Line%alphaMBL * Line%stiffYs(I))
+         END DO
+      end if
+
+      ! set working curve formula
+      if (Line%ElasticMod == 4) then
+         Line%syropeWCForm = LineProp%syropeWCForm
+         line%syropeWCK1 = LineProp%syropeWCK1
+         line%syropeWCK2 = LineProp%syropeWCK2
+      endif
       
       Line%nBApoints = LineProp%nBApoints
       DO I = 1,Line%nBApoints
@@ -121,6 +135,12 @@ CONTAINS
       ! If input value is negative, it is considered to be desired damping ratio (zeta)
       ! from which the line's BA can be calculated based on the segment natural frequency.
       IF (LineProp%BA < 0) THEN
+         IF (Line%nEApoints > 0) THEN
+            ErrMsg  = ' Line damping cannot be a ratio if stress-strain lookup table is used.'
+            ErrStat = ErrID_Fatal
+            RETURN
+         ENDIF 
+
          ! - we assume desired damping coefficient is zeta = -LineProp%BA
          ! - highest axial vibration mode of a segment is wn = sqrt(k/m) = 2N/UnstrLen*sqrt(EA/w)
          Line%BA = -LineProp%BA * Line%UnstrLen / Line%N * SQRT(LineProp%EA * LineProp%w)
@@ -178,23 +198,28 @@ CONTAINS
          Line%dl_1 = 0.0_DbKi
       end if
 
+      ! allocate node accelerations if needed for VIV or output
+      if (Line%store_rdd) then
+         ALLOCATE ( Line%rdd_old(3,0:N), STAT = ErrStat )
+         IF ( ErrStat /= ErrID_None ) THEN
+            ErrMsg  = ' Error allocating rdd_old array.'
+            !CALL CleanUp()
+            RETURN
+         END IF
+         Line%rdd_old = 0.0_DbKi
+      end if
+
       ! if using VIV model, allocate additional state quantities.
       if (Line%Cl > 0) then
          if (wordy > 1) print *, "Using the VIV model"
-         ! allocate old acclerations [for VIV] 
-         ALLOCATE ( Line%phi(0:N), Line%rdd_old(3,0:N), Line%yd_rms_old(0:N), Line%ydd_rms_old(0:N), STAT = ErrStat )
+         ALLOCATE ( Line%phi(0:N), Line%yd_rms_old(0:N), Line%ydd_rms_old(0:N), STAT = ErrStat )
          IF ( ErrStat /= ErrID_None ) THEN
             ErrMsg  = ' Error allocating VIV arrays.'
             !CALL CleanUp()
             RETURN
          END IF
-         ! initialize to unique values on the range 0-2pi
-         do I=0, Line%N 
-            Line%phi(I) = (REAL(I)/Line%N)*2*Pi
-         enddo
 
          ! initialize other things to 0
-         Line%rdd_old = 0.0_DbKi
          Line%yd_rms_old = 0.0_DbKi
          Line%yd_rms_old = 0.0_DbKi
       end if
@@ -238,6 +263,18 @@ CONTAINS
          !CALL CleanUp()
          RETURN
       END IF
+
+      ! allocate Syrope state variables if Syrope model is being used
+      if (Line%ElasticMod == 4) then
+         ALLOCATE ( Line%Tmax(N), Line%Tmean(N), STAT = ErrStat )
+         IF ( ErrStat /= ErrID_None ) THEN
+            ErrMsg  = ' Error allocating Syrope arrays, Tmax and Tmean.'
+            !CALL CleanUp()
+            RETURN
+         END IF
+         Line%Tmax = 0.0_DbKi
+         Line%Tmean = 0.0_DbKi
+      end if
 
       ! allocate node force vectors
       ALLOCATE ( Line%W(3, 0:N), Line%Dp(3, 0:N), Line%Dq(3, 0:N), &
@@ -298,7 +335,6 @@ CONTAINS
       REAL(DbKi), ALLOCATABLE                :: LNodesX(:)
       REAL(DbKi), ALLOCATABLE                :: LNodesZ(:)
       INTEGER(IntKi)                         :: N
-
 
       N = Line%N ! for convenience
 
@@ -373,7 +409,7 @@ CONTAINS
             Line%r(3,J) = Line%r(3,0) + (Line%r(3,N) - Line%r(3,0))*REAL(J, DbKi)/REAL(N, DbKi)
          END DO
 
-         CALL WrScr(' Vertical initial profile for Line '//trim(Num2LStr(Line%IdNum))//'.')
+         CALL WrScr('    Vertical initial profile for Line '//trim(Num2LStr(Line%IdNum))//'.')
 
       ELSE ! If the line is not vertical, solve for the catenary profile
 
@@ -394,9 +430,9 @@ CONTAINS
 
          ELSE ! if there is a problem with the catenary approach, just stretch the nodes linearly between fairlead and anchor
             ! CALL SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, ' Line_Initialize: Line '//trim(Num2LStr(Line%IdNum))//' ')
-            CALL WrScr('   Catenary solve of Line '//trim(Num2LStr(Line%IdNum))//' unsuccessful. Initializing as linear.')
+            CALL WrScr('    Catenary solve of Line '//trim(Num2LStr(Line%IdNum))//' unsuccessful. Initializing as linear.')
             IF (wordy == 1) THEN 
-               CALL WrScr('   Message from catenary solver: '//ErrMsg2)
+               CALL WrScr('    Message from catenary solver: '//ErrMsg2)
             ENDIF
 
             DO J = 0,N ! Loop through all nodes per line where the line position and tension can be output
@@ -410,6 +446,49 @@ CONTAINS
 
       ENDIF
 
+      ! If using the viscoelastic model (not Syrope), initalize the deltaL_1 to the delta L of the segment. 
+      ! This is required here to initalize the state as non-zero, which avoids an initial 
+      ! transient where the segment goes from unstretched to stretched in one time step.
+      IF (Line%ElasticMod > 1 .and. Line%ElasticMod < 4) THEN
+         DO I = 1, N
+            ! calculate current (Stretched) segment lengths and unit tangent vectors (qs) for each segment (this is used for bending calculations)
+            CALL UnitVector(Line%r(:,I-1), Line%r(:,I), Line%qs(:,I), Line%lstr(I))
+            Line%dl_1(I) = Line%lstr(I) - Line%l(I) ! delta l of the segment
+         END DO
+      ENDIF
+
+      ! If using Syrope model, initialize dl_1 to the static stretch based on the working curve and mean tension
+      IF (Line%ElasticMod == 4) THEN
+         DO I = 1, N
+            CALL UnitVector(Line%r(:,I-1), Line%r(:,I), Line%qs(:,I), Line%lstr(I))
+            CALL SetupWorkingCurve(Line, Line%Tmax(I), ErrStat2, ErrMsg2)
+            IF (ErrStat2 /= ErrID_None) THEN
+               CALL SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, '')
+               RETURN
+            END IF
+            CALL calculate1DinterpolationXY( Line%stiffys_(1:Line%nEApoints), &
+                                             Line%stiffzs_(1:Line%nEApoints), &
+                                             Line%Tmean(I), &
+                                             Line%dl_1(I), ErrStat2, ErrMsg2 )
+            Line%dl_1(I) = Line%dl_1(I) * Line%l(I)
+            IF (ErrStat2 /= ErrID_None) THEN
+               CALL SetErrStat(ErrStat2, &
+                  'The Syrope slow spring strain is not a single-valued function of mean tension for Line '// &
+                  trim(Num2LStr(Line%IdNum))//', segment '//trim(Num2LStr(I))//'. '// &
+                  'The static stiffness on the working curve should be smaller than the dynamic stiffness. '// &
+                  trim(ErrMsg2), &
+                  ErrStat, ErrMsg, '')
+               RETURN
+            END IF
+         END DO
+      END IF
+
+      ! initialize phi to unique values on the range 0-2pi if VIV model is active
+      IF (Line%Cl > 0) THEN
+         DO I=0, Line%N 
+            Line%phi(I) = (REAL(I)/Line%N)*2*Pi
+         ENDDO
+      ENDIF
 
 
       CALL CleanUp()  ! deallocate temporary arrays
@@ -560,7 +639,7 @@ CONTAINS
       IF ( ZF <  0.0 )  THEN   ! .TRUE. if the fairlead has passed below its anchor
          ZF = -ZF
          reverseFlag = .TRUE.
-         CALL WrScr(' Warning from catenary: Anchor point is above the fairlead point for Line '//trim(Num2LStr(Line%IdNum))//', consider changing.')
+         CALL WrScr('    Warning from catenary: Anchor point is above the fairlead point for Line '//trim(Num2LStr(Line%IdNum))//', consider changing.')
       ELSE 
          reverseFlag = .FALSE.
       ENDIF
@@ -1014,11 +1093,12 @@ CONTAINS
 
    
    !--------------------------------------------------------------
-   SUBROUTINE Line_SetState(Line, X, t)
+   SUBROUTINE Line_SetState(Line, X, t, m)
 
       TYPE(MD_Line),    INTENT(INOUT)  :: Line           ! the current Line object
       Real(DbKi),       INTENT(IN   )  :: X(:)           ! state vector section for this line
       Real(DbKi),       INTENT(IN   )  :: t              ! instantaneous time
+      TYPE(MD_MiscVarType), INTENT(INOUT) :: m       ! passing along all mooring objects
 
       INTEGER(IntKi)                   :: i              ! index of segments or nodes along line
       INTEGER(IntKi)                   :: J              ! index
@@ -1044,7 +1124,7 @@ CONTAINS
       end if
 
       ! if using the viv mdodel, also set the lift force phase
-      if (Line%Cl > 0 .AND. (.NOT. Line%IC_gen) .AND. t > 0) then ! not needed in IC_gen, and t=0 should be skipped to avoid setting these all to zero. Initialize as distribution on 0-2pi
+      if (Line%Cl > 0 .AND. (.NOT. m%IC_gen) .AND. t > 0) then ! not needed in IC_gen, and t=0 should be skipped to avoid setting these all to zero. Initialize as distribution on 0-2pi
          do I=0, Line%N
             if (Line%ElasticMod > 1) then ! if both additional states are included then N-1 entries after internal node states and visco segment states
                   Line%phi(I) = X( 7*Line%N-6 + I+1) - (2 * Pi * floor(X( 7*Line%N-6 + I+1) / (2*Pi))) ! Map integrated phase to 0-2Pi range. Is this necessary? sin (a-b) is the same if b is 100 pi or 2pi
@@ -1148,6 +1228,14 @@ CONTAINS
       Real(DbKi)                       :: phi_dot       ! frequency of lift force (rad/s)
       Real(DbKi)                       :: f_hat         ! non-dimensional frequency 
 
+      INTEGER(IntKi)                   :: ErrStat2
+      CHARACTER(ErrMsgLen)             :: ErrMsg2   
+      CHARACTER(120)                   :: RoutineName = 'Line_GetStateDeriv'   
+
+      Real(DbKi)                       :: dl_s           ! static stretch (both slow and fast components)
+
+      ErrStat = ErrID_None
+      ErrMsg  = ""
 
       N = Line%N                      ! for convenience
       d = Line%d    
@@ -1194,10 +1282,20 @@ CONTAINS
          CALL UnitVector(Line%r(:,N-1), Line%r(:,N), Line%q(:,N), dummyLength)
       end if
       
-      ! apply wave kinematics (if there are any) 
-      DO i=0,N
-         CALL getWaterKin(p, Line%r(1,i), Line%r(2,i), Line%r(3,i), Line%time, m%WaveTi, Line%U(:,i), Line%Ud(:,i), Line%zeta(i), Line%PDyn(i))
-      END DO
+      ! apply wave kinematics (if there are any)
+      ! For SeaState (WaterKin==3), skip during IC_gen (otherwise will never find steady state because of waves)
+      ! and skip if inside a coupling timestep (because external kinematics do not change between coupling steps)
+      if (p%WaterKin == 3 .and. (m%IC_gen .or. &
+         (abs(MOD(Line%time - 0.5*p%dtCoupling, p%dtCoupling) - 0.5*p%dtCoupling) >= 0.5*p%dtM0) .and. Line%time > 0.0_DbKi)) then
+         ! retain existing kinematics values
+         ! This does introduce some error, as the interpolation location does not track the motion exactly. But the change between 
+         ! coupling steps should be small enough that the error is negligible. 
+      else
+         DO i=0,N
+            CALL getWaterKin(p, m, Line%r(1,i), Line%r(2,i), Line%r(3,i), Line%time, Line%U(:,i), Line%Ud(:,i), Line%zeta(i), Line%PDyn(i), ErrStat2, ErrMsg2)
+            CALL SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,RoutineName)
+         END DO
+      end if
       
       ! --------- calculate line partial submergence (Line::calcSubSeg from MD-C) ---------
       DO i=1,N
@@ -1322,8 +1420,8 @@ CONTAINS
          
          
          ! >>>> could do similar as above for nonlinear damping or bending stiffness <<<<         
-         if (Line%nBApoints > 0) print *, 'Nonlinear elastic damping not yet implemented'
-         if (Line%nEIpoints > 0) print *, 'Nonlinear bending stiffness not yet implemented'
+         if (Line%nBApoints > 0) CALL SetErrStat(ErrID_Warn,'Nonlinear elastic damping not yet implemented',ErrStat,ErrMsg,RoutineName)
+         if (Line%nEIpoints > 0) CALL SetErrStat(ErrID_Warn,'Nonlinear bending stiffness not yet implemented',ErrStat,ErrMsg,RoutineName)
             
             
          ! basic elasticity model
@@ -1339,7 +1437,7 @@ CONTAINS
             MagTd = Line%BA* ( Line%lstrd(I) -  Line%lstr(I)*Line%ld(I)/Line%l(I) )/Line%l(I)
          
          ! viscoelastic model from https://asmedigitalcollection.asme.org/OMAE/proceedings/IOWTC2023/87578/V001T01A029/1195018 
-         else if (Line%ElasticMod > 1) then
+         else if (Line%ElasticMod > 1 .and. Line%ElasticMod < 4) then
 
             if (Line%ElasticMod == 3) then
                if (Line%dl_1(I) > 0.0) then
@@ -1348,8 +1446,7 @@ CONTAINS
                   
                   ! Double check none of the assumptions were violated (this should never happen)
                   IF (Line%alphaMBL <= 0 .OR. Line%vbeta <= 0 .OR. Line%l(I) <= 0 .OR. Line%dl_1(I) <= 0 .OR. EA_D < Line%EA) THEN
-                     ErrStat = ErrID_Warn
-                     ErrMsg = "Viscoelastic model: Assumption for mean laod dependent dynamic stiffness violated"
+                     CALL SetErrStat(ErrID_Warn,"Viscoelastic model: Assumption for mean load dependent dynamic stiffness violated",ErrStat,ErrMsg,RoutineName)
                      if (wordy > 2) then
                         print *, "Line%alphaMBL", Line%alphaMBL
                         print *, "Line%vbeta", Line%vbeta
@@ -1370,12 +1467,10 @@ CONTAINS
             endif
 
             if (EA_D == 0.0) then ! Make sure EA != EA_D or else nans, also make sure EA_D != 0  or else nans. 
-               ErrStat = ErrID_Fatal
-               ErrMsg = "Viscoelastic model: Dynamic stiffness cannot equal zero"
+               CALL SetErrStat(ErrID_Fatal,"Viscoelastic model: Dynamic stiffness cannot equal zero",ErrStat,ErrMsg,RoutineName)
                return
             else if (EA_D == Line%EA) then
-               ErrStat = ErrID_Fatal
-               ErrMsg = "Viscoelastic model: Dynamic stiffness cannot equal static stiffness"
+               CALL SetErrStat(ErrID_Fatal,"Viscoelastic model: Dynamic stiffness cannot equal static stiffness",ErrStat,ErrMsg,RoutineName)
                return
             endif
          
@@ -1396,6 +1491,101 @@ CONTAINS
             ! update state derivative for static stiffness stretch (last N entries in the line state vector if no VIV model, otherwise N entries past the 6*N-6 entries in this vector)
             Xd( 6*N-6 + I) = ld_1
          
+         else if (Line%ElasticMod == 4) then
+
+            if (Line%dl_1(I) < 0.0) then
+               CALL SetErrStat(ErrID_Fatal,"Syrope model: Slow spring stretch cannot be less than zero",ErrStat,ErrMsg,RoutineName)
+               return
+            end if
+
+            IF (Line%alphaMBL <= 0 .OR. Line%vbeta <= 0 .OR. Line%l(I) <= 0 .OR. Line%dl_1(I) <= 0) THEN
+               CALL SetErrStat(ErrID_Warn,"Syrope model: Assumptions violated",ErrStat,ErrMsg,RoutineName)
+               if (wordy > 2) then
+                  print *, "Line%alphaMBL", Line%alphaMBL
+                  print *, "Line%vbeta", Line%vbeta
+                  print *, "Line%l(I)", Line%l(I)
+                  print *, "Line%dl_1(I)", Line%dl_1(I)
+               endif
+            ENDIF
+            
+            dl = Line%lstr(I) - Line%l(I) ! delta l of this segment
+
+            if (EqualRealNos(Line%Tmax(I), Line%Tmean(I))) then
+               ! on the original working curve
+               CALL calculate1DinterpolationXY( Line%stiffZs(1:Line%nEApoints), &
+                                                Line%stiffYs(1:Line%nEApoints), &
+                                                Line%dl_1(I) / Line%l(I), &
+                                                Line%Tmean(I), ErrStat2, ErrMsg2 )
+               IF (ErrStat2 /= ErrID_None) THEN
+                  CALL SetErrStat(ErrStat2, &
+                     'The Syrope mean tension is not a single-valued function of slow spring strain for Line '// &
+                     trim(Num2LStr(Line%IdNum))//', segment '//trim(Num2LStr(I))//'. '// &
+                     'The static stiffness on the original working curve is smaller than the dynamic stiffness. '// &
+                     trim(ErrMsg2), &
+                     ErrStat, ErrMsg, '')
+                  RETURN
+               END IF
+
+               if (dl >= 0.0) then
+                  MagT = Line%Tmean(I)
+               else
+                  MagT = 0.0_DbKi ! cable can't "push"
+               endif
+
+               CALL calculate1DinterpolationXY( Line%stiffYs(1:Line%nEApoints), &
+                                                Line%stiffXs(1:Line%nEApoints), &
+                                                Line%Tmean(I), &
+                                                dl_s, ErrStat2, ErrMsg2 )
+               IF (ErrStat2 /= ErrID_None) THEN
+                  CALL SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, '')
+                  RETURN
+               END IF
+            else
+               ! on the active working curve
+               CALL calculate1DinterpolationXY( Line%stiffzs_(1:Line%nEApoints), &
+                                                Line%stiffys_(1:Line%nEApoints), &
+                                                Line%dl_1(I) / Line%l(I), &
+                                                Line%Tmean(I), ErrStat2, ErrMsg2 )
+               IF (ErrStat2 /= ErrID_None) THEN
+                  CALL SetErrStat(ErrStat2, &
+                     'The Syrope slow spring strain is not a single-valued function of mean tension for Line '// &
+                     trim(Num2LStr(Line%IdNum))//', segment '//trim(Num2LStr(I))//'. '// &
+                     'The static stiffness on the working curve is smaller than the dynamic stiffness. '// &
+                     trim(ErrMsg2), &
+                     ErrStat, ErrMsg, '')
+                  RETURN
+               END IF
+
+               if (dl >= 0.0) then
+                  MagT = Line%Tmean(I)
+               else
+                  MagT = 0.0_DbKi ! cable can't "push"
+               endif
+
+               CALL calculate1DinterpolationXY( Line%stiffys_(1:Line%nEApoints), &
+                                                Line%stiffxs_(1:Line%nEApoints), &
+                                                Line%Tmean(I), &
+                                                dl_s, ErrStat2, ErrMsg2 )
+               IF (ErrStat2 /= ErrID_None) THEN
+                  CALL SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, '')
+                  RETURN
+               END IF
+            endif
+
+            ld_1 = ((dl - dl_s * Line%l(I)) * (Line%alphaMBL + Line%vbeta * Line%Tmean(I)) + Line%BA_D * Line%lstrd(I)) / (Line%BA_D + Line%BA)
+            MagTd = Line%BA * ld_1 / Line%l(I)
+            Xd( 6*N-6 + I) = ld_1
+
+            ! update Tmax and working curve if Tmean > Tmax
+            if (Line%Tmean(I) > Line%Tmax(I)) then
+               Line%Tmax(I) = Line%Tmean(I)
+               CALL SetupWorkingCurve(Line, Line%Tmax(I), ErrStat2, ErrMsg2)
+               IF (ErrStat2 /= ErrID_None) THEN
+                  CALL SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, '')
+                  RETURN
+               END IF
+            end if
+
          end if
 
          
@@ -1535,8 +1725,13 @@ CONTAINS
 
          ! Vortex Induced Vibration (VIV) cross-flow lift force
          Line%Lf(:,I) = 0.0_DbKi ! Zero lift force
-         IF ((Line%Cl > 0.0) .AND. (.NOT. Line%IC_gen)) THEN ! If non-zero lift coefficient and not during IC_gen ! Ignore the following: and internal node then VIV to be calculated .AND. (I /= 0) .AND. (I /= N)
+         IF ((Line%Cl > 0.0) .AND. (.NOT. m%IC_gen)) THEN ! If non-zero lift coefficient and not during IC_gen 
    
+            ! Note: This logic is slightly different than MD-C, but equivalent. MD-C runs the VIV model for only the internal 
+            ! nodes. That means in MD-F the state vector has N+1 extra states when using the VIV model while the MD-C state 
+            ! matrix can keep N-1 rows. That approach means in the future if we can get the end node accelerations, we can 
+            ! easily add those into the VIV model. MD-C does not do that, and only computes the lift force for internal nodes. 
+
             ! ----- The Synchronization Model ------
             ! Crossflow velocity and acceleration. rd component in the crossflow direction
       
@@ -1563,31 +1758,11 @@ CONTAINS
                Line%phi_yd = 2*Pi + Line%phi_yd ! atan2 to 0-2Pi range
             ENDIF
 
-            ! Note: amplitude calculations and states commented out. Would be needed if a Cl vs A lookup table was ever implemented
-   
-            ! const real A_int = Misc(I)[1];
-            ! const real As = Misc(I)[2];
-
             ! non-dimensional frequency
             f_hat = Line%cF + Line%dF *sin(Line%phi_yd - Line%phi(I)) ! phi is integrated from state deriv phi_dot
             ! frequency of lift force (rad/s)
             phi_dot = 2*Pi*f_hat*MagVp / d ! to be added to state
-   
-            ! ----- The rest of the model -----
-   
-            ! ! Oscillation amplitude 
-            ! const real A_int_dot = abs(yd);
-            ! ! Note: Check if this actually measures zero crossings
-            ! if ((yd * yd_old[i]) < 0) { ! if sign changed, i.e. a zero crossing
-            ! 	Amp[i] = A_int-A_int_old[i]; ! amplitude calculation since last zero crossing
-            ! 	A_int_old[i] = A_int; ! stores amplitude of previous zero crossing for finding Amp
-            ! }
-            ! ! Careful with integrating smoothed amplitude, as 0.1 was a calibarated value based on a very simple integration method
-            ! const real As_dot = (0.1/dtm)*(Amp[i]-As); ! As to be variable integrated from the state. stands for amplitude smoothed
-   
-            ! ! Lift coefficient from lookup table
-            ! const real C_l = cl_lookup(x = As/d); ! create function in Line.hpp that uses lookup table 
-   
+      
             ! The Lift force
             IF (I==0) THEN ! Disable for end nodes for now, node acceleration needed for synch model
                Line%Lf(:,0) = 0.0_DbKi
@@ -1610,8 +1785,6 @@ CONTAINS
             else ! if only VIV state, then N+1 entries after internal node states
                Xd( 6*Line%N-6 + I + 1) = phi_dot
             endif
-
-            ! Miscd(I)[2] = As_dot; ! unused state that could be used for future amplitude calculations
    
          ENDIF
 
@@ -1723,17 +1896,17 @@ CONTAINS
          DO J=1,3
 
             ! calculate RHS constant (premultiplying force vector by inverse of mass matrix  ... i.e. rhs = S*Forces)
-            Sum1 = 0.0_DbKi                               ! reset temporary accumulator <<< could turn this into a Line%a array to save and output node accelerations
+            Sum1 = 0.0_DbKi                               ! reset temporary accumulator
             DO K = 1, 3
               Sum1 = Sum1 + Line%S(K,J,I) * Line%Fnet(K,I)   ! matrix-vector multiplication [S i]{Forces i}  << double check indices
             END DO ! K
-            
+
             ! update states
             Xd(3*N-3 + 3*I-3 + J) = Line%rd(J,I);       ! dxdt = V  (velocities)
             Xd(        3*I-3 + J) = Sum1                ! dVdt = RHS * A  (accelerations)
-            
-            IF (Line%Cl > 0) THEN 
-               Line%rdd_old(J,I) = Sum1 ! saving the acceleration for VIV RMS calculation. End nodes are left at zero, VIV disabled for end nodes
+
+            IF (Line%store_rdd) THEN
+               Line%rdd_old(J,I) = Sum1 ! store node acceleration for VIV and/or output. End nodes are left at zero (VIV is disabled for end nodes).
             ENDIF
 
          END DO ! J
@@ -1744,7 +1917,7 @@ CONTAINS
       endif
 
       ! ! for checking rdd_old
-      ! if (Line%time <0.5+p%dtM0 .and. Line%time >0.5-p%dtM0 .and. .not. Line%IC_gen) then
+      ! if (Line%time <0.5+p%dtM0 .and. Line%time >0.5-p%dtM0 .and. .not. m%IC_gen) then
       !    print*, "rdd_old at t = ", Line%time
       !    DO I = 0, 4
       !       print*, "I =", I, "rdd_old =", Line%rdd_old(:,I)
@@ -2014,7 +2187,7 @@ CONTAINS
       ! check for failed where /= 0 is fatal
       logical function Failed0(txt)
          character(*), intent(in) :: txt
-         if (errStat /= 0) then
+         if (ErrStat2 /= 0) then
             ErrStat2 = ErrID_Fatal
             ErrMsg2  = "Could not allocate "//trim(txt)
             call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
@@ -2046,6 +2219,97 @@ CONTAINS
       enddo
    end subroutine VisLinesMesh_Update
 
+   SUBROUTINE SetupWorkingCurve(Line, Tmax, ErrStat, ErrMsg)
+
+      TYPE(MD_Line),   INTENT(INOUT) :: Line
+      REAL(DbKi),      INTENT(IN   ) :: Tmax      ! Maximum tension used to build the working curve
+      INTEGER(IntKi),  INTENT(  OUT) :: ErrStat
+      CHARACTER(*),    INTENT(  OUT) :: ErrMsg
+      CHARACTER(*), PARAMETER        :: RoutineName = 'SetupWorkingCurve'
+
+      INTEGER(IntKi)                  :: I
+      INTEGER(IntKi)                  :: ErrStat2
+      CHARACTER(ErrMsgLen)            :: ErrMsg2
+      REAL(DbKi)                      :: eps_max, eps_min  ! maximum and minimum strains for the working curve
+      REAL(DbKi)                      :: xi                ! normalized strain on the working curve
+      REAL(DbKi)                      :: denom
+      REAL(DbKi)                      :: log_arg
+      REAL(DbKi)                      :: exp_denom
+
+      ErrStat  = ErrID_None
+      ErrMsg   = ''
+      ErrStat2 = ErrID_None
+      ErrMsg2  = ''
+
+      ! input validation
+      IF (Tmax < Line%StiffYs(1) .OR. Tmax > Line%StiffYs(Line%nEApoints)) THEN
+         CALL SetErrStat(ErrID_Fatal, "Tmax is outside the working curve range.", ErrStat, ErrMsg, RoutineName)
+         RETURN
+      END IF
+
+      ! eps_max is computed from Tmax and the original working curve
+      CALL calculate1DinterpolationXY( Line%StiffYs(1:Line%nEApoints), &
+                                       Line%StiffXs(1:Line%nEApoints), &
+                                       Tmax, eps_max, ErrStat2, ErrMsg2 )
+      IF (ErrStat2 /= ErrID_None) THEN
+         CALL SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+         RETURN
+      END IF
+
+      ! eps_min is the strain at zero tension
+      eps_min = Line%StiffXs(1) + Line%syropeWCK1 * (eps_max - Line%StiffXs(1))
+
+      ! for linear working curve formula, if Line%syropeWCK1 > 1, treat it as slope/stiffness of the working curve
+      ! in general, this value is much larger than 1
+      IF (Line%syropeWCForm == 1 .AND. Line%syropeWCK1 >= 1.0_DbKi) THEN
+         eps_min = eps_max - Tmax / Line%syropeWCK1
+      END IF
+
+      ! make sure eps_min is less than eps_max and larger than zero
+      IF (eps_min < 0.0_DbKi .OR. eps_min >= eps_max) THEN
+         CALL SetErrStat(ErrID_Fatal, "Invalid working curve parameters: the zero tension strain on the working curve is out of range.", ErrStat, ErrMsg, RoutineName)
+         RETURN
+      END IF
+
+      denom = eps_max - eps_min
+      IF (ABS(denom) <= TINY(1.0_DbKi)) THEN
+         CALL SetErrStat(ErrID_Fatal, &
+            "Vertical Syrope working curve detected.", &
+            ErrStat, ErrMsg, RoutineName)
+         RETURN
+      END IF
+
+      DO I = 1, Line%nEApoints
+         Line%Stiffxs_(I) = eps_min + denom * REAL(I - 1, DbKi) / REAL(Line%nEApoints - 1, DbKi)
+         xi = (Line%Stiffxs_(I) - eps_min) / denom   ! normalized strain
+
+         IF (Line%syropeWCForm == 1) THEN            ! linear working curve
+            Line%Stiffys_(I) = Tmax * xi
+
+         ELSE IF (Line%syropeWCForm == 2) THEN       ! quadratic working curve
+            Line%Stiffys_(I) = Tmax * xi * (Line%syropeWCK2 * xi + (1.0_DbKi - Line%syropeWCK2))
+
+         ELSE IF (Line%syropeWCForm == 3) THEN       ! exponential working curve
+            exp_denom = 1.0_DbKi - EXP(Line%syropeWCK2)
+            Line%Stiffys_(I) = Tmax * (1.0_DbKi - EXP(Line%syropeWCK2 * xi)) / exp_denom
+
+         ELSE
+            CALL SetErrStat(ErrID_Fatal, "Invalid working curve formula specified.", ErrStat, ErrMsg, RoutineName)
+            RETURN
+         END IF
+
+         log_arg = 1.0_DbKi + (Line%vbeta / Line%alphaMBL) * Line%Stiffys_(I)
+         IF (log_arg <= 0.0_DbKi) THEN
+            CALL SetErrStat(ErrID_Fatal, &
+               "Non-positive argument in log() when setting working curve in Syrope model.", &
+               ErrStat, ErrMsg, RoutineName)
+            RETURN
+         END IF
+
+         Line%Stiffzs_(I) = Line%Stiffxs_(I) - (1.0_DbKi / Line%vbeta) * LOG(log_arg)
+      END DO
+
+   END SUBROUTINE SetupWorkingCurve
 
 
 END MODULE MoorDyn_Line

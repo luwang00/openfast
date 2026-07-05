@@ -1799,19 +1799,12 @@ END SUBROUTINE CheckR8Var
    END SUBROUTINE FindLine
 !=======================================================================
 !> This routine returns the next unit number greater than 9 that is not currently in use.
-!! If it cannot find any unit between 10 and 99 that is available, it either aborts or returns an appropriate error status/message.   
+!! If it cannot find any unit between 10 and 2^16-1 that is available, it either aborts or returns an appropriate error status/message.   
    SUBROUTINE GetNewUnit ( UnIn, ErrStat, ErrMsg )
-
-
-
-      ! Argument declarations.
 
    INTEGER,        INTENT(OUT)            :: UnIn                                         !< Logical unit for the file.
    INTEGER(IntKi), INTENT(OUT), OPTIONAL  :: ErrStat                                      !< The error status code; If not present code aborts
    CHARACTER(*),   INTENT(OUT), OPTIONAL  :: ErrMsg                                       !< The error message, if an error occurred
-
-
-      ! Local declarations.
 
    INTEGER                                :: Un                                           ! Unit number
    LOGICAL                                :: Opened                                       ! Flag indicating whether or not a file is opened.
@@ -1820,48 +1813,30 @@ END SUBROUTINE CheckR8Var
    !     macos -- 256  (change with ulimit -n)
    !     linux -- 1024 (change with ulimit -n)
    !     windows -- 512 (not sure how to change -- ADP)
-   INTEGER(IntKi), PARAMETER              :: MaxUnit   = 1024                             ! The maximum unit number available (or 10 less than the number of files you want to have open at a time)
+   INTEGER(IntKi), PARAMETER              :: MaxUnit   = 65535                            ! The maximum unit number available (or 10 less than the number of files you want to have open at a time)
    CHARACTER(ErrMsgLen)                   :: Msg                                          ! Temporary error message
 
+   ! See if unit is connected to an open file. Check the next largest number until it is not opened.
+   do Un = StartUnit, MaxUnit
+      UnIn = Un
+      inquire(unit=Un, opened=Opened)
+      if (Opened) cycle
+      if (present(ErrStat)) ErrStat = ErrID_None
+      if (present(ErrMsg))  ErrMsg  =  ''
+      return
+   end do
 
-      ! Initialize subroutine outputs
+   Msg = 'GetNewUnit() was unable to find an open file unit specifier between '//TRIM(Num2LStr(StartUnit)) &
+         //' and '//TRIM(Num2LStr(MaxUnit))//'.'
 
-   Un = StartUnit
+   UnIn = -1
+   if (present(ErrStat)) then
+      ErrStat = ErrID_Severe
+      if (present(ErrMsg)) ErrMsg = Msg
+   else
+      call ProgAbort(Msg)
+   end if
 
-   IF ( PRESENT( ErrStat ) ) ErrStat = ErrID_None
-   IF ( PRESENT( ErrMsg  ) ) ErrMsg  =  ''
-
-      ! See if unit is connected to an open file. Check the next largest number until it is not opened.
-
-   DO
-
-      INQUIRE ( UNIT=Un , OPENED=Opened )
-
-      IF ( .NOT. Opened )  EXIT
-      Un = Un + 1
-
-      IF ( Un > MaxUnit ) THEN
-
-         Msg = 'GetNewUnit() was unable to find an open file unit specifier between '//TRIM(Num2LStr(StartUnit)) &
-                                                                            //' and '//TRIM(Num2LStr(MaxUnit))//'.'
-
-         IF ( PRESENT( ErrStat ) ) THEN
-            ErrStat = ErrID_Severe
-            IF ( PRESENT( ErrMsg) ) ErrMsg  =  Msg
-         ELSE
-            CALL ProgAbort( Msg )
-         END IF
-
-         EXIT           ! stop searching now
-
-      END IF
-
-
-   END DO
-
-   UnIn = Un
-
-   RETURN
    END SUBROUTINE GetNewUnit
 !=======================================================================
 !> This function returns a text description of the ErrID (ErrStat) code.
@@ -2379,6 +2354,8 @@ END SUBROUTINE CheckR8Var
                      //TRIM( DefaultInputFile )//'".' )
       END IF
       CALL WrScr    ( NewLine//' Note: values enclosed in square brackets [] are optional. Do not enter the brackets.')      
+      CALL WrScr    ( NewLine//' For more information and documentation, visit:' )
+      CALL WrScr    ( '    https://openfast.readthedocs.io/' )
       CALL WrScr    ( ' ')
                      
    END SUBROUTINE NWTC_DisplaySyntax
@@ -2423,8 +2400,9 @@ END SUBROUTINE CheckR8Var
    OPEN( Un, FILE=TRIM( InFile ), STATUS='OLD', FORM='UNFORMATTED', ACCESS='STREAM', IOSTAT=ErrStat, ACTION='READ' )
 
    IF ( ErrStat /= 0 ) THEN
+      ErrMsg  = 'OpenBInpFile:Cannot open file "'//TRIM( InFile )//'" for reading. Another program may have locked it.' &
+                //' (IOSTAT is '//TRIM(Num2LStr(ErrStat))//')'
       ErrStat = ErrID_Fatal
-      ErrMsg  = 'OpenBInpFile:Cannot open file "'//TRIM( InFile )//'" for reading. Another program may have locked it.'
    ELSE
       ErrStat = ErrID_None
       ErrMsg  = ''
@@ -2452,9 +2430,9 @@ END SUBROUTINE CheckR8Var
    OPEN( Un, FILE=TRIM( OutFile ), STATUS='UNKNOWN', FORM='UNFORMATTED' , ACCESS='STREAM', IOSTAT=ErrStat, ACTION='WRITE' )
 
    IF ( ErrStat /= 0 ) THEN
-      ErrStat = ErrID_Fatal
       ErrMsg  = 'OpenBOutFile:Cannot open file "'//TRIM( OutFile )//'". Another program may have locked it for writing.' &
                 //' (IOSTAT is '//TRIM(Num2LStr(ErrStat))//')'
+      ErrStat = ErrID_Fatal
    ELSE
       ErrStat = ErrID_None
       ErrMsg  = ''
@@ -3063,7 +3041,7 @@ END SUBROUTINE CheckR8Var
 !!
 !! WARNING: This routine assumes the "words" containing the variable name and value are <= 20 characters.
 !! Use ParseVarWDefault (nwtc_io::parsevarwdefault) instead of directly calling a specific routine in the generic interface.   
-   SUBROUTINE ParseChVarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEc )
+   SUBROUTINE ParseChVarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEcIn )
 
          ! Arguments declarations.
 
@@ -3071,7 +3049,7 @@ END SUBROUTINE CheckR8Var
       INTEGER(IntKi), INTENT(OUT)            :: ErrStat                       !< The error status.
       INTEGER(IntKi), INTENT(INOUT)          :: LineNum                       !< The number of the line to parse.
 
-      INTEGER,        INTENT(IN), OPTIONAL   :: UnEc                          !< I/O unit for echo file. If present and > 0, write to UnEc.
+      INTEGER,        INTENT(IN), OPTIONAL   :: UnEcIn                          ! I/O unit for echo file. If present and > 0, write to UnEc.
 
       CHARACTER(*),   INTENT(OUT)            :: Var                           !< The variable to receive the input value.
       CHARACTER(*),   INTENT(IN)             :: VarDefault                    !< The default value for the variable.
@@ -3083,6 +3061,7 @@ END SUBROUTINE CheckR8Var
 
          ! Local declarations.
 
+      INTEGER                                :: UnEc                          ! I/O unit for echo file.
       INTEGER(IntKi)                         :: ErrStatLcl                    ! Error status local to this routine.
 
       CHARACTER(ErrMsgLen)                   :: ErrMsg2
@@ -3091,6 +3070,12 @@ END SUBROUTINE CheckR8Var
       
       ErrStat=ErrID_None
       ErrMsg = ""
+      
+      if (PRESENT(UnEcIn)) then
+         UnEc = UnEcIn
+      else
+         UnEc = 0
+      end if
 
          ! First parse this as a string
       CALL ParseVar ( FileInfo, LineNum, ExpVarName, defaultStr, ErrStatLcl, ErrMsg2, UnEc )
@@ -3243,7 +3228,7 @@ END SUBROUTINE CheckR8Var
    END SUBROUTINE ParseR8Var
 !=======================================================================
 !> \copydoc nwtc_io::parsechvarwdefault
-   SUBROUTINE ParseR8VarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEc )
+   SUBROUTINE ParseR8VarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEcIn )
 
          ! Arguments declarations.
 
@@ -3251,7 +3236,7 @@ END SUBROUTINE CheckR8Var
       INTEGER(IntKi), INTENT(OUT)            :: ErrStat                       ! The error status.
       INTEGER(IntKi), INTENT(INOUT)          :: LineNum                       ! The number of the line to parse.
 
-      INTEGER,        INTENT(IN), OPTIONAL   :: UnEc                          ! I/O unit for echo file. If present and > 0, write to UnEc.
+      INTEGER,        INTENT(IN), OPTIONAL   :: UnEcIn                          ! I/O unit for echo file. If present and > 0, write to UnEc.
 
       REAL(R8Ki), INTENT(OUT)                :: Var                           ! The double-precision REAL variable to receive the input value.
       REAL(R8Ki),     INTENT(IN)             :: VarDefault                    ! The double-precision REAL used as the default.
@@ -3263,6 +3248,7 @@ END SUBROUTINE CheckR8Var
 
          ! Local declarations.
 
+      INTEGER                                :: UnEc                          ! I/O unit for echo file.
       INTEGER(IntKi)                         :: ErrStatLcl                    ! Error status local to this routine.
 
       CHARACTER(ErrMsgLen)                   :: ErrMsg2
@@ -3272,6 +3258,12 @@ END SUBROUTINE CheckR8Var
       ErrStat=ErrID_None
       ErrMsg = ""
 
+      if (PRESENT(UnEcIn)) then
+         UnEc = UnEcIn
+      else
+         UnEc = 0
+      end if
+      
          ! First parse this as a string
       CALL ParseVar ( FileInfo, LineNum, ExpVarName, defaultStr, ErrStatLcl, ErrMsg2, UnEc )
          CALL SetErrStat(ErrStatLcl, ErrMsg2, ErrStat, ErrMsg, RoutineName )
@@ -3540,7 +3532,7 @@ END SUBROUTINE CheckR8Var
    END SUBROUTINE ParseInVar
 !=======================================================================
 !> \copydoc nwtc_io::parsechvarwdefault
-   SUBROUTINE ParseInVarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEc )
+   SUBROUTINE ParseInVarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEcIn )
 
       ! This subroutine parses the specified line of text for two words.  One should be a
       ! the name of a integer variable and the other an integer value.
@@ -3555,7 +3547,7 @@ END SUBROUTINE CheckR8Var
       INTEGER(IntKi), INTENT(OUT)            :: ErrStat                       ! The error status.
       INTEGER(IntKi), INTENT(INOUT)          :: LineNum                       ! The number of the line to parse.
 
-      INTEGER,        INTENT(IN), OPTIONAL   :: UnEc                          ! I/O unit for echo file. If present and > 0, write to UnEc.
+      INTEGER,        INTENT(IN), OPTIONAL   :: UnEcIn                          ! I/O unit for echo file. If present and > 0, write to UnEc.
 
       INTEGER(IntKi), INTENT(OUT)            :: Var                           ! The INTEGER variable to receive the input value.
       INTEGER(IntKi),   INTENT(IN)           :: VarDefault                    ! The INTEGER used as the default.
@@ -3567,6 +3559,7 @@ END SUBROUTINE CheckR8Var
 
          ! Local declarations.
 
+      INTEGER                                :: UnEc                          ! I/O unit for echo file.
       INTEGER(IntKi)                         :: ErrStatLcl                    ! Error status local to this routine.
 
       CHARACTER(ErrMsgLen)                   :: ErrMsg2
@@ -3575,6 +3568,12 @@ END SUBROUTINE CheckR8Var
       
       ErrStat=ErrID_None
       ErrMsg = ""
+      
+      if (PRESENT(UnEcIn)) then
+         UnEc = UnEcIn
+      else
+         UnEc = 0
+      end if
 
          ! First parse this as a string
       CALL ParseVar ( FileInfo, LineNum, ExpVarName, defaultStr, ErrStatLcl, ErrMsg2, UnEc )
@@ -3727,7 +3726,7 @@ END SUBROUTINE CheckR8Var
    END SUBROUTINE ParseLoVar
 !=======================================================================
 !> \copydoc nwtc_io::parsechvarwdefault
-   SUBROUTINE ParseLoVarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEc )
+   SUBROUTINE ParseLoVarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEcIn )
 
          ! Arguments declarations.
 
@@ -3735,7 +3734,7 @@ END SUBROUTINE CheckR8Var
       INTEGER(IntKi), INTENT(OUT)            :: ErrStat                       ! The error status.
       INTEGER(IntKi), INTENT(INOUT)          :: LineNum                       ! The number of the line to parse.
 
-      INTEGER,        INTENT(IN), OPTIONAL   :: UnEc                          ! I/O unit for echo file. If present and > 0, write to UnEc.
+      INTEGER,        INTENT(IN), OPTIONAL   :: UnEcIn                          ! I/O unit for echo file. If present and > 0, write to UnEc.
 
       LOGICAL, INTENT(OUT)                   :: Var                           ! The LOGICAL variable to receive the input value.
       LOGICAL,   INTENT(IN)                  :: VarDefault                    ! The LOGICAL used as the default.
@@ -3747,6 +3746,7 @@ END SUBROUTINE CheckR8Var
 
          ! Local declarations.
 
+      INTEGER                                :: UnEc                          ! I/O unit for echo file.
       INTEGER(IntKi)                         :: ErrStatLcl                    ! Error status local to this routine.
 
       CHARACTER(ErrMsgLen)                   :: ErrMsg2
@@ -3756,6 +3756,12 @@ END SUBROUTINE CheckR8Var
       ErrStat=ErrID_None
       ErrMsg = ""
 
+      if (PRESENT(UnEcIn)) then
+         UnEc = UnEcIn
+      else
+         UnEc = 0
+      end if
+      
          ! First parse this as a string
       CALL ParseVar ( FileInfo, LineNum, ExpVarName, defaultStr, ErrStatLcl, ErrMsg2, UnEc )
          CALL SetErrStat(ErrStatLcl, ErrMsg2, ErrStat, ErrMsg, RoutineName )
@@ -3906,7 +3912,7 @@ END SUBROUTINE CheckR8Var
    END SUBROUTINE ParseSiVar
 !=======================================================================
 !> \copydoc nwtc_io::parsechvarwdefault
-   SUBROUTINE ParseSiVarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEc )
+   SUBROUTINE ParseSiVarWDefault ( FileInfo, LineNum, ExpVarName, Var, VarDefault, ErrStat, ErrMsg, UnEcIn )
 
          ! Arguments declarations.
 
@@ -3914,7 +3920,7 @@ END SUBROUTINE CheckR8Var
       INTEGER(IntKi), INTENT(OUT)            :: ErrStat                       ! The error status.
       INTEGER(IntKi), INTENT(INOUT)          :: LineNum                       ! The number of the line to parse.
 
-      INTEGER,        INTENT(IN), OPTIONAL   :: UnEc                          ! I/O unit for echo file. If present and > 0, write to UnEc.
+      INTEGER,        INTENT(IN), OPTIONAL   :: UnEcIn                          ! I/O unit for echo file. If present and > 0, write to UnEc.
 
       REAL(SiKi), INTENT(OUT)                :: Var                           ! The single-precision REAL variable to receive the input value.
       REAL(SiKi),   INTENT(IN)               :: VarDefault                    ! The single-precision REAL used as the default.
@@ -3926,6 +3932,7 @@ END SUBROUTINE CheckR8Var
 
          ! Local declarations.
 
+      INTEGER                                :: UnEc                          ! I/O unit for echo file.
       INTEGER(IntKi)                         :: ErrStatLcl                    ! Error status local to this routine.
 
       CHARACTER(ErrMsgLen)                   :: ErrMsg2
@@ -3934,6 +3941,12 @@ END SUBROUTINE CheckR8Var
       
       ErrStat=ErrID_None
       ErrMsg = ""
+      
+      if (PRESENT(UnEcIn)) then
+         UnEc = UnEcIn
+      else
+         UnEc = 0
+      end if
 
          ! First parse this as a string
       CALL ParseVar ( FileInfo, LineNum, ExpVarName, defaultStr, ErrStatLcl, ErrMsg2, UnEc )
@@ -6125,7 +6138,7 @@ subroutine ReadR4AryWDefault ( UnIn, Fil, Ary, AryLen, AryName, AryDescr, AryDef
 
    integer                                :: Ind                  ! Index into the string array.  Assumed to be one digit.
    integer                                :: IOS                  ! I/O status returned from the read statement.
-   character(30)                          :: Word(AryLen)         ! String to hold the words on the line.
+   character(30)                          :: Word                 ! String to hold the words on the line.
    character(2048)                        :: Line                 ! The contents of a line returned from ReadLine() with comment removed.
    integer                                :: LineLen              ! Length of line read in
 
@@ -6134,13 +6147,10 @@ subroutine ReadR4AryWDefault ( UnIn, Fil, Ary, AryLen, AryName, AryDescr, AryDef
       if (ErrStat >= AbortErrLev) return
 
    ! check for default
-   call GetWords(Line, Word(1), 1)
-   call Conv2UC( Word(1) )
+   call GetWords(Line, Word, 1)
+   call Conv2UC( Word )
 
-   if ( index(Word(1), "DEFAULT" ) /= 1 ) then  ! If it's not "default", read this variable; otherwise use the DEFAULT value
-
-      ! Values exist, so reread line into AryLen of words
-      call GetWords( Line, Word(AryLen), AryLen)
+   if ( index(Word, "DEFAULT" ) /= 1 ) then  ! If it's not "default", read this variable; otherwise use the DEFAULT value
 
       ! read the first AryLen numbers from the line
       read (Line,*,iostat=IOS)  ( Ary(Ind), Ind=1,AryLen )
@@ -6189,7 +6199,7 @@ subroutine ReadR8AryWDefault ( UnIn, Fil, Ary, AryLen, AryName, AryDescr, AryDef
 
    integer                                :: Ind                  ! Index into the string array.  Assumed to be one digit.
    integer                                :: IOS                  ! I/O status returned from the read statement.
-   character(30)                          :: Word(AryLen)         ! String to hold the words on the line.
+   character(30)                          :: Word                 ! String to hold the words on the line.
    character(2048)                        :: Line                 ! The contents of a line returned from ReadLine() with comment removed.
    integer                                :: LineLen              ! Length of line read in
 
@@ -6198,13 +6208,10 @@ subroutine ReadR8AryWDefault ( UnIn, Fil, Ary, AryLen, AryName, AryDescr, AryDef
       if (ErrStat >= AbortErrLev) return
 
    ! check for default
-   call GetWords(Line, Word(1), 1)
-   call Conv2UC( Word(1) )
+   call GetWords(Line, Word, 1)
+   call Conv2UC( Word )
 
-   if ( index(Word(1), "DEFAULT" ) /= 1 ) then  ! If it's not "default", read this variable; otherwise use the DEFAULT value
-
-      ! Values exist, so reread line into AryLen of words
-      call GetWords( Line, Word(AryLen), AryLen)
+   if ( index(Word, "DEFAULT" ) /= 1 ) then  ! If it's not "default", read this variable; otherwise use the DEFAULT value
 
       ! read the first AryLen numbers from the line
       read (Line,*,iostat=IOS)  ( Ary(Ind), Ind=1,AryLen )
@@ -7487,7 +7494,7 @@ end subroutine ReadR8AryWDefault
    END SUBROUTINE WrMatrix2R8
 !=======================================================================  
 !> Based on nwtc_io::wrmatrix, this routine writes a matrix to an already-open text file. It allows
-!! the user to omit rows and columns of A in the the file.
+!! the user to omit rows and columns of A in the file.
 !! Use WrPartialMatrix (nwtc_io::wrpartialmatrix) instead of directly calling a specific routine in the generic interface.
    SUBROUTINE WrPartialMatrix1R8( A, Un, ReFmt, MatName, UseCol, UseAllCols, ExtCol )
    

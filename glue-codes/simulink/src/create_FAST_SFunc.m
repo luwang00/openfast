@@ -18,7 +18,7 @@
 % - The name of the library that was generated must match the `libname` variable below
 %   and should be located in the directory specified by `libDir`.
 % - The `includeDir` variable must specify the directory that contains the following header files:
-%   "FAST_Library.h", "OpenFOAM_Types.h", "SuperController_Types.h", and "ExtLoadsDX_Types.h" 
+%   "FAST_Library.h", "OpenFOAM_Types.h", and "ExtLoadsDX_Types.h" 
 %
 % Run `mex -setup` in Matlab to configure a C compiler if you have not already done so.
 
@@ -33,23 +33,13 @@ if (ispc && built_with_visualStudio)
     libDir = '../../../build/bin';
     includeDir = '../../../modules/openfast-library/src';  % needed for visual studio builds to find "FAST_Library.h"
     outDir = libDir;
-        
-    switch computer('arch')
-        case 'win64'
-            % this is set up for files generated using the x64 configuration of vs-build
-            libName = 'OpenFAST-Simulink_x64';
-
-        case 'win32' 
-            % this is set up for files generated using the x86
-            % configuration of vs-build (win32 will work only on older versions of Matlab)
-            libName = 'OpenFAST-Simulink_Win32';
-    end
+    libName = 'OpenFAST-Simulink';
     
 else    
 %% defaults for cmake builds:
 
    fprintf( '\n----------------------------\n' );
-   fprintf( 'Do not use this script with Mac/Linux.  Follow the CMake instructions at the top of the script instead.' );
+   fprintf( 'Do not use this script with Mac/Linux.  Follow the CMake instructions at the top of this script instead.' );
    fprintf( '\n----------------------------\n' );
 
 end
@@ -67,7 +57,6 @@ if ispc () % Windows PC
         ['-L' libDir], ...
         ['-l' libName], ...
         ['-I' includeDir], ...
-        '-I../../../modules/supercontroller/src', ... % needed for visual studio builds to find "SuperController_Types.h"
         '-I../../../modules/externalinflow/src',  ... % needed for visual studio builds to find "ExternalInflow_Types.h"
         '-I../../../modules/extloads/src', ... % needed for visual studio builds to find "ExtLoadsDX_Types.h"
         '-outdir', outDir, ...

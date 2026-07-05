@@ -92,7 +92,8 @@ if not os.path.isdir(inputsDirectory):
 # create the local output directory and initialize it with input files 
 renameDict={'UA'+str(i)+'.outb':'UA'+str(i)+'_ref.outb' for i in [2,3,4,5,6,7]}
 
-rtl.copyTree(inputsDirectory, testBuildDirectory, renameDict=renameDict
+if not os.path.isdir(testBuildDirectory):
+    rtl.copyTree(inputsDirectory, testBuildDirectory, renameDict=renameDict
        , excludeExt=['.sum'])
        # , excludeExt=['.out','.outb','.sum'])
 
@@ -158,7 +159,7 @@ if len(errors)==0:
     sys.exit(0)
 else:
     print('---------- UNSTEADY AERODYNAMICS DRIVER TEST: {} --------'.format(caseName))
-    print('The following errors occured:')
+    print('The following errors occurred:')
     for e in errors:
         print(e)
     sys.exit(1)

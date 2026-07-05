@@ -272,7 +272,7 @@ SUBROUTINE SeaStOut_WriteWvKinFiles( Rootname, SeaSt_Prog, WaveField, WaveDT, X_
       y_gridPts(i+1) = -Y_HalfWidth + deltaGrid(2)*i
    end do
    do i = 0, NGrid(3)-1
-      z_gridPts(i+1) =  - ( 1.0 - cos( real((NGrid(3) - 1) - i, ReKi) * deltaGrid(3) )  ) * WaveField%GridParams%Z_Depth
+      z_gridPts(i+1) =  - ( 1.0 - cos( real((NGrid(3) - 1) - i, ReKi) * deltaGrid(3) )  ) * WaveField%GridDepth
    end do
    
    ! Write the increments from [0, NStepWave] even though for OpenFAST data, NStepWave = 0, but for arbitrary user data this may not be true.
@@ -490,7 +490,7 @@ subroutine SeaStOut_MapOutputs(  p, WaveElev, WaveElev1, WaveElev2, WaveVel, Wav
    REAL(SiKi),                         intent( in    )  :: WaveAcc(:,:)   ! Instantaneous first order elevation of incident waves at each of the NWaveElev points where the incident wave elevations can be output (meters)   
    REAL(SiKi),                         intent( in    )  :: WaveAccMCF(:,:) ! Instantaneous first order elevation of incident waves at each of the NWaveElev points where the incident wave elevations can be output (meters)   
    REAL(SiKi),                         intent( in    )  :: WaveDynP(:)    ! Instantaneous second order elevation of incident waves at each of the NWaveElev points where the incident wave elevations can be output (meters)   
-   REAL(ReKi),                         intent(   out )  :: AllOuts(MaxOutpts)
+   REAL(ReKi),                         intent(   out )  :: AllOuts(0:MaxOutpts)
    INTEGER(IntKi),                     intent(   out )  :: ErrStat        ! Error status of the operation
    CHARACTER(*),                       intent(   out )  :: ErrMsg         ! Error message if ErrStat /= ErrID_None
 
@@ -916,21 +916,16 @@ SUBROUTINE SetOutParam(OutList, p, ErrStat, ErrMsg )
 
       Indx = FindValidChannelIndx(OutList(I), ValidParamAry, p%OutParam(I)%SignM)
 
-      IF ( Indx > 0 ) THEN ! we found the channel name
-         IF ( InvalidOutput( ParamIndxAry(Indx) ) ) THEN  ! but, it isn't valid for these settings
-            p%OutParam(I)%Indx  = 0                 ! pick any valid channel (I just picked "Time=0" here because it's universal)
-            p%OutParam(I)%Units = "INVALID"
-            p%OutParam(I)%SignM = 0
-         ELSE
-            p%OutParam(I)%Indx  = ParamIndxAry(Indx)
-            p%OutParam(I)%Units = ParamUnitsAry(Indx) ! it's a valid output
-         END IF
-      ELSE ! this channel isn't valid
+      ! If channel has no index or is invalid
+      IF ( Indx <= 0 .or. InvalidOutput( ParamIndxAry(Indx) ) ) THEN
          p%OutParam(I)%Indx  = 0                    ! pick any valid channel (I just picked "Time=0" here because it's universal)
          p%OutParam(I)%Units = "INVALID"
          p%OutParam(I)%SignM = 0                    ! multiply all results by zero
-
          CALL SetErrStat(ErrID_Warn, TRIM(p%OutParam(I)%Name)//" is not an available output channel.",ErrStat,ErrMsg,RoutineName)
+      ELSE
+         ! Channel is invalid
+         p%OutParam(I)%Indx  = ParamIndxAry(Indx)
+         p%OutParam(I)%Units = ParamUnitsAry(Indx) ! it's a valid output
       END IF
 
    END DO
@@ -966,7 +961,7 @@ SUBROUTINE SeaStOut_CloseOutput ( p, ErrStat, ErrMsg )
       
 
          ! Write the summary file header
-   IF ( p%UnOutFile > -1 ) THEN   
+   IF ( p%UnOutFile > 0 ) THEN   
       ! WRITE (p%UnOutFile,'(/,A/)', IOSTAT=ErrStat)  'This output file was closed on '//CurDate()//' at '//CurTime()//'.'
    
    !-------------------------------------------------------------------------------------------------
@@ -1038,6 +1033,7 @@ SUBROUTINE SeaStOut_WrSummaryFile(InitInp, InputFileData, p, ErrStat, ErrMsg )
                                                                              p%WaveField%EffWtrDpth,                      '(m) relative to SWL'
             WRITE( UnSum, '(1X,A15,F8.2,A20,F8.2,A19/)' ) 'Grid Z_Depth : ', InputFileData%Z_Depth - p%WaveField%MSL2SWL, '(m) relative to MSL; ', &
                                                                              InputFileData%Z_Depth,                       '(m) relative to SWL'
+            WRITE( UnSum, '(1X,A50,F10.5,A4)' )            'WaveTimeShift: (applied at WaveField data access) ', p%WaveField%WaveTimeShift,' (s)'
       end if
       
       Frmt  = '(1X,ES18.4e2,2x,ES18.4e2,2x,ES18.4e2,2x,ES18.4e2)'

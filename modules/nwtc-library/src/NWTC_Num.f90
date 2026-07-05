@@ -80,7 +80,6 @@ MODULE NWTC_Num
    INTEGER, PARAMETER :: kernelType_TRIWEIGHT     = 4
    INTEGER, PARAMETER :: kernelType_TRICUBE       = 5
    INTEGER, PARAMETER :: kernelType_GAUSSIAN      = 6
-
    
       ! constants for output formats
    INTEGER, PARAMETER                        :: Output_in_Native_Units = 0
@@ -301,18 +300,24 @@ CONTAINS
       ! Local declarations:
 
    REAL(SiKi)                   :: DelAngle                                     ! The difference between OldAngle and NewAngle, rad.
-
+   integer :: n, i
 
 
       ! Add or subtract 2*Pi in order to convert NewAngle two within Pi of OldAngle:
 
-   
    DelAngle = OldAngle - NewAngle
+   
+   n = int(DelAngle / TwoPi_R4)
+   NewAngle = NewAngle + n * TwoPi_R4
+   DelAngle = OldAngle - NewAngle
+   
 
-   DO WHILE ( ABS( DelAngle ) > Pi_R4 )
+   i = 0
+   DO WHILE ( ABS( DelAngle ) > Pi_R4 .and. .not. EqualRealNos(OldAngle, NewAngle) .and. i < 10)
 
       NewAngle = NewAngle + SIGN( TwoPi_R4, DelAngle )
       DelAngle = OldAngle - NewAngle
+      i = i + 1
 
    END DO
 
@@ -331,6 +336,7 @@ CONTAINS
       ! Local declarations:
 
    REAL(R8Ki)                   :: DelAngle                                     ! The difference between OldAngle and NewAngle, rad.
+   integer :: n, i
 
 
 
@@ -339,17 +345,23 @@ CONTAINS
    
    DelAngle = OldAngle - NewAngle
 
-   DO WHILE ( ABS( DelAngle ) > Pi_R8 )
+   n = int(DelAngle / TwoPi_R8)
+   NewAngle = NewAngle + n * TwoPi_R8
+   DelAngle = OldAngle - NewAngle
+   
+   i = 0
+   DO WHILE ( ABS( DelAngle ) > Pi_R8 .and. .not. EqualRealNos(OldAngle, NewAngle) .and. i < 10)
 
       NewAngle = NewAngle + SIGN( TwoPi_R8, DelAngle )
       DelAngle = OldAngle - NewAngle
+      i = i + 1
 
    END DO
 
    RETURN
    END SUBROUTINE AddOrSub2Pi_R8
 !=======================================================================
-   FUNCTION BlendCosine( x, LowerBound, UpperBound ) RESULT(S)
+   PURE FUNCTION BlendCosine( x, LowerBound, UpperBound ) RESULT(S)
    
       REAL(ReKi), INTENT(IN) :: x            !
       REAL(ReKi), INTENT(IN) :: LowerBound   !< if x <= LowerBound, S=0 
@@ -1006,12 +1018,7 @@ CONTAINS
 !! One must call cubicsplineinit first to compute the coefficients of the cubics.
 !! This routine does not require that the XAry be regularly spaced.
 !! This version of the routine works with multiple curves that share the same X values.
-   FUNCTION CubicSplineInterpM ( X, XAry, YAry, Coef, ErrStat, ErrMsg ) RESULT( Res )
-
-      ! Function declaration.
-
-   REAL(ReKi), ALLOCATABLE      :: Res(:)                                     ! The result of this function
-
+   SUBROUTINE CubicSplineInterpM ( X, XAry, YAry, Coef, Res )
 
       ! Argument declarations:
 
@@ -1019,46 +1026,31 @@ CONTAINS
    REAL(ReKi), INTENT(IN)       :: X                                          !< The value we are trying to interpolate for
    REAL(ReKi), INTENT(IN)       :: XAry (:)                                   !< Input array of regularly spaced x values
    REAL(ReKi), INTENT(IN)       :: YAry (:,:)                                 !< Input array of y values with multiple curves
-
-   INTEGER(IntKi), INTENT(OUT)  :: ErrStat                                    !< Error status
-
-   CHARACTER(*),    INTENT(OUT) :: ErrMsg                                     !< Error message
+   REAL(ReKi), INTENT(OUT)      :: Res(:)                                     !< The result of this function
 
 
       ! Local declarations.
 
    REAL(ReKi)                   :: XOff                                       ! The distance from X to XAry(ILo).
+   REAL(ReKi)                   :: XOff2                                      ! The distance from X to XAry(ILo).
+   REAL(ReKi)                   :: XOff3                                      ! The distance from X to XAry(ILo).
 
-   INTEGER(IntKi)               :: ErrStatLcL                                 ! Local error status.
    INTEGER                      :: ILo                                        ! The index into the array for which X is just above or equal to XAry(ILo).
-   INTEGER                      :: NumCrvs                                    ! Number of curves to be interpolated.
    INTEGER                      :: NumPts                                     ! Number of points in each curve.
 
-   CHARACTER(*), PARAMETER      :: RoutineName = 'RegCubicSplineInterpM'
 
       ! How big are the arrays?
 
    NumPts  = SIZE( XAry )
-   NumCrvs = SIZE( YAry, 2 )
-
-   ALLOCATE ( Res( NumCrvs ) , STAT=ErrStatLcl )
-   IF ( ErrStatLcl /= 0 )  THEN
-      ErrStat = ErrID_Fatal
-      ErrMsg = RoutineName//':Error allocating memory for the function result array.'
-      RETURN
-   ELSE
-      ErrStat = ErrID_None
-      ErrMsg  = ""
-   ENDIF
 
 
       ! See if X is within the range of XAry.  Return the end point if it is not.
 
    IF ( X <= XAry(1) )  THEN
-      Res(:) = YAry(1,:)
+      Res = YAry(1,:)
       RETURN
    ELSEIF ( X >= XAry(NumPts) )  THEN
-      Res(:) = YAry(NumPts,:)
+      Res = YAry(NumPts,:)
       RETURN
    ENDIF ! ( X <= XAry(1) )
 
@@ -1068,12 +1060,14 @@ CONTAINS
    CALL LocateBin( X, XAry, ILo, NumPts )
 
    XOff = X - XAry(ILo)
+   XOff2 = XOff * XOff
+   XOff3 = XOff2 * XOff
 
-   Res(:) = Coef(ILo,:,0) + XOff*( Coef(ILo,:,1) + XOff*( Coef(ILo,:,2) + XOff*Coef(ILo,:,3) ) )
+   Res = Coef(ILo,:,0) + Coef(ILo,:,1)*XOff + Coef(ILo,:,2) * XOff2  + Coef(ILo,:,3)*XOff3
 
    RETURN
 
-   END FUNCTION CubicSplineInterpM ! ( X, XAry, YAry, Coef, ErrStat, ErrMsg )
+   END SUBROUTINE CubicSplineInterpM
 !=======================================================================         
 !> This function returns the matrix exponential, \f$\Lambda = \exp(\lambda)\f$, of an input skew-symmetric matrix, \f$\lambda\f$.
 !!
@@ -1263,29 +1257,21 @@ CONTAINS
 !!   
 !! This routine is the inverse of DCM_exp (nwtc_num::dcm_exp). \n
 !! Use DCM_logMap (nwtc_num::dcm_logmap) instead of directly calling a specific routine in the generic interface. 
-   SUBROUTINE DCM_logMapD(DCM, logMap, ErrStat, ErrMsg, thetaOut)
+   SUBROUTINE DCM_logMapD(DCM, logMap, thetaOut)
    
-   REAL(DbKi),         INTENT(IN)    :: DCM(3,3)                  !< the direction cosine matrix, \f$\Lambda\f$             
-   REAL(DbKi),         INTENT(  OUT) :: logMap(3)                 !< vector containing \f$\lambda_1\f$, \f$\lambda_2\f$, and \f$\lambda_3\f$, the unique components of skew-symmetric matrix \f$\lambda\f$ 
-   REAL(DbKi),OPTIONAL,INTENT(  OUT) :: thetaOut                  !< the angle of rotation, \f$\theta\f$; output only for debugging
-   INTEGER(IntKi),     INTENT(  OUT) :: ErrStat                   !< Error status of the operation
-   CHARACTER(*),       INTENT(  OUT) :: ErrMsg                    !< Error message if ErrStat /= ErrID_None
+   REAL(R8Ki),         INTENT(IN)    :: DCM(3,3)                  !< the direction cosine matrix, \f$\Lambda\f$             
+   REAL(R8Ki),         INTENT(  OUT) :: logMap(3)                 !< vector containing \f$\lambda_1\f$, \f$\lambda_2\f$, and \f$\lambda_3\f$, the unique components of skew-symmetric matrix \f$\lambda\f$ 
+   REAL(R8Ki),OPTIONAL,INTENT(  OUT) :: thetaOut                  !< the angle of rotation, \f$\theta\f$; output only for debugging
    
-      ! local variables
-   REAL(DbKi)                        :: theta
-   REAL(DbKi)                        :: cosTheta
-   REAL(DbKi)                        :: TwoSinTheta
-   REAL(DbKi)                        :: v(3)
-   REAL(DbKi)                        :: divisor
-   INTEGER(IntKi)                    :: indx_max
-      
-         ! initialization
-      ErrStat = ErrID_None
-      ErrMsg  = ""   
+   REAL(R8Ki)                        :: theta
+   REAL(R8Ki)                        :: cosTheta
+   REAL(R8Ki)                        :: TwoSinTheta
+   REAL(R8Ki)                        :: v(3)
+   REAL(R8Ki)                        :: divisor
+   INTEGER(IntKi)                    :: indx_max  
    
-   
-      cosTheta = 0.5_DbKi*( trace(DCM) - 1.0_DbKi )
-      cosTheta = min( max(cosTheta,-1.0_DbKi), 1.0_DbKi ) !make sure it's in a valid range (to avoid cases where this is slightly outside the +/-1 range)
+      cosTheta = 0.5_DbKi*( trace(DCM) - 1.0_R8Ki )
+      cosTheta = min( max(cosTheta,-1.0_R8Ki), 1.0_R8Ki ) !make sure it's in a valid range (to avoid cases where this is slightly outside the +/-1 range)
       theta    = ACOS( cosTheta )                                                   ! Eq. 25 ( 0<=theta<=pi )
 
       IF ( PRESENT( thetaOut ) ) THEN
@@ -1341,13 +1327,13 @@ CONTAINS
          v(3) = -DCM(2,1) + DCM(1,2) !-skewSym(2,1) = 2*sin(theta)/theta * lambda(3) = (small positive value with theta near pi) * lambda(3)
          
          indx_max = maxloc( abs(v), 1 )  ! find component with largest magnitude
-         if ( .not. EqualRealNos( sign(1.0_DbKi,v(indx_max)), sign(1.0_DbKi,logMap(indx_max)) )) logMap = -logMap
+         if ( .not. EqualRealNos( sign(1.0_R8Ki,v(indx_max)), sign(1.0_R8Ki,logMap(indx_max)) )) logMap = -logMap
          
       ELSE
          
-         TwoSinTheta = 2.0_DbKi*sin(theta)
+         TwoSinTheta = 2.0_R8Ki*sin(theta)
          
-         IF ( EqualRealNos(0.0_DbKi, theta) .or. EqualRealNos( 0.0_DbKi, TwoSinTheta ) ) THEN
+         IF ( EqualRealNos(0.0_R8Ki, theta) .or. EqualRealNos( 0.0_DbKi, TwoSinTheta ) ) THEN
          
             !skewSym = DCM - TRANSPOSE(DCM)
             !
@@ -1377,28 +1363,20 @@ CONTAINS
    END SUBROUTINE DCM_logMapD
 !=======================================================================
 !> \copydoc nwtc_num::dcm_logmapd
-   SUBROUTINE DCM_logMapR(DCM, logMap, ErrStat, ErrMsg, thetaOut)
+   SUBROUTINE DCM_logMapR(DCM, logMap, thetaOut)
    
       ! This function computes the logarithmic map for a direction cosine matrix.
    
    REAL(SiKi),         INTENT(IN)    :: DCM(3,3)
    REAL(SiKi),         INTENT(  OUT) :: logMap(3)
    REAL(SiKi),OPTIONAL,INTENT(  OUT) :: thetaOut
-   INTEGER(IntKi),     INTENT(  OUT) :: ErrStat                   ! Error status of the operation
-   CHARACTER(*),       INTENT(  OUT) :: ErrMsg                    ! Error message if ErrStat /= ErrID_None
    
-      ! local variables
    REAL(SiKi)                        :: cosTheta
    REAL(SiKi)                        :: theta
    REAL(SiKi)                        :: TwoSinTheta
    REAL(SiKi)                        :: v(3)
    REAL(SiKi)                        :: divisor
    INTEGER(IntKi)                    :: indx_max
-      
-         ! initialization
-      ErrStat = ErrID_None
-      ErrMsg  = ""   
-   
    
       cosTheta  = 0.5_SiKi*( trace(DCM) - 1.0_SiKi )
       cosTheta  = min( max(cosTheta,-1.0_SiKi), 1.0_SiKi ) !make sure it's in a valid range (to avoid cases where this is slightly outside the +/-1 range)
@@ -1490,13 +1468,13 @@ CONTAINS
 !! Use DCM_SetLogMapForInterp (nwtc_num::dcm_setlogmapforinterp) instead of directly calling a specific routine in the generic interface. 
    SUBROUTINE DCM_SetLogMapForInterpD( tensor )
          
-   REAL(DbKi),     INTENT(INOUT) :: tensor(:,:)       !< a 3xn matrix, whose columns represent individual skew-symmmetric matrices. On exit,
+   REAL(R8Ki),     INTENT(INOUT) :: tensor(:,:)       !< a 3xn matrix, whose columns represent individual skew-symmetric matrices. On exit,
                                                       !! each column will be within \f$2\pi\f$ of the previous column, allowing for interpolation 
                                                       !! of the quantities.
 
-   REAL(DbKi)                    :: diff1, diff2      ! magnitude-squared of difference between two adjacent values
-   REAL(DbKi)                    :: temp(3), temp1(3) ! difference between two tensors
-   REAL(DbKi)                    :: period(3)         ! the period to add to the rotational parameters
+   REAL(R8Ki)                    :: diff1, diff2      ! magnitude-squared of difference between two adjacent values
+   REAL(R8Ki)                    :: temp(3), temp1(3) ! difference between two tensors
+   REAL(R8Ki)                    :: period(3)         ! the period to add to the rotational parameters
    INTEGER(IntKi)                :: nc                ! size of the tensors matrix
    INTEGER(IntKi)                :: ic                ! loop counters for each array dimension
    
@@ -1632,7 +1610,7 @@ CONTAINS
 !!
 !! Note that the numbers are added together in this routine, so overflow can result if comparing two "huge" numbers. \n
 !! Use EqualRealNos (nwtc_num::equalrealnos) instead of directly calling a specific routine in the generic interface. 
-   FUNCTION EqualRealNos4 ( ReNum1, ReNum2 )
+   PURE FUNCTION EqualRealNos4 ( ReNum1, ReNum2 )
 
       ! passed variables
 
@@ -1666,7 +1644,7 @@ CONTAINS
    END FUNCTION EqualRealNos4
 !=======================================================================
 !> \copydoc nwtc_num::equalrealnos4
-   FUNCTION EqualRealNos8 ( ReNum1, ReNum2 )
+   PURE FUNCTION EqualRealNos8 ( ReNum1, ReNum2 )
 
       ! passed variables
 
@@ -1765,7 +1743,7 @@ CONTAINS
    FUNCTION EulerConstructR8(theta) result(M)
    
       ! this function creates a rotation matrix, M, from a 3-2-1 intrinsic rotation
-!! sequence of the 3 Tait-Bryan angles (1-2-3 extrinsic rotation), theta_x, theta_y, and theta_z, in radians.
+      ! sequence of the 3 Tait-Bryan angles (1-2-3 extrinsic rotation), theta_x, theta_y, and theta_z, in radians.
       ! M represents a change of basis (from global to local coordinates; 
       ! not a physical rotation of the body). it is the inverse of EulerExtract (nwtc_num::eulerextract).
       !
@@ -2710,45 +2688,58 @@ END FUNCTION FindValidChannelIndx
    REAL(DbKi), PARAMETER              :: LrgAngle  = 0.4_DbKi  ! Threshold for when a small angle becomes large (about 23deg).  This comes from: COS(SmllAngle) ~ 1/SQRT( 1 + SmllAngle^2 ) and SIN(SmllAngle) ~ SmllAngle/SQRT( 1 + SmllAngle^2 ) results in ~5% error when SmllAngle = 0.4rad.
 
 
-
       ! initialize output angles (just in case there is an error that prevents them from getting set)
 
    GetSmllRotAngsD = 0.0_DbKi
    ErrStat         = ErrID_None
-   ErrMsg          = ""
+   IF (PRESENT(ErrMsg))  ErrMsg = ""
 
       ! calculate the small angles
    GetSmllRotAngsD(1) = DCMat(2,3) - DCMat(3,2)
    GetSmllRotAngsD(2) = DCMat(3,1) - DCMat(1,3)
    GetSmllRotAngsD(3) = DCMat(1,2) - DCMat(2,1)
 
-   denom             = DCMat(1,1) + DCMat(2,2) + DCMat(3,3) - 1.0_DbKi
+   denom              = DCMat(1,1) + DCMat(2,2) + DCMat(3,3) + 1.0_DbKi
 
-   IF ( .NOT. EqualRealNos( denom, 0.0_DbKi ) ) THEN
-      GetSmllRotAngsD = GetSmllRotAngsD / denom
-
-         ! check that the angles are, in fact, small
-      IF ( ANY( ABS(GetSmllRotAngsD) > LrgAngle ) ) THEN
-         ErrStat = ErrID_Severe
+   IF (denom < 0.0_DbKi) THEN
+      
+      ErrStat = ErrID_Fatal
+      
+      IF (PRESENT(ErrMsg)) THEN
+         ErrMsg = ' Denominator is imaginary in GetSmllRotAngs(). Matrix may not be a valid DCM.'
+      ELSE
+         CALL ProgAbort( ' Denominator is imaginary in GetSmllRotAngs(). Matrix may not be a valid DCM.', TrapErrors = .TRUE. )
+      END IF
+      
+   ELSE
+      denom = sqrt(denom)
+      
+      IF ( EqualRealNos( denom, 0.0_DbKi ) ) THEN
+      
+         ErrStat = ErrID_Fatal
 
          IF (PRESENT(ErrMsg)) THEN
-            ErrMsg = ' Angles in GetSmllRotAngs() are larger than '//TRIM(Num2LStr(LrgAngle))//' radians.'
+            ErrMsg = ' Denominator is zero in GetSmllRotAngs().'
          ELSE
-            CALL ProgWarn( ' Angles in GetSmllRotAngs() are larger than '//TRIM(Num2LStr(LrgAngle))//' radians.' )
+            CALL ProgAbort( ' Denominator is zero in GetSmllRotAngs().', TrapErrors = .TRUE. )
          END IF
-
-      END IF
-
-   ELSE
-         ! check that the angles are, in fact, small (denom should be close to 2 if angles are small)
-      ErrStat = ErrID_Fatal
-
-      IF (PRESENT(ErrMsg)) THEN
-         ErrMsg = ' Denominator is zero in GetSmllRotAngs().'
+      
       ELSE
-         CALL ProgAbort( ' Denominator is zero in GetSmllRotAngs().', TrapErrors = .TRUE. )
-      END IF
+         GetSmllRotAngsD = GetSmllRotAngsD / denom
 
+            ! check that the angles are, in fact, small
+         IF ( ANY( ABS(GetSmllRotAngsD) > LrgAngle ) ) THEN
+            ErrStat = ErrID_Severe
+
+            IF (PRESENT(ErrMsg)) THEN
+               ErrMsg = ' Angles in GetSmllRotAngs() are larger than '//TRIM(Num2LStr(LrgAngle))//' radians.'
+            ELSE
+               CALL ProgWarn( ' Angles in GetSmllRotAngs() are larger than '//TRIM(Num2LStr(LrgAngle))//' radians.' )
+            END IF
+
+         END IF
+         
+      END IF
    END IF
 
 
@@ -2775,46 +2766,61 @@ END FUNCTION FindValidChannelIndx
 
    GetSmllRotAngsR = 0.0_SiKi
    ErrStat         = ErrID_None
-   ErrMsg          = ""
+   IF (PRESENT(ErrMsg)) ErrMsg  = ""
 
       ! calculate the small angles
    GetSmllRotAngsR(1) = DCMat(2,3) - DCMat(3,2)
    GetSmllRotAngsR(2) = DCMat(3,1) - DCMat(1,3)
    GetSmllRotAngsR(3) = DCMat(1,2) - DCMat(2,1)
 
-   denom             = DCMat(1,1) + DCMat(2,2) + DCMat(3,3) - 1.0_SiKi
+   denom             = DCMat(1,1) + DCMat(2,2) + DCMat(3,3) + 1.0_SiKi
 
-   IF ( .NOT. EqualRealNos( denom, 0.0_SiKi ) ) THEN
-      GetSmllRotAngsR = GetSmllRotAngsR / denom
 
-         ! check that the angles are, in fact, small
-      IF ( ANY( ABS(GetSmllRotAngsR) > LrgAngle ) ) THEN
-         ErrStat = ErrID_Severe
+   IF (denom < 0.0_SiKi) THEN
+      
+      ErrStat = ErrID_Fatal
+      
+      IF (PRESENT(ErrMsg)) THEN
+         ErrMsg = ' Denominator is imaginary in GetSmllRotAngs(). Matrix may not be a valid DCM.'
+      ELSE
+         CALL ProgAbort( ' Denominator is imaginary in GetSmllRotAngs(). Matrix may not be a valid DCM.', TrapErrors = .TRUE. )
+      END IF
+      
+   ELSE
+      denom = sqrt(denom)
+      
+      IF ( EqualRealNos( denom, 0.0_SiKi ) ) THEN
+      
+         ErrStat = ErrID_Fatal
 
          IF (PRESENT(ErrMsg)) THEN
-            ErrMsg = ' Angles in GetSmllRotAngs() are larger than '//TRIM(Num2LStr(LrgAngle))//' radians.'
+            ErrMsg = ' Denominator is zero in GetSmllRotAngs().'
          ELSE
-            CALL ProgWarn( ' Angles in GetSmllRotAngs() are larger than '//TRIM(Num2LStr(LrgAngle))//' radians.' )
+            CALL ProgAbort( ' Denominator is zero in GetSmllRotAngs().', TrapErrors = .TRUE. )
          END IF
-
-      END IF
-
-   ELSE
-         ! check that the angles are, in fact, small (denom should be close to 2 if angles are small)
-      ErrStat = ErrID_Fatal
-
-      IF (PRESENT(ErrMsg)) THEN
-         ErrMsg = ' Denominator is zero in GetSmllRotAngs().'
+      
       ELSE
-         CALL ProgAbort( ' Denominator is zero in GetSmllRotAngs().', TrapErrors = .TRUE. )
-      END IF
+         GetSmllRotAngsR = GetSmllRotAngsR / denom
 
-   END IF
+            ! check that the angles are, in fact, small
+         IF ( ANY( ABS(GetSmllRotAngsR) > LrgAngle ) ) THEN
+            ErrStat = ErrID_Severe
+
+            IF (PRESENT(ErrMsg)) THEN
+               ErrMsg = ' Angles in GetSmllRotAngs() are larger than '//TRIM(Num2LStr(LrgAngle))//' radians.'
+            ELSE
+               CALL ProgWarn( ' Angles in GetSmllRotAngs() are larger than '//TRIM(Num2LStr(LrgAngle))//' radians.' )
+            END IF
+
+         END IF
+         
+      END IF
+   END IF   
 
 
    END FUNCTION GetSmllRotAngsR
 !=======================================================================
-!> This funtion returns the non-dimensional (-1:+1) location of the given Gauss-Legendre Quadrature point and its weight.
+!> This function returns the non-dimensional (-1:+1) location of the given Gauss-Legendre Quadrature point and its weight.
 !! It works for NPts \f$\in \left[{1,6\right]\f$.
 !! The values came from Carnahan, Brice; Luther, H.A.; Wilkes, James O.  (1969)  "Applied Numerical Methods."
    SUBROUTINE GL_Pts ( IPt, NPts, Loc, Wt, ErrStat, ErrMsg )
@@ -2937,7 +2943,7 @@ END FUNCTION FindValidChannelIndx
    RETURN
    END SUBROUTINE GL_Pts ! ( IPt, NPts, Loc, Wt [, ErrStat] )
 !=======================================================================
-!> This funtion returns an integer index such that CAry(IndexCharAry) = CVal. If
+!> This function returns an integer index such that CAry(IndexCharAry) = CVal. If
 !! no element in the array matches CVal, the value -1 is returned.  The routine
 !! performs a binary search on the input array to determine if CVal is an
 !! element of the array; thus, CAry must be sorted and stored in increasing
@@ -3002,7 +3008,7 @@ END FUNCTION FindValidChannelIndx
 
    END FUNCTION IndexCharAry
 !=======================================================================
-!> This funtion returns a y-value that corresponds to an input x-value by interpolating into the arrays.
+!> This function returns a y-value that corresponds to an input x-value by interpolating into the arrays.
 !! It uses a binary interpolation scheme that takes about log(AryLen) / log(2) steps to converge.
 !! It returns the first or last YAry() value if XVal is outside the limits of XAry(). 
 !!
@@ -3131,7 +3137,7 @@ END FUNCTION FindValidChannelIndx
    RETURN
    END FUNCTION InterpBinReal ! ( XVal, XAry, YAry, ILo, AryLen )
 !=======================================================================
-!> This funtion returns a y-value that corresponds to an input x-value by interpolating into the arrays.
+!> This function returns a y-value that corresponds to an input x-value by interpolating into the arrays.
 !! It uses the passed index as the starting point and does a stepwise interpolation from there. This is
 !! especially useful when the calling routines save the value from the last time this routine was called
 !! for a given case where XVal does not change much from call to call. When there is no correlation
@@ -3505,7 +3511,7 @@ END FUNCTION FindValidChannelIndx
    END FUNCTION InterpStpReal8 
 
 !=======================================================================
-!> This funtion returns a y-value array that corresponds to an input x-value by interpolating into the arrays.
+!> This function returns a y-value array that corresponds to an input x-value by interpolating into the arrays.
 !! It uses the passed index as the starting point and does a stepwise interpolation from there. This is
 !! especially useful when the calling routines save the value from the last time this routine was called
 !! for a given case where XVal does not change much from call to call. 
@@ -3568,7 +3574,7 @@ END FUNCTION FindValidChannelIndx
    RETURN
    END SUBROUTINE InterpStpMat4
 !=======================================================================
-!> This funtion returns a y-value array that corresponds to an input x-value by interpolating into the arrays.
+!> This function returns a y-value array that corresponds to an input x-value by interpolating into the arrays.
 !! It uses the passed index as the starting point and does a stepwise interpolation from there. This is
 !! especially useful when the calling routines save the value from the last time this routine was called
 !! for a given case where XVal does not change much from call to call. 
@@ -3869,7 +3875,7 @@ END FUNCTION FindValidChannelIndx
 
    END SUBROUTINE InterpStpReal3D   
 !=======================================================================
-!> This funtion returns a y-value that corresponds to an input x-value which is wrapped back
+!> This function returns a y-value that corresponds to an input x-value which is wrapped back
 !! into the range [0-XAry(AryLen)] by interpolating into the arrays.  
 !! It is assumed that XAry is sorted in ascending order.
 !! It uses the passed index as the starting point and does a stepwise interpolation from there.  This is
@@ -4159,17 +4165,18 @@ subroutine kernelSmoothing(x, f, kernelType, radius, fNew)
    REAL(ReKi)                            :: k
    REAL(ReKi)                            :: k_sum
    REAL(ReKi)                            :: w
+   REAL(ReKi)                            :: RadiusFix
    INTEGER(IntKi)                        :: Exp1
    INTEGER(IntKi)                        :: Exp2
    REAL(ReKi)                            :: u(size(x))
    INTEGER                               :: i, j
    INTEGER                               :: n
    
-   ! check that radius > 0
    ! check that size(x) = size(f)=size(fNew)
    ! check that kernelType is a valid number
    
    n = size(x)
+   RadiusFix = max(abs(radius),epsilon(radius)) ! ensure radius is a positive number
    
    
    ! make sure that the value of u is in [-1 and 1] for these kernels:
@@ -4197,7 +4204,7 @@ subroutine kernelSmoothing(x, f, kernelType, radius, fNew)
       fNew = 0.0_ReKi ! whole array operation
       do j=1,n ! for each value in f:
       
-         u = (x - x(j)) / radius ! whole array operation
+         u = (x - x(j)) / RadiusFix ! whole array operation
          do i=1,n
             u(i) = min( 1.0_ReKi, max( -1.0_ReKi, u(i) ) )
          end do
@@ -4220,7 +4227,7 @@ subroutine kernelSmoothing(x, f, kernelType, radius, fNew)
       fNew = 0.0_ReKi ! whole array operation
       do j=1,n ! for each value in f:
       
-         u = (x - x(j)) / radius ! whole array operation
+         u = (x - x(j)) / RadiusFix ! whole array operation
       
          k_sum   = 0.0_ReKi
          do i=1,n
@@ -4674,7 +4681,7 @@ end function Rad2M180to180Deg
 
            ELSE
 
-               NPr = NPrime(IPR)                      ! The small prime number we will try to find the the factorization of NTR
+               NPr = NPrime(IPR)                      ! The small prime number we will try to find the factorization of NTR
 
                DO
                    NT = NTR/NPr                       ! Doing some modular arithmetic to see if
@@ -5411,7 +5418,7 @@ end function Rad2M180to180Deg
 !=======================================================================
 !> This routine displays a message that gives that status of the simulation and the predicted end time of day.
 !! It is intended to be used with SimStatus (nwtc_num::simstatus) and SimStatus_FirstTime (nwtc_num::simstatus_firsttime).
-   SUBROUTINE RunTimes( StrtTime, UsrTime1, SimStrtTime, UsrTime2, ZTime, UnSum, UsrTime_out, DescStrIn )
+   SUBROUTINE RunTimes( StrtTime, UsrTime1, SimStrtTime, UsrTime2, ZTime, UnSum, UsrTime_out, DescStrIn, useCases )
 
       IMPLICIT                        NONE
 
@@ -5420,9 +5427,10 @@ end function Rad2M180to180Deg
       INTEGER   ,     INTENT(IN)          :: StrtTime (8)                              !< Start time of simulation (including initialization)
       INTEGER   ,     INTENT(IN)          :: SimStrtTime (8)                           !< Start time of simulation (after initialization)
       REAL(ReKi),     INTENT(IN)          :: UsrTime1                                  !< User CPU time for simulation initialization.
-      REAL(ReKi),     INTENT(IN)          :: UsrTime2                                  !< User CPU time for simulation (without intialization)
+      REAL(ReKi),     INTENT(IN)          :: UsrTime2                                  !< User CPU time for simulation (without initialization)
       REAL(DbKi),     INTENT(IN)          :: ZTime                                     !< The final simulation time (not necessarially TMax)
       INTEGER(IntKi), INTENT(IN), OPTIONAL:: UnSum                                     !< optional unit number of file. If present and > 0,
+      LOGICAL,        INTENT(IN), OPTIONAL:: useCases                                  !< optional number of cases. If present and > 0, ZTime represents number of cases, not time (for steady-state outputs)
       REAL(ReKi),     INTENT(OUT),OPTIONAL:: UsrTime_out                               !< User CPU time for entire run - optional value returned to calling routine
 
       CHARACTER(*), INTENT(IN), OPTIONAL :: DescStrIn                                 !< optional additional string to print for SimStatus
@@ -5441,7 +5449,8 @@ end function Rad2M180to180Deg
                                       
       CHARACTER( 8)                   :: TimePer
       CHARACTER(MaxWrScrLen)          :: BlankLine
-      CHARACTER(10)                   :: DescStr                                        !< optional additional string to print for SimStatus
+      CHARACTER(10)                   :: DescStr                                         !< optional additional string to print for SimStatus
+      LOGICAL                         :: UseCaseStr                                      !< use cases
 
 
       if (present(DescStrIn)) then
@@ -5450,6 +5459,13 @@ end function Rad2M180to180Deg
          DescStr = ""
       end if
 
+      if (present(useCases)) then
+         UseCaseStr = useCases
+      else
+         UseCaseStr = .false.
+      end if
+      
+      
          ! Get the end times to compare with start times.
 
       CALL DATE_AND_TIME ( VALUES=EndTimes )
@@ -5494,9 +5510,14 @@ end function Rad2M180to180Deg
          CALL WrScr ( ' Total CPU Time:        '//TRIM( Num2LStr( Factor*UsrTime       ) )//TRIM( TimePer ) )
    !     CALL WrScr ( ' ')
    !     CALL WrScr ( ' Simulation Real Time:  '//TRIM( Num2LStr( Factor*ClckTimeSim   ) )//TRIM( TimePer ) )
-         CALL WrScr ( ' Simulation CPU Time:   '//TRIM( Num2LStr( Factor*UsrTimeSim    ) )//TRIM( TimePer ) )      
-         CALL WrScr ( ' Simulated Time:        '//TRIM( Num2LStr( Factor*REAL( ZTime ) ) )//TRIM( TimePer ) )
-         CALL WrScr ( ' Time Ratio (Sim/CPU):  '//TRIM( Num2LStr( TRatio ) ) )
+         CALL WrScr ( ' Simulation CPU Time:   '//TRIM( Num2LStr( Factor*UsrTimeSim    ) )//TRIM( TimePer ) )
+         if (UseCaseStr) then
+            CALL WrScr ( ' Simulated Cases:       '//TRIM( Num2LStr( REAL( ZTime ) ) ) )
+            CALL WrScr ( ' Time Ratio (CPU/case):  '//TRIM( Num2LStr( Factor/TRatio ) )//TRIM(TimePer)//' per case' )
+         else
+            CALL WrScr ( ' Simulated Time:        '//TRIM( Num2LStr( Factor*REAL( ZTime ) ) )//TRIM( TimePer ) )
+            CALL WrScr ( ' Time Ratio (Sim/CPU):  '//TRIM( Num2LStr( TRatio ) ) )
+         end if
 
          IF (PRESENT(UnSum)) THEN
             IF (UnSum>0) THEN
@@ -5504,8 +5525,13 @@ end function Rad2M180to180Deg
                WRITE( UnSum, '(A)') ' Total Real Time:       '//TRIM( Num2LStr( Factor*ClckTime      ) )//TRIM( TimePer )
                WRITE( UnSum, '(A)') ' Total CPU Time:        '//TRIM( Num2LStr( Factor*UsrTime       ) )//TRIM( TimePer )
                WRITE( UnSum, '(A)') ' Simulation CPU Time:   '//TRIM( Num2LStr( Factor*UsrTimeSim    ) )//TRIM( TimePer )
-               WRITE( UnSum, '(A)') ' Simulated Time:        '//TRIM( Num2LStr( Factor*REAL( ZTime ) ) )//TRIM( TimePer )
-               WRITE( UnSum, '(A)') ' Time Ratio (Sim/CPU):  '//TRIM( Num2LStr( TRatio ) )
+               if (UseCaseStr) then
+                  WRITE( UnSum, '(A)') ' Simulated Cases:        '//TRIM( Num2LStr( REAL( ZTime ) ) )
+                  WRITE( UnSum, '(A)') ' Time Ratio (CPU/case):  '//TRIM( Num2LStr( Factor/TRatio ) )//TRIM(TimePer)//' per case'
+               else
+                  WRITE( UnSum, '(A)') ' Simulated Time:        '//TRIM( Num2LStr( Factor*REAL( ZTime ) ) )//TRIM( TimePer )
+                  WRITE( UnSum, '(A)') ' Time Ratio (Sim/CPU):  '//TRIM( Num2LStr( TRatio ) )
+               end if
             END IF
          END IF
             
@@ -5624,7 +5650,7 @@ end function Rad2M180to180Deg
 !=======================================================================   
 !> This routine displays a message that gives that status of the simulation.
 !! It is intended to be used with RunTimes (nwtc_num::runtimes) and SimStatus (nwtc_num::simstatus).
-   SUBROUTINE SimStatus_FirstTime( PrevSimTime, PrevClockTime, SimStrtTime, UsrTimeSim, ZTime, TMax, DescStrIn )
+   SUBROUTINE SimStatus_FirstTime( PrevSimTime, PrevClockTime, SimStrtTime, UsrTimeSim, ZTime, TMax, DescStrIn, useCases)
 
       IMPLICIT                        NONE
 
@@ -5634,15 +5660,15 @@ end function Rad2M180to180Deg
       REAL(DbKi), INTENT(  OUT)    :: PrevSimTime                                     !< Previous time message was written to screen (s > 0)
       REAL(ReKi), INTENT(  OUT)    :: PrevClockTime                                   !< Previous clock time in seconds past midnight
       INTEGER,    INTENT(  OUT)    :: SimStrtTime (8)                                 !< An array containing the elements of the start time.
-      REAL(ReKi), INTENT(  OUT)    :: UsrTimeSim                                      !< User CPU time for simulation (without intialization)
+      REAL(ReKi), INTENT(  OUT)    :: UsrTimeSim                                      !< User CPU time for simulation (without initialization)
 
       CHARACTER(*), INTENT(IN), OPTIONAL :: DescStrIn                                 !< optional additional string to print for SimStatus
-      
-         ! Local variables.
+      LOGICAL, INTENT(IN), OPTIONAL :: useCases                                       !< optional number of cases. If present and > 0, ZTime represents number of cases, not time (for steady-state outputs)
 
+         ! Local variables
       REAL(ReKi)                   :: CurrClockTime                                   ! Current time in seconds past midnight.
-      CHARACTER(10)                :: DescStr                                        !< optional additional string to print for SimStatus
-
+      CHARACTER(10)                :: DescStr                                         !< optional additional string to print for SimStatus
+      LOGICAL                      :: UseCaseStr                                      !< use cases
 
       if (present(DescStrIn)) then
          DescStr = DescStrIn
@@ -5650,6 +5676,11 @@ end function Rad2M180to180Deg
          DescStr = ""
       end if
 
+      if (present(useCases)) then
+         UseCaseStr = useCases
+      else
+         UseCaseStr = .false.
+      end if
 
          ! How many seconds past midnight?
 
@@ -5659,7 +5690,7 @@ end function Rad2M180to180Deg
 
       CurrClockTime = TimeValues2Seconds( SimStrtTime )
 
-
+      if (.NOT. UseCaseStr) &
       CALL WrScr ( trim(DescStr)//' Time: '//TRIM( Num2LStr( NINT( ZTime ) ) )//' of '//TRIM( Num2LStr( TMax ) )//' seconds.')
 
 
@@ -5697,6 +5728,7 @@ end function Rad2M180to180Deg
 
       REAL(ReKi), PARAMETER        :: SecPerDay = 24*60*60.0_ReKi          ! Number of seconds per day
 
+      REAL(SiKi)                   :: DaysRemain                           ! Days remaining (decimal)
       INTEGER(4)                   :: EndHour                              ! The hour when the simulations is expected to complete.
       INTEGER(4)                   :: EndMin                               ! The minute when the simulations is expected to complete.
       INTEGER(4)                   :: EndSec                               ! The second when the simulations is expected to complete.
@@ -5704,6 +5736,7 @@ end function Rad2M180to180Deg
 
       CHARACTER(MaxWrScrLen)       :: BlankLine
       CHARACTER( 8)                :: ETimeStr                             ! String containing the end time.
+      CHARACTER( 10)               :: DaysRemainStr                        !< decimal format of number of days left
       CHARACTER( 10)               :: DescStr                              !< optional additional string to print for SimStatus
       CHARACTER(200)               :: StatInfo                             !< optional additional string to print for SimStatus
 
@@ -5744,18 +5777,20 @@ end function Rad2M180to180Deg
          ! Estimate the end time in hours, minutes, and seconds
 
       SimTimeLeft = REAL( ( TMax - ZTime )*DeltTime/( ZTime - PrevSimTime ), ReKi )          ! DeltTime/( ZTime - PrevSimTime ) is the delta_ClockTime divided by the delta_SimulationTime
+      DaysRemain  = real((SimTimeLeft) / real(SecPerDay,ReKi),SiKi)
       EndTime  =  MOD( CurrClockTime+SimTimeLeft, SecPerDay )
       EndHour  =  INT(   EndTime*InSecHr )
       EndMin   =  INT( ( EndTime - REAL( 3600*EndHour ) )*InSecMn )
       EndSec   = NINT(   EndTime - REAL( 3600*EndHour + 60*EndMin ) ) !bjj: this NINT can make the seconds say "60"
 
       WRITE (ETimeStr,"(I2.2,2(':',I2.2))")  EndHour, EndMin, EndSec
+      WRITE (DaysRemainStr,"(f10.3)") DaysRemain
 
       BlankLine = ""
       CALL WrOver( BlankLine )  ! BlankLine contains MaxWrScrLen spaces
       CALL WrOver ( trim(DescStr)//' Time: '//TRIM( Num2LStr( NINT( ZTime ) ) )//' of '//TRIM( Num2LStr( TMax ) )// &
                     ' seconds. '//trim(StatInfo)// &
-                    ' Estimated final completion at '//ETimeStr//'.')
+                    ' Estimated final completion at '//ETimeStr//' (in '//trim(adjustl(DaysRemainStr))//' days).')
 
          ! Let's save this time as the previous time for the next call to the routine
       PrevClockTime = CurrClockTime
@@ -5800,6 +5835,8 @@ end function Rad2M180to180Deg
 !!   below, was derived symbolically by J. Jonkman by computing \f$UV^T\f$
 !!   by hand with verification in Mathematica.
 !!
+!! Note: this formulation has been updated with new equations from J. Jonkman, derived from
+!! using quaternions. It is accurrate longer.
 !! This routine is the inverse of GetSmllRotAngs (nwtc_num::getsmllrotangs). \n
 !! Use SmllRotTrans (nwtc_num::smllrottrans) instead of directly calling a specific routine in the generic interface. 
    SUBROUTINE SmllRotTransD( RotationType, Theta1, Theta2, Theta3, TransMat, ErrTxt, ErrStat, ErrMsg )
@@ -5818,18 +5855,15 @@ end function Rad2M180to180Deg
    CHARACTER(*), INTENT(IN ), OPTIONAL :: ErrTxt                                          !< an additional message to be displayed as a warning (typically the simulation time)
 
       ! Local Variables:
+   REAL(DbKi)                          :: Half_1                                          ! = Theta1/2
+   REAL(DbKi)                          :: Half_2                                          ! = Theta2/2
+   REAL(DbKi)                          :: Half_3                                          ! = Theta3/2
+   REAL(DbKi)                          :: Theta1Sq                                        ! = Theta1^2
+   REAL(DbKi)                          :: Theta2Sq                                        ! = Theta2^2
+   REAL(DbKi)                          :: Theta3Sq                                        ! = Theta3^2
+   REAL(DbKi)                          :: w                                               ! = sqrt( 1 - Theta1^2/4 - Theta2^2/4 - Theta3^2/4)
 
-   REAL(DbKi)                          :: ComDenom                                        ! = ( Theta1^2 + Theta2^2 + Theta3^2 )*SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 )
    REAL(DbKi), PARAMETER               :: LrgAngle  = 0.4                                 ! Threshold for when a small angle becomes large (about 23deg).  This comes from: COS(SmllAngle) ~ 1/SQRT( 1 + SmllAngle^2 ) and SIN(SmllAngle) ~ SmllAngle/SQRT( 1 + SmllAngle^2 ) results in ~5% error when SmllAngle = 0.4rad.
-   REAL(DbKi)                          :: Theta11                                         ! = Theta1^2
-   REAL(DbKi)                          :: Theta12S                                        ! = Theta1*Theta2*[ SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 ) - 1.0 ]
-   REAL(DbKi)                          :: Theta13S                                        ! = Theta1*Theta3*[ SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 ) - 1.0 ]
-   REAL(DbKi)                          :: Theta22                                         ! = Theta2^2
-   REAL(DbKi)                          :: Theta23S                                        ! = Theta2*Theta3*[ SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 ) - 1.0 ]
-   REAL(DbKi)                          :: Theta33                                         ! = Theta3^2
-   REAL(DbKi)                          :: SqrdSum                                         ! = Theta1^2 + Theta2^2 + Theta3^2
-   REAL(DbKi)                          :: SQRT1SqrdSum                                    ! = SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 )
-
    LOGICAL,    SAVE                    :: FrstWarn  = .TRUE.                              ! When .TRUE., indicates that we're on the first warning.
 
 
@@ -5857,84 +5891,34 @@ end function Rad2M180to180Deg
 
       ! Compute some intermediate results:
 
-   Theta11      = Theta1*Theta1
-   Theta22      = Theta2*Theta2
-   Theta33      = Theta3*Theta3
+   Theta1Sq      = Theta1*Theta1
+   Theta2Sq      = Theta2*Theta2
+   Theta3Sq      = Theta3*Theta3
 
-   SqrdSum      = Theta11 + Theta22 + Theta33
-   SQRT1SqrdSum = SQRT( 1.0_DbKi + SqrdSum )
-   ComDenom     = SqrdSum*SQRT1SqrdSum
+   Half_1      = Theta1 * 0.5_DbKi
+   Half_2      = Theta2 * 0.5_DbKi
+   Half_3      = Theta3 * 0.5_DbKi
 
-   Theta12S     = Theta1*Theta2*( SQRT1SqrdSum - 1.0_DbKi )
-   Theta13S     = Theta1*Theta3*( SQRT1SqrdSum - 1.0_DbKi )
-   Theta23S     = Theta2*Theta3*( SQRT1SqrdSum - 1.0_DbKi )
-
+   w = SQRT( 1.0_DbKi - Half_1**2 - Half_2**2 - Half_3**2 )
 
       ! Define the transformation matrix:
+   TransMat(1,1) = 1.0_DbKi - (Theta2Sq + Theta3Sq) * 0.5_DbKi
+   TransMat(2,1) = Theta1*Half_2 - Theta3*w
+   TransMat(3,1) = Theta1*Half_3 + Theta2*w
 
-   IF ( ComDenom == 0.0_DbKi )  THEN  ! All angles are zero and matrix is ill-conditioned (the matrix is derived assuming that the angles are not zero); return identity
+   TransMat(1,2) = Theta1*Half_2 + Theta3*w
+   TransMat(2,2) = 1.0_DbKi - (Theta1Sq + Theta3Sq) * 0.5_DbKi
+   TransMat(3,2) = Theta2*Half_3 - Theta1*w
 
-      TransMat(1,:) = (/ 1.0_DbKi, 0.0_DbKi, 0.0_DbKi /)
-      TransMat(2,:) = (/ 0.0_DbKi, 1.0_DbKi, 0.0_DbKi /)
-      TransMat(3,:) = (/ 0.0_DbKi, 0.0_DbKi, 1.0_DbKi /)
-
-   ELSE                          ! At least one angle is nonzero
-
-      TransMat(1,1) = ( Theta11*SQRT1SqrdSum + Theta22              + Theta33              )/ComDenom
-      TransMat(2,2) = ( Theta11              + Theta22*SQRT1SqrdSum + Theta33              )/ComDenom
-      TransMat(3,3) = ( Theta11              + Theta22              + Theta33*SQRT1SqrdSum )/ComDenom
-      TransMat(1,2) = (  Theta3*SqrdSum + Theta12S )/ComDenom
-      TransMat(2,1) = ( -Theta3*SqrdSum + Theta12S )/ComDenom
-      TransMat(1,3) = ( -Theta2*SqrdSum + Theta13S )/ComDenom
-      TransMat(3,1) = (  Theta2*SqrdSum + Theta13S )/ComDenom
-      TransMat(2,3) = (  Theta1*SqrdSum + Theta23S )/ComDenom
-      TransMat(3,2) = ( -Theta1*SqrdSum + Theta23S )/ComDenom
-
-   ENDIF
-
+   TransMat(1,3) = Theta1*Half_3 - Theta2*w
+   TransMat(2,3) = Theta2*Half_3 + Theta1*w
+   TransMat(3,3) = 1.0_DbKi - (Theta1Sq + Theta2Sq) * 0.5_DbKi
 
    RETURN
    END SUBROUTINE SmllRotTransD
 !=======================================================================
 !> \copydoc nwtc_num::smllrottransd
    SUBROUTINE SmllRotTransR( RotationType, Theta1, Theta2, Theta3, TransMat, ErrTxt, ErrStat, ErrMsg )
-
-
-      ! This routine computes the 3x3 transformation matrix, TransMat,
-      !   to a coordinate system x (with orthogonal axes x1, x2, x3)
-      !   resulting from three rotations (Theta1, Theta2, Theta3) about the
-      !   orthogonal axes (X1, X2, X3) of coordinate system X.  All angles
-      !   are assummed to be small, as such, the order of rotations does
-      !   not matter and Euler angles do not need to be used.  This routine
-      !   is used to compute the transformation matrix (TransMat) between
-      !   undeflected (X) and deflected (x) coordinate systems.  In matrix
-      !   form:
-      !      {x1}   [TransMat(Theta1, ] {X1}
-      !      {x2} = [         Theta2, ]*{X2}
-      !      {x3}   [         Theta3 )] {X3}
-      !
-      ! The transformation matrix, TransMat, is the closest orthonormal
-      !   matrix to the nonorthonormal, but skew-symmetric, Bernoulli-Euler
-      !   matrix:
-      !          [   1.0    Theta3 -Theta2 ]
-      !      A = [ -Theta3   1.0    Theta1 ]
-      !          [  Theta2 -Theta1   1.0   ]
-      !
-      !   In the Frobenius Norm sense, the closest orthornormal matrix is:
-      !      TransMat = U*V^T,
-      !
-      !   where the columns of U contain the eigenvectors of A*A^T and the
-      !   columns of V contain the eigenvectors of A^T*A (^T = transpose).
-      !   This result comes directly from the Singular Value Decomposition
-      !   (SVD) of A = U*S*V^T where S is a diagonal matrix containing the
-      !   singular values of A, which are SQRT( eigenvalues of A*A^T ) =
-      !   SQRT( eigenvalues of A^T*A ).
-      !
-      ! The algebraic form of the transformation matrix, as implemented
-      !   below, was derived symbolically by J. Jonkman by computing U*V^T
-      !   by hand with verification in Mathematica.
-      !
-      ! This routine is the inverse of GetSmllRotAngs()
 
       ! Passed Variables:
 
@@ -5950,18 +5934,15 @@ end function Rad2M180to180Deg
    CHARACTER(*), INTENT(IN ), OPTIONAL :: ErrTxt                                          ! an additional message to be displayed as a warning (typically the simulation time)
 
       ! Local Variables:
+   REAL(SiKi)                          :: Half_1                                          ! = Theta1/2
+   REAL(SiKi)                          :: Half_2                                          ! = Theta2/2
+   REAL(SiKi)                          :: Half_3                                          ! = Theta3/2
+   REAL(SiKi)                          :: Theta1Sq                                        ! = Theta1^2
+   REAL(SiKi)                          :: Theta2Sq                                        ! = Theta2^2
+   REAL(SiKi)                          :: Theta3Sq                                        ! = Theta3^2
+   REAL(SiKi)                          :: w                                               ! = sqrt( 1 - Theta1^2/4 - Theta2^2/4 - Theta3^2/4)
 
-   REAL(SiKi)                          :: ComDenom                                        ! = ( Theta1^2 + Theta2^2 + Theta3^2 )*SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 )
    REAL(SiKi), PARAMETER               :: LrgAngle  = 0.4                                 ! Threshold for when a small angle becomes large (about 23deg).  This comes from: COS(SmllAngle) ~ 1/SQRT( 1 + SmllAngle^2 ) and SIN(SmllAngle) ~ SmllAngle/SQRT( 1 + SmllAngle^2 ) results in ~5% error when SmllAngle = 0.4rad.
-   REAL(SiKi)                          :: Theta11                                         ! = Theta1^2
-   REAL(SiKi)                          :: Theta12S                                        ! = Theta1*Theta2*[ SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 ) - 1.0 ]
-   REAL(SiKi)                          :: Theta13S                                        ! = Theta1*Theta3*[ SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 ) - 1.0 ]
-   REAL(SiKi)                          :: Theta22                                         ! = Theta2^2
-   REAL(SiKi)                          :: Theta23S                                        ! = Theta2*Theta3*[ SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 ) - 1.0 ]
-   REAL(SiKi)                          :: Theta33                                         ! = Theta3^2
-   REAL(SiKi)                          :: SqrdSum                                         ! = Theta1^2 + Theta2^2 + Theta3^2
-   REAL(SiKi)                          :: SQRT1SqrdSum                                    ! = SQRT( 1.0 + Theta1^2 + Theta2^2 + Theta3^2 )
-
    LOGICAL,    SAVE                    :: FrstWarn  = .TRUE.                              ! When .TRUE., indicates that we're on the first warning.
 
 
@@ -5989,41 +5970,28 @@ end function Rad2M180to180Deg
 
       ! Compute some intermediate results:
 
-   Theta11      = Theta1*Theta1
-   Theta22      = Theta2*Theta2
-   Theta33      = Theta3*Theta3
+   Theta1Sq      = Theta1*Theta1
+   Theta2Sq      = Theta2*Theta2
+   Theta3Sq      = Theta3*Theta3
 
-   SqrdSum      = Theta11 + Theta22 + Theta33
-   SQRT1SqrdSum = SQRT( 1.0_ReKi + SqrdSum )
-   ComDenom     = SqrdSum*SQRT1SqrdSum
+   Half_1      = Theta1 * 0.5_SiKi
+   Half_2      = Theta2 * 0.5_SiKi
+   Half_3      = Theta3 * 0.5_SiKi
 
-   Theta12S     = Theta1*Theta2*( SQRT1SqrdSum - 1.0_Siki )
-   Theta13S     = Theta1*Theta3*( SQRT1SqrdSum - 1.0_Siki )
-   Theta23S     = Theta2*Theta3*( SQRT1SqrdSum - 1.0_Siki )
-
+   w = SQRT( 1.0_SiKi - Half_1**2 - Half_2**2 - Half_3**2 )
 
       ! Define the transformation matrix:
+   TransMat(1,1) = 1.0_SiKi - (Theta2Sq + Theta3Sq) * 0.5_SiKi
+   TransMat(2,1) = Theta1*Half_2 - Theta3*w
+   TransMat(3,1) = Theta1*Half_3 + Theta2*w
 
-   IF ( ComDenom == 0.0_ReKi )  THEN  ! All angles are zero and matrix is ill-conditioned (the matrix is derived assuming that the angles are not zero); return identity
+   TransMat(1,2) = Theta1*Half_2 + Theta3*w
+   TransMat(2,2) = 1.0_SiKi - (Theta1Sq + Theta3Sq) * 0.5_SiKi
+   TransMat(3,2) = Theta2*Half_3 - Theta1*w
 
-      TransMat(1,:) = (/ 1.0_SiKi, 0.0_SiKi, 0.0_SiKi /)
-      TransMat(2,:) = (/ 0.0_SiKi, 1.0_SiKi, 0.0_SiKi /)
-      TransMat(3,:) = (/ 0.0_SiKi, 0.0_SiKi, 1.0_SiKi /)
-
-   ELSE                          ! At least one angle is nonzero
-
-      TransMat(1,1) = ( Theta11*SQRT1SqrdSum + Theta22              + Theta33              )/ComDenom
-      TransMat(2,2) = ( Theta11              + Theta22*SQRT1SqrdSum + Theta33              )/ComDenom
-      TransMat(3,3) = ( Theta11              + Theta22              + Theta33*SQRT1SqrdSum )/ComDenom
-      TransMat(1,2) = (  Theta3*SqrdSum + Theta12S )/ComDenom
-      TransMat(2,1) = ( -Theta3*SqrdSum + Theta12S )/ComDenom
-      TransMat(1,3) = ( -Theta2*SqrdSum + Theta13S )/ComDenom
-      TransMat(3,1) = (  Theta2*SqrdSum + Theta13S )/ComDenom
-      TransMat(2,3) = (  Theta1*SqrdSum + Theta23S )/ComDenom
-      TransMat(3,2) = ( -Theta1*SqrdSum + Theta23S )/ComDenom
-
-   ENDIF
-
+   TransMat(1,3) = Theta1*Half_3 - Theta2*w
+   TransMat(2,3) = Theta2*Half_3 + Theta1*w
+   TransMat(3,3) = 1.0_SiKi - (Theta1Sq + Theta2Sq) * 0.5_SiKi
 
    RETURN
    END SUBROUTINE SmllRotTransR
@@ -6155,7 +6123,7 @@ end function Rad2M180to180Deg
 !! \end{bmatrix}
 !! \f}   
 !> Use SkewSymMat (nwtc_num::skewsymmat) instead of directly calling a specific routine in the generic interface.
-   FUNCTION SkewSymMatR4 ( x ) RESULT(M)
+   pure FUNCTION SkewSymMatR4 ( x ) RESULT(M)
 
       ! Function arguments
 
@@ -6178,7 +6146,7 @@ end function Rad2M180to180Deg
    END FUNCTION SkewSymMatR4 
 !=======================================================================
 !> \copydoc nwtc_num::skewsymmatr4
-   FUNCTION SkewSymMatR8 ( x ) RESULT(M)
+   pure FUNCTION SkewSymMatR8 ( x ) RESULT(M)
 
       ! Function arguments
 
@@ -7270,5 +7238,184 @@ end function Rad2M180to180Deg
       end if
    
    END SUBROUTINE fZero_R8
+!=======================================================================
+   ! Copy of EigenSolve from SubDyn, migrated here to use for beamdyn modal damping.
+   !> Return eigenvalues, Omega, and eigenvectors
+   SUBROUTINE EigenSolve(K, M, N, bCheckSingularity, EigVect, Omega, ErrStat, ErrMsg )
+      USE NWTC_LAPACK, only: LAPACK_ggev
+
+      INTEGER       ,          INTENT(IN   )    :: N             !< Number of degrees of freedom, size of M and K
+      REAL(R8Ki),              INTENT(INOUT)    :: K(N, N)       !< Stiffness matrix
+      REAL(R8Ki),              INTENT(INOUT)    :: M(N, N)       !< Mass matrix
+      LOGICAL,                 INTENT(IN   )    :: bCheckSingularity                  ! If True, the solver will fail if rigid modes are present
+      REAL(R8Ki),              INTENT(INOUT)    :: EigVect(N, N) !< Returned Eigenvectors
+      REAL(R8Ki),              INTENT(INOUT)    :: Omega(N)      !< Returned Eigenvalues
+      INTEGER(IntKi),          INTENT(  OUT)    :: ErrStat       !< Error status of the operation
+      CHARACTER(*),            INTENT(  OUT)    :: ErrMsg        !< Error message if ErrStat /= ErrID_None
+      ! LOCALS
+      REAL(R8Ki), ALLOCATABLE                   :: WORK (:),  VL(:,:), AlphaR(:), AlphaI(:), BETA(:) ! eigensolver variables
+      INTEGER                                   :: i
+      INTEGER                                   :: LWORK                          !variables for the eigensolver
+      INTEGER,    ALLOCATABLE                   :: KEY(:)
+      INTEGER(IntKi)                            :: ErrStat2
+      CHARACTER(ErrMsgLen)                      :: ErrMsg2
+      REAL(R8Ki) :: normA
+      REAL(R8Ki) :: Omega2(N)  !< Squared eigenvalues
+      REAL(R8Ki), parameter :: MAX_EIGENVALUE = HUGE(1.0_ReKi) ! To avoid overflow when switching to ReKi
+
+      ErrStat = ErrID_None
+      ErrMsg  = ''
+
+      ! allocate working arrays and return arrays for the eigensolver
+      LWORK=8*N + 16  !this is what the eigensolver wants  >> bjj: +16 because of MKL ?ggev documenation ( "lwork >= max(1, 8n+16) for real flavors"), though LAPACK documenation says 8n is fine
+      !bjj: there seems to be a memory problem in *GGEV, so I'm making the WORK array larger to see if I can figure it out
+      CALL AllocAry( Work,    LWORK, 'Work',   ErrStat2, ErrMsg2 ); CALL SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,'EigenSolve')
+      CALL AllocAry( AlphaR,  N,     'AlphaR', ErrStat2, ErrMsg2 ); CALL SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,'EigenSolve')
+      CALL AllocAry( AlphaI,  N,     'AlphaI', ErrStat2, ErrMsg2 ); CALL SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,'EigenSolve')
+      CALL AllocAry( Beta,    N,     'Beta',   ErrStat2, ErrMsg2 ); CALL SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,'EigenSolve')
+      CALL AllocAry( VL,      N,  N, 'VL',     ErrStat2, ErrMsg2 ); CALL SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,'EigenSolve')
+      CALL AllocAry( KEY,     N,     'KEY',    ErrStat2, ErrMsg2 ); if(Failed()) return
+
+      ! --- Eigenvalue  analysis
+      ! note: SGGEV seems to have memory issues in certain cases. The eigenvalues seem to be okay, but the eigenvectors vary wildly with different compiling options.
+      !       DGGEV seems to work better, so I'm making these variables R8Ki (which is set to R8Ki for now)   - bjj 4/25/2014
+      ! bjj: This comes from the LAPACK documentation:
+      !   Note: the quotients AlphaR(j)/BETA(j) and AlphaI(j)/BETA(j) may easily over- or underflow, and BETA(j) may even be zero.
+      !   Thus, the user should avoid naively computing the ratio Alpha/beta.  However, AlphaR and AlphaI will be always less
+      !   than and usually comparable with norm(A) in magnitude, and BETA always less than and usually comparable with norm(B).
+      ! Omega2=AlphaR/BETA  !Note this may not be correct if AlphaI<>0 and/or BETA=0 TO INCLUDE ERROR CHECK, also they need to be sorted
+      CALL  LAPACK_ggev('N','V',N ,K, M, AlphaR, AlphaI, Beta, VL, EigVect, WORK, LWORK, ErrStat2, ErrMsg2)
+      if(Failed()) return
+
+      ! --- Determining and sorting eigen frequencies
+      Omega2(:) =0.0_R8Ki
+      DO I=1,N !Initialize the key and calculate Omega
+         KEY(I)=I
+         !Omega2(I) = AlphaR(I)/Beta(I)
+         if ( EqualRealNos(real(Beta(I),ReKi),0.0_ReKi) ) then
+            ! --- Beta =0
+            if (bCheckSingularity) call WrScr('[WARN] Large eigenvalue found, system may be ill-conditioned')
+            Omega2(I) = MAX_EIGENVALUE
+         elseif ( EqualRealNos(real(AlphaI(I),ReKi),0.0_ReKi) ) THEN
+            ! --- Real Eigenvalues
+            IF ( AlphaR(I)<0.0_R8Ki ) THEN
+               if ( (AlphaR(I)/Beta(I))<1e-6_R8Ki ) then
+                  ! Tolerating very small negative eigenvalues
+                  if (bCheckSingularity) call WrScr('[INFO] Negative eigenvalue found with small norm (system may contain rigid body mode)')
+                  Omega2(I)=0.0_R8Ki
+               else
+                  if (bCheckSingularity) call WrScr('[WARN] Negative eigenvalue found, system may be ill-conditioned.')
+                  Omega2(I)=AlphaR(I)/Beta(I)
+               endif
+            else
+               Omega2(I) = AlphaR(I)/Beta(I)
+            endif
+         else
+            ! --- Complex Eigenvalues
+            normA = sqrt(AlphaR(I)**2 + AlphaI(I)**2)
+            if ( (normA/Beta(I))<1e-6_R8Ki ) then
+               ! Tolerating very small eigenvalues with imaginary part
+               if (bCheckSingularity) call WrScr('[WARN] Complex eigenvalue found with small norm, approximating as 0')
+               Omega2(I) = 0.0_R8Ki
+            elseif ( abs(AlphaR(I))>1e3_R8Ki*abs(AlphaI(I)) ) then
+               ! Tolerating very small imaginary part compared to real part... (not pretty)
+               if (bCheckSingularity) call WrScr('[WARN] Complex eigenvalue found with small Im compare to Re')
+               Omega2(I) = AlphaR(I)/Beta(I)
+            else
+               if (bCheckSingularity) call WrScr('[WARN] Complex eigenvalue found with large imaginary value)')
+               Omega2(I) = MAX_EIGENVALUE
+            endif
+            !call Fatal('Complex eigenvalue found, system may be ill-conditioned'); return
+         endif
+         ! Capping to avoid overflow
+         if (Omega2(I)> MAX_EIGENVALUE) then
+            Omega2(I) = MAX_EIGENVALUE
+         endif
+      enddo
+
+      ! Sorting. LASRT has issues for double precision 64 bit on windows
+      !CALL ScaLAPACK_LASRT('I',N,Omega2,KEY,ErrStat2,ErrMsg2); if(Failed()) return
+      CALL sort_in_place(Omega2,KEY)
+
+      ! --- Sorting eigen vectors
+      ! KEEP ME: scaling of the eigenvectors using generalized mass =identity criterion
+      ! ALLOCATE(normcoeff(N,N), STAT = ErrStat )
+      ! result1 = matmul(M,EigVect)
+      ! result2 = matmul(transpose(EigVect),result1)
+      ! normcoeff=sqrt(result2)  !This should be a diagonal matrix which contains the normalization factors
+      ! normcoeff=sqrt(matmul(transpose(EigVect),matmul(M,EigVect)))  !This should be a diagonal matrix which contains the normalization factors
+      VL=EigVect  !temporary storage for sorting EigVect
+      DO I=1,N
+         !EigVect(:,I)=VL(:,KEY(I))/normcoeff(KEY(I),KEY(I))  !reordered and normalized
+         EigVect(:,I)=VL(:,KEY(I))  !just reordered as Huimin had a normalization outside of this one
+      ENDDO
+      !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++!
+
+      ! --- Return Omega (capped by huge(ReKi)) and check for singularity
+      Omega(:) = 0.0_R8Ki
+      do I=1,N
+         if (EqualRealNos(real(Omega2(I),ReKi), 0.0_ReKi)) then  ! NOTE: may be necessary for some corner numerics
+            Omega(i)=0.0_R8Ki
+            if (bCheckSingularity) then
+               call Fatal('Zero eigenvalue found, system may contain rigid body mode'); return
+            endif
+         elseif (Omega2(I)>0) then
+            Omega(i)=sqrt(Omega2(I))
+         else
+            ! Negative eigenfrequency
+            print*,'>>> Wrong eigenfrequency, Omega^2=',Omega2(I) ! <<< This should never happen
+            Omega(i)= 0.0_R8Ki
+            call Fatal('Negative eigenvalue found, system may be ill-conditioned'); return
+         endif
+      enddo
+
+      CALL CleanupEigen()
+      RETURN
+
+   CONTAINS
+      LOGICAL FUNCTION Failed()
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, 'EigenSolve')
+         Failed =  ErrStat >= AbortErrLev
+         if (Failed) call CleanUpEigen()
+      END FUNCTION Failed
+
+      SUBROUTINE Fatal(ErrMsg_in)
+         character(len=*), intent(in) :: ErrMsg_in
+         CALL SetErrStat(ErrID_Fatal, ErrMsg_in, ErrStat, ErrMsg, 'EigenSolve');
+         CALL CleanUpEigen()
+      END SUBROUTINE Fatal
+
+      SUBROUTINE CleanupEigen()
+         IF (ALLOCATED(Work)  ) DEALLOCATE(Work)
+         IF (ALLOCATED(AlphaR)) DEALLOCATE(AlphaR)
+         IF (ALLOCATED(AlphaI)) DEALLOCATE(AlphaI)
+         IF (ALLOCATED(Beta)  ) DEALLOCATE(Beta)
+         IF (ALLOCATED(VL)    ) DEALLOCATE(VL)
+         IF (ALLOCATED(KEY)   ) DEALLOCATE(KEY)
+      END SUBROUTINE CleanupEigen
+
+      pure subroutine sort_in_place(a,key)
+         real(R8Ki), intent(inout), dimension(:) :: a
+         integer(IntKi), intent(inout), dimension(:) :: key
+         integer(IntKi) :: tempI
+         real(R8Ki) :: temp
+         integer(IntKi) :: i, j
+         do i = 2, size(a)
+            j = i - 1
+            temp  = a(i)
+            tempI = key(i)
+            do while (j>=1 .and. a(j)>temp)
+               a(j+1) = a(j)
+               key(j+1) = key(j)
+               j = j - 1
+               if (j<1) then
+                  exit
+               endif
+            end do
+            a(j+1)   = temp
+            key(j+1) = tempI
+         end do
+      end subroutine sort_in_place
+   END SUBROUTINE EigenSolve
 !=======================================================================
 END MODULE NWTC_Num

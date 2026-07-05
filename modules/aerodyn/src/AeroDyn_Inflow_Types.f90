@@ -32,9 +32,10 @@
 MODULE AeroDyn_Inflow_Types
 !---------------------------------------------------------------------------------------------------------------------------------
 USE AeroDyn_Types
+USE SeaState_Types
 USE NWTC_Library
 IMPLICIT NONE
-    INTEGER(IntKi), PUBLIC, PARAMETER  :: ADI_Version = 1      !  [-]
+    INTEGER(IntKi), PUBLIC, PARAMETER  :: ADI_Version                      = 1      !  [-]
 ! =========  ADI_InflowWindData  =======
   TYPE, PUBLIC :: ADI_InflowWindData
     TYPE(InflowWind_ContinuousStateType)  :: x      !< Continuous states [-]
@@ -45,7 +46,7 @@ IMPLICIT NONE
     TYPE(InflowWind_MiscVarType)  :: m      !< Misc/optimization variables [-]
     TYPE(InflowWind_InputType)  :: u      !< Array of inputs associated with InputTimes [-]
     TYPE(InflowWind_OutputType)  :: y      !< System outputs [-]
-    INTEGER(IntKi)  :: CompInflow = 0_IntKi      !< 0=Steady Wind, 1=InflowWind [-]
+    INTEGER(IntKi)  :: CompInflow = 0_IntKi      !< 0=Steady Wind, 1=InflowWind, 2=External IfW (ADI c-bind only) [-]
     REAL(ReKi)  :: HWindSpeed = 0.0_ReKi      !< RefHeight Wind speed [-]
     REAL(ReKi)  :: RefHt = 0.0_ReKi      !< RefHeight [-]
     REAL(ReKi)  :: PLExp = 0.0_ReKi      !< PLExp [-]
@@ -54,15 +55,19 @@ IMPLICIT NONE
 ! =========  ADI_IW_InputData  =======
   TYPE, PUBLIC :: ADI_IW_InputData
     Character(1024)  :: InputFile      !< Name of InfloWind input file [-]
-    INTEGER(IntKi)  :: CompInflow = 0_IntKi      !< 0=Steady Wind, 1=InflowWind [-]
+    INTEGER(IntKi)  :: CompInflow = 0_IntKi      !< 0=Steady Wind, 1=InflowWind, 2=External IfW (ADI c-bind only) [-]
     REAL(ReKi)  :: HWindSpeed = 0.0_ReKi      !< RefHeight Wind speed [-]
     REAL(ReKi)  :: RefHt = 0.0_ReKi      !< RefHeight [-]
     REAL(ReKi)  :: PLExp = 0.0_ReKi      !< PLExp [-]
     INTEGER(IntKi)  :: MHK = 0_IntKi      !< MHK turbine type switch [-]
+    REAL(ReKi)  :: WtrDpth = 0.0_ReKi      !< Water depth [m]
+    REAL(ReKi)  :: MSL2SWL = 0.0_ReKi      !< Offset between still-water level and mean sea level [m]
     INTEGER(IntKi)  :: FilePassingMethod = 0      !< Should we read everthing from an input file (0), passed in as a FileInfoType structure (1), or passed as the IfW_InputFile structure (2) [-]
     TYPE(FileInfoType)  :: PassedFileInfo      !< If we don't use the input file, pass everything through this as a FileInfo structure [-]
     TYPE(InflowWind_InputFile)  :: PassedFileData      !< If we don't use the input file, pass everything through this as an IfW InputFile structure [-]
     LOGICAL  :: Linearize = .FALSE.      !< Flag that tells this module if the glue code wants to linearize. [-]
+    Character(1024)  :: RootName      !< RootName for writing output files [-]
+    LOGICAL  :: OutputAccel = .FALSE.      !< Flag to output wind acceleration [-]
   END TYPE ADI_IW_InputData
 ! =======================
 ! =========  ADI_InitInputType  =======
@@ -74,6 +79,7 @@ IMPLICIT NONE
     INTEGER(IntKi)  :: WrVTK = 0      !< 0= no vtk, 1=init only, 2=animation [-]
     INTEGER(IntKi)  :: WrVTK_Type = 1      !< Flag for VTK output type (1=surface, 2=line, 3=both) [-]
     REAL(ReKi)  :: WtrDpth = 0.0_ReKi      !< Water depth [m]
+    TYPE(FlowFieldType) , POINTER :: FlowField => NULL()      !< Pointer of InflowWinds flow field data type (from external IfW instance -- used with c-binding) [-]
   END TYPE ADI_InitInputType
 ! =======================
 ! =========  ADI_InitOutputType  =======
@@ -149,6 +155,20 @@ IMPLICIT NONE
     REAL(DbKi) , DIMENSION(:), ALLOCATABLE  :: inputTimes      !< Array of times associated with u array [-]
   END TYPE ADI_Data
 ! =======================
+! =========  SeaState_Data  =======
+  TYPE, PUBLIC :: SeaState_Data
+    TYPE(SeaSt_ContinuousStateType)  :: x      !< Continuous states [-]
+    TYPE(SeaSt_DiscreteStateType)  :: xd      !< Discrete states [-]
+    TYPE(SeaSt_ConstraintStateType)  :: z      !< Constraint states [-]
+    TYPE(SeaSt_OtherStateType)  :: OtherState      !< Other states [-]
+    TYPE(SeaSt_ParameterType)  :: p      !< Parameters [-]
+    TYPE(SeaSt_InputType)  :: u      !< System inputs [-]
+    TYPE(SeaSt_OutputType)  :: y      !< System outputs [-]
+    TYPE(SeaSt_MiscVarType)  :: m      !< Misc/optimization variables [-]
+    TYPE(SeaSt_InitInputType)  :: InitInp      !< Array of inputs associated with InputTimes [-]
+    TYPE(SeaSt_InitOutputType)  :: InitOut      !< Array of outputs associated with CalcSteady Azimuths [-]
+  END TYPE SeaState_Data
+! =======================
 ! =========  RotFED  =======
   TYPE, PUBLIC :: RotFED
     TYPE(MeshType)  :: PlatformPtMesh      !< Platform reference point positions/orientations/velocities/accelerations [-]
@@ -175,7 +195,36 @@ IMPLICIT NONE
     TYPE(RotFED) , DIMENSION(:), ALLOCATABLE  :: WT      !< Wind turbine/rotors elastic data [-]
   END TYPE FED_Data
 ! =======================
-CONTAINS
+   integer(IntKi), public, parameter :: ADI_x_AD_rotors_BEMT_UA_element_x =   1 ! ADI%AD%rotors(DL%i1)%BEMT%UA%element(DL%i2, DL%i3)%x
+   integer(IntKi), public, parameter :: ADI_x_AD_rotors_BEMT_DBEMT_element_vind =   2 ! ADI%AD%rotors(DL%i1)%BEMT%DBEMT%element(DL%i2, DL%i3)%vind
+   integer(IntKi), public, parameter :: ADI_x_AD_rotors_BEMT_DBEMT_element_vind_1 =   3 ! ADI%AD%rotors(DL%i1)%BEMT%DBEMT%element(DL%i2, DL%i3)%vind_1
+   integer(IntKi), public, parameter :: ADI_x_AD_rotors_BEMT_V_w         =   4 ! ADI%AD%rotors(DL%i1)%BEMT%V_w
+   integer(IntKi), public, parameter :: ADI_x_AD_FVW_W_Gamma_NW          =   5 ! ADI%AD%FVW%W(DL%i1)%Gamma_NW
+   integer(IntKi), public, parameter :: ADI_x_AD_FVW_W_Gamma_FW          =   6 ! ADI%AD%FVW%W(DL%i1)%Gamma_FW
+   integer(IntKi), public, parameter :: ADI_x_AD_FVW_W_Eps_NW            =   7 ! ADI%AD%FVW%W(DL%i1)%Eps_NW
+   integer(IntKi), public, parameter :: ADI_x_AD_FVW_W_Eps_FW            =   8 ! ADI%AD%FVW%W(DL%i1)%Eps_FW
+   integer(IntKi), public, parameter :: ADI_x_AD_FVW_W_r_NW              =   9 ! ADI%AD%FVW%W(DL%i1)%r_NW
+   integer(IntKi), public, parameter :: ADI_x_AD_FVW_W_r_FW              =  10 ! ADI%AD%FVW%W(DL%i1)%r_FW
+   integer(IntKi), public, parameter :: ADI_x_AD_FVW_UA_element_x        =  11 ! ADI%AD%FVW%UA(DL%i1)%element(DL%i2, DL%i3)%x
+   integer(IntKi), public, parameter :: ADI_u_AD_rotors_NacelleMotion    =  12 ! ADI%AD%rotors(DL%i1)%NacelleMotion
+   integer(IntKi), public, parameter :: ADI_u_AD_rotors_TowerMotion      =  13 ! ADI%AD%rotors(DL%i1)%TowerMotion
+   integer(IntKi), public, parameter :: ADI_u_AD_rotors_HubMotion        =  14 ! ADI%AD%rotors(DL%i1)%HubMotion
+   integer(IntKi), public, parameter :: ADI_u_AD_rotors_BladeRootMotion  =  15 ! ADI%AD%rotors(DL%i1)%BladeRootMotion(DL%i2)
+   integer(IntKi), public, parameter :: ADI_u_AD_rotors_BladeMotion      =  16 ! ADI%AD%rotors(DL%i1)%BladeMotion(DL%i2)
+   integer(IntKi), public, parameter :: ADI_u_AD_rotors_TFinMotion       =  17 ! ADI%AD%rotors(DL%i1)%TFinMotion
+   integer(IntKi), public, parameter :: ADI_u_AD_rotors_UserProp         =  18 ! ADI%AD%rotors(DL%i1)%UserProp
+   integer(IntKi), public, parameter :: ADI_y_AD_rotors_NacelleLoad      =  19 ! ADI%AD%rotors(DL%i1)%NacelleLoad
+   integer(IntKi), public, parameter :: ADI_y_AD_rotors_HubLoad          =  20 ! ADI%AD%rotors(DL%i1)%HubLoad
+   integer(IntKi), public, parameter :: ADI_y_AD_rotors_TowerLoad        =  21 ! ADI%AD%rotors(DL%i1)%TowerLoad
+   integer(IntKi), public, parameter :: ADI_y_AD_rotors_BladeLoad        =  22 ! ADI%AD%rotors(DL%i1)%BladeLoad(DL%i2)
+   integer(IntKi), public, parameter :: ADI_y_AD_rotors_TFinLoad         =  23 ! ADI%AD%rotors(DL%i1)%TFinLoad
+   integer(IntKi), public, parameter :: ADI_y_AD_rotors_WriteOutput      =  24 ! ADI%AD%rotors(DL%i1)%WriteOutput
+   integer(IntKi), public, parameter :: ADI_y_HHVel                      =  25 ! ADI%HHVel
+   integer(IntKi), public, parameter :: ADI_y_PLExp                      =  26 ! ADI%PLExp
+   integer(IntKi), public, parameter :: ADI_y_IW_WriteOutput             =  27 ! ADI%IW_WriteOutput
+   integer(IntKi), public, parameter :: ADI_y_WriteOutput                =  28 ! ADI%WriteOutput
+
+contains
 
 subroutine ADI_CopyInflowWindData(SrcInflowWindDataData, DstInflowWindDataData, CtrlCode, ErrStat, ErrMsg)
    type(ADI_InflowWindData), intent(in) :: SrcInflowWindDataData
@@ -301,6 +350,8 @@ subroutine ADI_CopyIW_InputData(SrcIW_InputDataData, DstIW_InputDataData, CtrlCo
    DstIW_InputDataData%RefHt = SrcIW_InputDataData%RefHt
    DstIW_InputDataData%PLExp = SrcIW_InputDataData%PLExp
    DstIW_InputDataData%MHK = SrcIW_InputDataData%MHK
+   DstIW_InputDataData%WtrDpth = SrcIW_InputDataData%WtrDpth
+   DstIW_InputDataData%MSL2SWL = SrcIW_InputDataData%MSL2SWL
    DstIW_InputDataData%FilePassingMethod = SrcIW_InputDataData%FilePassingMethod
    call NWTC_Library_CopyFileInfoType(SrcIW_InputDataData%PassedFileInfo, DstIW_InputDataData%PassedFileInfo, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
@@ -309,6 +360,8 @@ subroutine ADI_CopyIW_InputData(SrcIW_InputDataData, DstIW_InputDataData, CtrlCo
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
    DstIW_InputDataData%Linearize = SrcIW_InputDataData%Linearize
+   DstIW_InputDataData%RootName = SrcIW_InputDataData%RootName
+   DstIW_InputDataData%OutputAccel = SrcIW_InputDataData%OutputAccel
 end subroutine
 
 subroutine ADI_DestroyIW_InputData(IW_InputDataData, ErrStat, ErrMsg)
@@ -337,10 +390,14 @@ subroutine ADI_PackIW_InputData(RF, Indata)
    call RegPack(RF, InData%RefHt)
    call RegPack(RF, InData%PLExp)
    call RegPack(RF, InData%MHK)
+   call RegPack(RF, InData%WtrDpth)
+   call RegPack(RF, InData%MSL2SWL)
    call RegPack(RF, InData%FilePassingMethod)
    call NWTC_Library_PackFileInfoType(RF, InData%PassedFileInfo) 
    call InflowWind_PackInputFile(RF, InData%PassedFileData) 
    call RegPack(RF, InData%Linearize)
+   call RegPack(RF, InData%RootName)
+   call RegPack(RF, InData%OutputAccel)
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -355,10 +412,14 @@ subroutine ADI_UnPackIW_InputData(RF, OutData)
    call RegUnpack(RF, OutData%RefHt); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%PLExp); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%MHK); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%WtrDpth); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%MSL2SWL); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%FilePassingMethod); if (RegCheckErr(RF, RoutineName)) return
    call NWTC_Library_UnpackFileInfoType(RF, OutData%PassedFileInfo) ! PassedFileInfo 
    call InflowWind_UnpackInputFile(RF, OutData%PassedFileData) ! PassedFileData 
    call RegUnpack(RF, OutData%Linearize); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%RootName); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%OutputAccel); if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
 subroutine ADI_CopyInitInput(SrcInitInputData, DstInitInputData, CtrlCode, ErrStat, ErrMsg)
@@ -367,6 +428,7 @@ subroutine ADI_CopyInitInput(SrcInitInputData, DstInitInputData, CtrlCode, ErrSt
    integer(IntKi),  intent(in   ) :: CtrlCode
    integer(IntKi),  intent(  out) :: ErrStat
    character(*),    intent(  out) :: ErrMsg
+   integer(B4Ki)                  :: LB(0), UB(0)
    integer(IntKi)                 :: ErrStat2
    character(ErrMsgLen)           :: ErrMsg2
    character(*), parameter        :: RoutineName = 'ADI_CopyInitInput'
@@ -383,6 +445,7 @@ subroutine ADI_CopyInitInput(SrcInitInputData, DstInitInputData, CtrlCode, ErrSt
    DstInitInputData%WrVTK = SrcInitInputData%WrVTK
    DstInitInputData%WrVTK_Type = SrcInitInputData%WrVTK_Type
    DstInitInputData%WtrDpth = SrcInitInputData%WtrDpth
+   DstInitInputData%FlowField => SrcInitInputData%FlowField
 end subroutine
 
 subroutine ADI_DestroyInitInput(InitInputData, ErrStat, ErrMsg)
@@ -398,12 +461,14 @@ subroutine ADI_DestroyInitInput(InitInputData, ErrStat, ErrMsg)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    call ADI_DestroyIW_InputData(InitInputData%IW_InitInp, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   nullify(InitInputData%FlowField)
 end subroutine
 
 subroutine ADI_PackInitInput(RF, Indata)
    type(RegFile), intent(inout) :: RF
    type(ADI_InitInputType), intent(in) :: InData
    character(*), parameter         :: RoutineName = 'ADI_PackInitInput'
+   logical         :: PtrInIndex
    if (RF%ErrStat >= AbortErrLev) return
    call AD_PackInitInput(RF, InData%AD) 
    call ADI_PackIW_InputData(RF, InData%IW_InitInp) 
@@ -412,6 +477,13 @@ subroutine ADI_PackInitInput(RF, Indata)
    call RegPack(RF, InData%WrVTK)
    call RegPack(RF, InData%WrVTK_Type)
    call RegPack(RF, InData%WtrDpth)
+   call RegPack(RF, associated(InData%FlowField))
+   if (associated(InData%FlowField)) then
+      call RegPackPointer(RF, c_loc(InData%FlowField), PtrInIndex)
+      if (.not. PtrInIndex) then
+         call IfW_FlowField_PackFlowFieldType(RF, InData%FlowField) 
+      end if
+   end if
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -419,6 +491,11 @@ subroutine ADI_UnPackInitInput(RF, OutData)
    type(RegFile), intent(inout)    :: RF
    type(ADI_InitInputType), intent(inout) :: OutData
    character(*), parameter            :: RoutineName = 'ADI_UnPackInitInput'
+   integer(B4Ki)   :: LB(0), UB(0)
+   integer(IntKi)  :: stat
+   logical         :: IsAllocAssoc
+   integer(B8Ki)   :: PtrIdx
+   type(c_ptr)     :: Ptr
    if (RF%ErrStat /= ErrID_None) return
    call AD_UnpackInitInput(RF, OutData%AD) ! AD 
    call ADI_UnpackIW_InputData(RF, OutData%IW_InitInp) ! IW_InitInp 
@@ -427,6 +504,24 @@ subroutine ADI_UnPackInitInput(RF, OutData)
    call RegUnpack(RF, OutData%WrVTK); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%WrVTK_Type); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%WtrDpth); if (RegCheckErr(RF, RoutineName)) return
+   if (associated(OutData%FlowField)) deallocate(OutData%FlowField)
+   call RegUnpack(RF, IsAllocAssoc); if (RegCheckErr(RF, RoutineName)) return
+   if (IsAllocAssoc) then
+      call RegUnpackPointer(RF, Ptr, PtrIdx); if (RegCheckErr(RF, RoutineName)) return
+      if (c_associated(Ptr)) then
+         call c_f_pointer(Ptr, OutData%FlowField)
+      else
+         allocate(OutData%FlowField,stat=stat)
+         if (stat /= 0) then 
+            call SetErrStat(ErrID_Fatal, 'Error allocating OutData%FlowField.', RF%ErrStat, RF%ErrMsg, RoutineName)
+            return
+         end if
+         RF%Pointers(PtrIdx) = c_loc(OutData%FlowField)
+         call IfW_FlowField_UnpackFlowFieldType(RF, OutData%FlowField) ! FlowField 
+      end if
+   else
+      OutData%FlowField => null()
+   end if
 end subroutine
 
 subroutine ADI_CopyInitOutput(SrcInitOutputData, DstInitOutputData, CtrlCode, ErrStat, ErrMsg)
@@ -1346,6 +1441,115 @@ subroutine ADI_UnPackData(RF, OutData)
    call RegUnpackAlloc(RF, OutData%inputTimes); if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
+subroutine ADI_CopySeaState_Data(SrcSeaState_DataData, DstSeaState_DataData, CtrlCode, ErrStat, ErrMsg)
+   type(SeaState_Data), intent(in) :: SrcSeaState_DataData
+   type(SeaState_Data), intent(inout) :: DstSeaState_DataData
+   integer(IntKi),  intent(in   ) :: CtrlCode
+   integer(IntKi),  intent(  out) :: ErrStat
+   character(*),    intent(  out) :: ErrMsg
+   integer(IntKi)                 :: ErrStat2
+   character(ErrMsgLen)           :: ErrMsg2
+   character(*), parameter        :: RoutineName = 'ADI_CopySeaState_Data'
+   ErrStat = ErrID_None
+   ErrMsg  = ''
+   call SeaSt_CopyContState(SrcSeaState_DataData%x, DstSeaState_DataData%x, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+   call SeaSt_CopyDiscState(SrcSeaState_DataData%xd, DstSeaState_DataData%xd, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+   call SeaSt_CopyConstrState(SrcSeaState_DataData%z, DstSeaState_DataData%z, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+   call SeaSt_CopyOtherState(SrcSeaState_DataData%OtherState, DstSeaState_DataData%OtherState, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+   call SeaSt_CopyParam(SrcSeaState_DataData%p, DstSeaState_DataData%p, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+   call SeaSt_CopyInput(SrcSeaState_DataData%u, DstSeaState_DataData%u, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+   call SeaSt_CopyOutput(SrcSeaState_DataData%y, DstSeaState_DataData%y, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+   call SeaSt_CopyMisc(SrcSeaState_DataData%m, DstSeaState_DataData%m, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+   call SeaSt_CopyInitInput(SrcSeaState_DataData%InitInp, DstSeaState_DataData%InitInp, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+   call SeaSt_CopyInitOutput(SrcSeaState_DataData%InitOut, DstSeaState_DataData%InitOut, CtrlCode, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (ErrStat >= AbortErrLev) return
+end subroutine
+
+subroutine ADI_DestroySeaState_Data(SeaState_DataData, ErrStat, ErrMsg)
+   type(SeaState_Data), intent(inout) :: SeaState_DataData
+   integer(IntKi),  intent(  out) :: ErrStat
+   character(*),    intent(  out) :: ErrMsg
+   integer(IntKi)                 :: ErrStat2
+   character(ErrMsgLen)           :: ErrMsg2
+   character(*), parameter        :: RoutineName = 'ADI_DestroySeaState_Data'
+   ErrStat = ErrID_None
+   ErrMsg  = ''
+   call SeaSt_DestroyContState(SeaState_DataData%x, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   call SeaSt_DestroyDiscState(SeaState_DataData%xd, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   call SeaSt_DestroyConstrState(SeaState_DataData%z, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   call SeaSt_DestroyOtherState(SeaState_DataData%OtherState, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   call SeaSt_DestroyParam(SeaState_DataData%p, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   call SeaSt_DestroyInput(SeaState_DataData%u, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   call SeaSt_DestroyOutput(SeaState_DataData%y, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   call SeaSt_DestroyMisc(SeaState_DataData%m, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   call SeaSt_DestroyInitInput(SeaState_DataData%InitInp, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   call SeaSt_DestroyInitOutput(SeaState_DataData%InitOut, ErrStat2, ErrMsg2)
+   call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+end subroutine
+
+subroutine ADI_PackSeaState_Data(RF, Indata)
+   type(RegFile), intent(inout) :: RF
+   type(SeaState_Data), intent(in) :: InData
+   character(*), parameter         :: RoutineName = 'ADI_PackSeaState_Data'
+   if (RF%ErrStat >= AbortErrLev) return
+   call SeaSt_PackContState(RF, InData%x) 
+   call SeaSt_PackDiscState(RF, InData%xd) 
+   call SeaSt_PackConstrState(RF, InData%z) 
+   call SeaSt_PackOtherState(RF, InData%OtherState) 
+   call SeaSt_PackParam(RF, InData%p) 
+   call SeaSt_PackInput(RF, InData%u) 
+   call SeaSt_PackOutput(RF, InData%y) 
+   call SeaSt_PackMisc(RF, InData%m) 
+   call SeaSt_PackInitInput(RF, InData%InitInp) 
+   call SeaSt_PackInitOutput(RF, InData%InitOut) 
+   if (RegCheckErr(RF, RoutineName)) return
+end subroutine
+
+subroutine ADI_UnPackSeaState_Data(RF, OutData)
+   type(RegFile), intent(inout)    :: RF
+   type(SeaState_Data), intent(inout) :: OutData
+   character(*), parameter            :: RoutineName = 'ADI_UnPackSeaState_Data'
+   if (RF%ErrStat /= ErrID_None) return
+   call SeaSt_UnpackContState(RF, OutData%x) ! x 
+   call SeaSt_UnpackDiscState(RF, OutData%xd) ! xd 
+   call SeaSt_UnpackConstrState(RF, OutData%z) ! z 
+   call SeaSt_UnpackOtherState(RF, OutData%OtherState) ! OtherState 
+   call SeaSt_UnpackParam(RF, OutData%p) ! p 
+   call SeaSt_UnpackInput(RF, OutData%u) ! u 
+   call SeaSt_UnpackOutput(RF, OutData%y) ! y 
+   call SeaSt_UnpackMisc(RF, OutData%m) ! m 
+   call SeaSt_UnpackInitInput(RF, OutData%InitInp) ! InitInp 
+   call SeaSt_UnpackInitOutput(RF, OutData%InitOut) ! InitOut 
+end subroutine
+
 subroutine ADI_CopyRotFED(SrcRotFEDData, DstRotFEDData, CtrlCode, ErrStat, ErrMsg)
    type(RotFED), intent(inout) :: SrcRotFEDData
    type(RotFED), intent(inout) :: DstRotFEDData
@@ -1757,5 +1961,412 @@ subroutine ADI_UnPackFED_Data(RF, OutData)
       end do
    end if
 end subroutine
+
+function ADI_InputMeshPointer(u, DL) result(Mesh)
+   type(ADI_InputType), target, intent(in) :: u
+   type(DatLoc), intent(in)               :: DL
+   type(MeshType), pointer                :: Mesh
+   nullify(Mesh)
+   select case (DL%Num)
+   case (ADI_u_AD_rotors_NacelleMotion)
+       Mesh => u%AD%rotors(DL%i1)%NacelleMotion
+   case (ADI_u_AD_rotors_TowerMotion)
+       Mesh => u%AD%rotors(DL%i1)%TowerMotion
+   case (ADI_u_AD_rotors_HubMotion)
+       Mesh => u%AD%rotors(DL%i1)%HubMotion
+   case (ADI_u_AD_rotors_BladeRootMotion)
+       Mesh => u%AD%rotors(DL%i1)%BladeRootMotion(DL%i2)
+   case (ADI_u_AD_rotors_BladeMotion)
+       Mesh => u%AD%rotors(DL%i1)%BladeMotion(DL%i2)
+   case (ADI_u_AD_rotors_TFinMotion)
+       Mesh => u%AD%rotors(DL%i1)%TFinMotion
+   end select
+end function
+
+function ADI_OutputMeshPointer(y, DL) result(Mesh)
+   type(ADI_OutputType), target, intent(in) :: y
+   type(DatLoc), intent(in)               :: DL
+   type(MeshType), pointer                :: Mesh
+   nullify(Mesh)
+   select case (DL%Num)
+   case (ADI_y_AD_rotors_NacelleLoad)
+       Mesh => y%AD%rotors(DL%i1)%NacelleLoad
+   case (ADI_y_AD_rotors_HubLoad)
+       Mesh => y%AD%rotors(DL%i1)%HubLoad
+   case (ADI_y_AD_rotors_TowerLoad)
+       Mesh => y%AD%rotors(DL%i1)%TowerLoad
+   case (ADI_y_AD_rotors_BladeLoad)
+       Mesh => y%AD%rotors(DL%i1)%BladeLoad(DL%i2)
+   case (ADI_y_AD_rotors_TFinLoad)
+       Mesh => y%AD%rotors(DL%i1)%TFinLoad
+   end select
+end function
+
+subroutine ADI_VarsPackContState(Vars, x, ValAry)
+   type(ADI_ContinuousStateType), intent(in) :: x
+   type(ModVarsType), intent(in)          :: Vars
+   real(R8Ki), intent(inout)              :: ValAry(:)
+   integer(IntKi)                         :: i
+   do i = 1, size(Vars%x)
+      call ADI_VarPackContState(Vars%x(i), x, ValAry)
+   end do
+end subroutine
+
+subroutine ADI_VarPackContState(V, x, ValAry)
+   type(ModVarType), intent(in)            :: V
+   type(ADI_ContinuousStateType), intent(in) :: x
+   real(R8Ki), intent(inout)               :: ValAry(:)
+   associate (DL => V%DL, VarVals => ValAry(V%iLoc(1):V%iLoc(2)))
+      select case (DL%Num)
+      case (ADI_x_AD_rotors_BEMT_UA_element_x)
+         VarVals = x%AD%rotors(DL%i1)%BEMT%UA%element(DL%i2, DL%i3)%x(V%iLB:V%iUB) ! Rank 1 Array
+      case (ADI_x_AD_rotors_BEMT_DBEMT_element_vind)
+         VarVals = x%AD%rotors(DL%i1)%BEMT%DBEMT%element(DL%i2, DL%i3)%vind(V%iLB:V%iUB) ! Rank 1 Array
+      case (ADI_x_AD_rotors_BEMT_DBEMT_element_vind_1)
+         VarVals = x%AD%rotors(DL%i1)%BEMT%DBEMT%element(DL%i2, DL%i3)%vind_1(V%iLB:V%iUB) ! Rank 1 Array
+      case (ADI_x_AD_rotors_BEMT_V_w)
+         VarVals = x%AD%rotors(DL%i1)%BEMT%V_w(V%iLB:V%iUB)                   ! Rank 1 Array
+      case (ADI_x_AD_FVW_W_Gamma_NW)
+         VarVals = x%AD%FVW%W(DL%i1)%Gamma_NW(V%iLB:V%iUB,V%j)                ! Rank 2 Array
+      case (ADI_x_AD_FVW_W_Gamma_FW)
+         VarVals = x%AD%FVW%W(DL%i1)%Gamma_FW(V%iLB:V%iUB,V%j)                ! Rank 2 Array
+      case (ADI_x_AD_FVW_W_Eps_NW)
+         VarVals = x%AD%FVW%W(DL%i1)%Eps_NW(V%iLB:V%iUB, V%j, V%k)            ! Rank 3 Array
+      case (ADI_x_AD_FVW_W_Eps_FW)
+         VarVals = x%AD%FVW%W(DL%i1)%Eps_FW(V%iLB:V%iUB, V%j, V%k)            ! Rank 3 Array
+      case (ADI_x_AD_FVW_W_r_NW)
+         VarVals = x%AD%FVW%W(DL%i1)%r_NW(V%iLB:V%iUB, V%j, V%k)              ! Rank 3 Array
+      case (ADI_x_AD_FVW_W_r_FW)
+         VarVals = x%AD%FVW%W(DL%i1)%r_FW(V%iLB:V%iUB, V%j, V%k)              ! Rank 3 Array
+      case (ADI_x_AD_FVW_UA_element_x)
+         VarVals = x%AD%FVW%UA(DL%i1)%element(DL%i2, DL%i3)%x(V%iLB:V%iUB)    ! Rank 1 Array
+      case default
+         VarVals = 0.0_R8Ki
+      end select
+   end associate
+end subroutine
+
+subroutine ADI_VarsUnpackContState(Vars, ValAry, x)
+   type(ModVarsType), intent(in)          :: Vars
+   real(R8Ki), intent(in)                 :: ValAry(:)
+   type(ADI_ContinuousStateType), intent(inout) :: x
+   integer(IntKi)                         :: i
+   do i = 1, size(Vars%x)
+      call ADI_VarUnpackContState(Vars%x(i), ValAry, x)
+   end do
+end subroutine
+
+subroutine ADI_VarUnpackContState(V, ValAry, x)
+   type(ModVarType), intent(in)            :: V
+   real(R8Ki), intent(in)                  :: ValAry(:)
+   type(ADI_ContinuousStateType), intent(inout) :: x
+   associate (DL => V%DL, VarVals => ValAry(V%iLoc(1):V%iLoc(2)))
+      select case (DL%Num)
+      case (ADI_x_AD_rotors_BEMT_UA_element_x)
+         x%AD%rotors(DL%i1)%BEMT%UA%element(DL%i2, DL%i3)%x(V%iLB:V%iUB) = VarVals ! Rank 1 Array
+      case (ADI_x_AD_rotors_BEMT_DBEMT_element_vind)
+         x%AD%rotors(DL%i1)%BEMT%DBEMT%element(DL%i2, DL%i3)%vind(V%iLB:V%iUB) = VarVals ! Rank 1 Array
+      case (ADI_x_AD_rotors_BEMT_DBEMT_element_vind_1)
+         x%AD%rotors(DL%i1)%BEMT%DBEMT%element(DL%i2, DL%i3)%vind_1(V%iLB:V%iUB) = VarVals ! Rank 1 Array
+      case (ADI_x_AD_rotors_BEMT_V_w)
+         x%AD%rotors(DL%i1)%BEMT%V_w(V%iLB:V%iUB) = VarVals                   ! Rank 1 Array
+      case (ADI_x_AD_FVW_W_Gamma_NW)
+         x%AD%FVW%W(DL%i1)%Gamma_NW(V%iLB:V%iUB, V%j) = VarVals               ! Rank 2 Array
+      case (ADI_x_AD_FVW_W_Gamma_FW)
+         x%AD%FVW%W(DL%i1)%Gamma_FW(V%iLB:V%iUB, V%j) = VarVals               ! Rank 2 Array
+      case (ADI_x_AD_FVW_W_Eps_NW)
+         x%AD%FVW%W(DL%i1)%Eps_NW(V%iLB:V%iUB, V%j, V%k) = VarVals            ! Rank 3 Array
+      case (ADI_x_AD_FVW_W_Eps_FW)
+         x%AD%FVW%W(DL%i1)%Eps_FW(V%iLB:V%iUB, V%j, V%k) = VarVals            ! Rank 3 Array
+      case (ADI_x_AD_FVW_W_r_NW)
+         x%AD%FVW%W(DL%i1)%r_NW(V%iLB:V%iUB, V%j, V%k) = VarVals              ! Rank 3 Array
+      case (ADI_x_AD_FVW_W_r_FW)
+         x%AD%FVW%W(DL%i1)%r_FW(V%iLB:V%iUB, V%j, V%k) = VarVals              ! Rank 3 Array
+      case (ADI_x_AD_FVW_UA_element_x)
+         x%AD%FVW%UA(DL%i1)%element(DL%i2, DL%i3)%x(V%iLB:V%iUB) = VarVals    ! Rank 1 Array
+      end select
+   end associate
+end subroutine
+
+function ADI_ContinuousStateFieldName(DL) result(Name)
+   type(DatLoc), intent(in)      :: DL
+   character(32)                 :: Name
+   select case (DL%Num)
+   case (ADI_x_AD_rotors_BEMT_UA_element_x)
+       Name = "x%AD%rotors("//trim(Num2LStr(DL%i1))//")%BEMT%UA%element("//trim(Num2LStr(DL%i2))//", "//trim(Num2LStr(DL%i3))//")%x"
+   case (ADI_x_AD_rotors_BEMT_DBEMT_element_vind)
+       Name = "x%AD%rotors("//trim(Num2LStr(DL%i1))//")%BEMT%DBEMT%element("//trim(Num2LStr(DL%i2))//", "//trim(Num2LStr(DL%i3))//")%vind"
+   case (ADI_x_AD_rotors_BEMT_DBEMT_element_vind_1)
+       Name = "x%AD%rotors("//trim(Num2LStr(DL%i1))//")%BEMT%DBEMT%element("//trim(Num2LStr(DL%i2))//", "//trim(Num2LStr(DL%i3))//")%vind_1"
+   case (ADI_x_AD_rotors_BEMT_V_w)
+       Name = "x%AD%rotors("//trim(Num2LStr(DL%i1))//")%BEMT%V_w"
+   case (ADI_x_AD_FVW_W_Gamma_NW)
+       Name = "x%AD%FVW%W("//trim(Num2LStr(DL%i1))//")%Gamma_NW"
+   case (ADI_x_AD_FVW_W_Gamma_FW)
+       Name = "x%AD%FVW%W("//trim(Num2LStr(DL%i1))//")%Gamma_FW"
+   case (ADI_x_AD_FVW_W_Eps_NW)
+       Name = "x%AD%FVW%W("//trim(Num2LStr(DL%i1))//")%Eps_NW"
+   case (ADI_x_AD_FVW_W_Eps_FW)
+       Name = "x%AD%FVW%W("//trim(Num2LStr(DL%i1))//")%Eps_FW"
+   case (ADI_x_AD_FVW_W_r_NW)
+       Name = "x%AD%FVW%W("//trim(Num2LStr(DL%i1))//")%r_NW"
+   case (ADI_x_AD_FVW_W_r_FW)
+       Name = "x%AD%FVW%W("//trim(Num2LStr(DL%i1))//")%r_FW"
+   case (ADI_x_AD_FVW_UA_element_x)
+       Name = "x%AD%FVW%UA("//trim(Num2LStr(DL%i1))//")%element("//trim(Num2LStr(DL%i2))//", "//trim(Num2LStr(DL%i3))//")%x"
+   case default
+       Name = "Unknown Field"
+   end select
+end function
+
+subroutine ADI_VarsPackContStateDeriv(Vars, x, ValAry)
+   type(ADI_ContinuousStateType), intent(in) :: x
+   type(ModVarsType), intent(in)          :: Vars
+   real(R8Ki), intent(inout)              :: ValAry(:)
+   integer(IntKi)                         :: i
+   do i = 1, size(Vars%x)
+      call ADI_VarPackContStateDeriv(Vars%x(i), x, ValAry)
+   end do
+end subroutine
+
+subroutine ADI_VarPackContStateDeriv(V, x, ValAry)
+   type(ModVarType), intent(in)            :: V
+   type(ADI_ContinuousStateType), intent(in) :: x
+   real(R8Ki), intent(inout)               :: ValAry(:)
+   associate (DL => V%DL, VarVals => ValAry(V%iLoc(1):V%iLoc(2)))
+      select case (DL%Num)
+      case (ADI_x_AD_rotors_BEMT_UA_element_x)
+         VarVals = x%AD%rotors(DL%i1)%BEMT%UA%element(DL%i2, DL%i3)%x(V%iLB:V%iUB) ! Rank 1 Array
+      case (ADI_x_AD_rotors_BEMT_DBEMT_element_vind)
+         VarVals = x%AD%rotors(DL%i1)%BEMT%DBEMT%element(DL%i2, DL%i3)%vind(V%iLB:V%iUB) ! Rank 1 Array
+      case (ADI_x_AD_rotors_BEMT_DBEMT_element_vind_1)
+         VarVals = x%AD%rotors(DL%i1)%BEMT%DBEMT%element(DL%i2, DL%i3)%vind_1(V%iLB:V%iUB) ! Rank 1 Array
+      case (ADI_x_AD_rotors_BEMT_V_w)
+         VarVals = x%AD%rotors(DL%i1)%BEMT%V_w(V%iLB:V%iUB)                   ! Rank 1 Array
+      case (ADI_x_AD_FVW_W_Gamma_NW)
+         VarVals = x%AD%FVW%W(DL%i1)%Gamma_NW(V%iLB:V%iUB,V%j)                ! Rank 2 Array
+      case (ADI_x_AD_FVW_W_Gamma_FW)
+         VarVals = x%AD%FVW%W(DL%i1)%Gamma_FW(V%iLB:V%iUB,V%j)                ! Rank 2 Array
+      case (ADI_x_AD_FVW_W_Eps_NW)
+         VarVals = x%AD%FVW%W(DL%i1)%Eps_NW(V%iLB:V%iUB, V%j, V%k)            ! Rank 3 Array
+      case (ADI_x_AD_FVW_W_Eps_FW)
+         VarVals = x%AD%FVW%W(DL%i1)%Eps_FW(V%iLB:V%iUB, V%j, V%k)            ! Rank 3 Array
+      case (ADI_x_AD_FVW_W_r_NW)
+         VarVals = x%AD%FVW%W(DL%i1)%r_NW(V%iLB:V%iUB, V%j, V%k)              ! Rank 3 Array
+      case (ADI_x_AD_FVW_W_r_FW)
+         VarVals = x%AD%FVW%W(DL%i1)%r_FW(V%iLB:V%iUB, V%j, V%k)              ! Rank 3 Array
+      case (ADI_x_AD_FVW_UA_element_x)
+         VarVals = x%AD%FVW%UA(DL%i1)%element(DL%i2, DL%i3)%x(V%iLB:V%iUB)    ! Rank 1 Array
+      case default
+         VarVals = 0.0_R8Ki
+      end select
+   end associate
+end subroutine
+
+subroutine ADI_VarsPackInput(Vars, u, ValAry)
+   type(ADI_InputType), intent(in)         :: u
+   type(ModVarsType), intent(in)          :: Vars
+   real(R8Ki), intent(inout)              :: ValAry(:)
+   integer(IntKi)                         :: i
+   do i = 1, size(Vars%u)
+      call ADI_VarPackInput(Vars%u(i), u, ValAry)
+   end do
+end subroutine
+
+subroutine ADI_VarPackInput(V, u, ValAry)
+   type(ModVarType), intent(in)            :: V
+   type(ADI_InputType), intent(in)         :: u
+   real(R8Ki), intent(inout)               :: ValAry(:)
+   associate (DL => V%DL, VarVals => ValAry(V%iLoc(1):V%iLoc(2)))
+      select case (DL%Num)
+      case (ADI_u_AD_rotors_NacelleMotion)
+         call MV_PackMesh(V, u%AD%rotors(DL%i1)%NacelleMotion, ValAry)        ! Mesh
+      case (ADI_u_AD_rotors_TowerMotion)
+         call MV_PackMesh(V, u%AD%rotors(DL%i1)%TowerMotion, ValAry)          ! Mesh
+      case (ADI_u_AD_rotors_HubMotion)
+         call MV_PackMesh(V, u%AD%rotors(DL%i1)%HubMotion, ValAry)            ! Mesh
+      case (ADI_u_AD_rotors_BladeRootMotion)
+         call MV_PackMesh(V, u%AD%rotors(DL%i1)%BladeRootMotion(DL%i2), ValAry) ! Mesh
+      case (ADI_u_AD_rotors_BladeMotion)
+         call MV_PackMesh(V, u%AD%rotors(DL%i1)%BladeMotion(DL%i2), ValAry)   ! Mesh
+      case (ADI_u_AD_rotors_TFinMotion)
+         call MV_PackMesh(V, u%AD%rotors(DL%i1)%TFinMotion, ValAry)           ! Mesh
+      case (ADI_u_AD_rotors_UserProp)
+         VarVals = u%AD%rotors(DL%i1)%UserProp(V%iLB:V%iUB,V%j)               ! Rank 2 Array
+      case default
+         VarVals = 0.0_R8Ki
+      end select
+   end associate
+end subroutine
+
+subroutine ADI_VarsUnpackInput(Vars, ValAry, u)
+   type(ModVarsType), intent(in)          :: Vars
+   real(R8Ki), intent(in)                 :: ValAry(:)
+   type(ADI_InputType), intent(inout)      :: u
+   integer(IntKi)                         :: i
+   do i = 1, size(Vars%u)
+      call ADI_VarUnpackInput(Vars%u(i), ValAry, u)
+   end do
+end subroutine
+
+subroutine ADI_VarUnpackInput(V, ValAry, u)
+   type(ModVarType), intent(in)            :: V
+   real(R8Ki), intent(in)                  :: ValAry(:)
+   type(ADI_InputType), intent(inout)      :: u
+   associate (DL => V%DL, VarVals => ValAry(V%iLoc(1):V%iLoc(2)))
+      select case (DL%Num)
+      case (ADI_u_AD_rotors_NacelleMotion)
+         call MV_UnpackMesh(V, ValAry, u%AD%rotors(DL%i1)%NacelleMotion)      ! Mesh
+      case (ADI_u_AD_rotors_TowerMotion)
+         call MV_UnpackMesh(V, ValAry, u%AD%rotors(DL%i1)%TowerMotion)        ! Mesh
+      case (ADI_u_AD_rotors_HubMotion)
+         call MV_UnpackMesh(V, ValAry, u%AD%rotors(DL%i1)%HubMotion)          ! Mesh
+      case (ADI_u_AD_rotors_BladeRootMotion)
+         call MV_UnpackMesh(V, ValAry, u%AD%rotors(DL%i1)%BladeRootMotion(DL%i2)) ! Mesh
+      case (ADI_u_AD_rotors_BladeMotion)
+         call MV_UnpackMesh(V, ValAry, u%AD%rotors(DL%i1)%BladeMotion(DL%i2)) ! Mesh
+      case (ADI_u_AD_rotors_TFinMotion)
+         call MV_UnpackMesh(V, ValAry, u%AD%rotors(DL%i1)%TFinMotion)         ! Mesh
+      case (ADI_u_AD_rotors_UserProp)
+         u%AD%rotors(DL%i1)%UserProp(V%iLB:V%iUB, V%j) = VarVals              ! Rank 2 Array
+      end select
+   end associate
+end subroutine
+
+function ADI_InputFieldName(DL) result(Name)
+   type(DatLoc), intent(in)      :: DL
+   character(32)                 :: Name
+   select case (DL%Num)
+   case (ADI_u_AD_rotors_NacelleMotion)
+       Name = "u%AD%rotors("//trim(Num2LStr(DL%i1))//")%NacelleMotion"
+   case (ADI_u_AD_rotors_TowerMotion)
+       Name = "u%AD%rotors("//trim(Num2LStr(DL%i1))//")%TowerMotion"
+   case (ADI_u_AD_rotors_HubMotion)
+       Name = "u%AD%rotors("//trim(Num2LStr(DL%i1))//")%HubMotion"
+   case (ADI_u_AD_rotors_BladeRootMotion)
+       Name = "u%AD%rotors("//trim(Num2LStr(DL%i1))//")%BladeRootMotion("//trim(Num2LStr(DL%i2))//")"
+   case (ADI_u_AD_rotors_BladeMotion)
+       Name = "u%AD%rotors("//trim(Num2LStr(DL%i1))//")%BladeMotion("//trim(Num2LStr(DL%i2))//")"
+   case (ADI_u_AD_rotors_TFinMotion)
+       Name = "u%AD%rotors("//trim(Num2LStr(DL%i1))//")%TFinMotion"
+   case (ADI_u_AD_rotors_UserProp)
+       Name = "u%AD%rotors("//trim(Num2LStr(DL%i1))//")%UserProp"
+   case default
+       Name = "Unknown Field"
+   end select
+end function
+
+subroutine ADI_VarsPackOutput(Vars, y, ValAry)
+   type(ADI_OutputType), intent(in)        :: y
+   type(ModVarsType), intent(in)          :: Vars
+   real(R8Ki), intent(inout)              :: ValAry(:)
+   integer(IntKi)                         :: i
+   do i = 1, size(Vars%y)
+      call ADI_VarPackOutput(Vars%y(i), y, ValAry)
+   end do
+end subroutine
+
+subroutine ADI_VarPackOutput(V, y, ValAry)
+   type(ModVarType), intent(in)            :: V
+   type(ADI_OutputType), intent(in)        :: y
+   real(R8Ki), intent(inout)               :: ValAry(:)
+   associate (DL => V%DL, VarVals => ValAry(V%iLoc(1):V%iLoc(2)))
+      select case (DL%Num)
+      case (ADI_y_AD_rotors_NacelleLoad)
+         call MV_PackMesh(V, y%AD%rotors(DL%i1)%NacelleLoad, ValAry)          ! Mesh
+      case (ADI_y_AD_rotors_HubLoad)
+         call MV_PackMesh(V, y%AD%rotors(DL%i1)%HubLoad, ValAry)              ! Mesh
+      case (ADI_y_AD_rotors_TowerLoad)
+         call MV_PackMesh(V, y%AD%rotors(DL%i1)%TowerLoad, ValAry)            ! Mesh
+      case (ADI_y_AD_rotors_BladeLoad)
+         call MV_PackMesh(V, y%AD%rotors(DL%i1)%BladeLoad(DL%i2), ValAry)     ! Mesh
+      case (ADI_y_AD_rotors_TFinLoad)
+         call MV_PackMesh(V, y%AD%rotors(DL%i1)%TFinLoad, ValAry)             ! Mesh
+      case (ADI_y_AD_rotors_WriteOutput)
+         VarVals = y%AD%rotors(DL%i1)%WriteOutput(V%iLB:V%iUB)                ! Rank 1 Array
+      case (ADI_y_HHVel)
+         VarVals = y%HHVel(V%iLB:V%iUB,V%j)                                   ! Rank 2 Array
+      case (ADI_y_PLExp)
+         VarVals(1) = y%PLExp                                                 ! Scalar
+      case (ADI_y_IW_WriteOutput)
+         VarVals = y%IW_WriteOutput(V%iLB:V%iUB)                              ! Rank 1 Array
+      case (ADI_y_WriteOutput)
+         VarVals = y%WriteOutput(V%iLB:V%iUB)                                 ! Rank 1 Array
+      case default
+         VarVals = 0.0_R8Ki
+      end select
+   end associate
+end subroutine
+
+subroutine ADI_VarsUnpackOutput(Vars, ValAry, y)
+   type(ModVarsType), intent(in)          :: Vars
+   real(R8Ki), intent(in)                 :: ValAry(:)
+   type(ADI_OutputType), intent(inout)     :: y
+   integer(IntKi)                         :: i
+   do i = 1, size(Vars%y)
+      call ADI_VarUnpackOutput(Vars%y(i), ValAry, y)
+   end do
+end subroutine
+
+subroutine ADI_VarUnpackOutput(V, ValAry, y)
+   type(ModVarType), intent(in)            :: V
+   real(R8Ki), intent(in)                  :: ValAry(:)
+   type(ADI_OutputType), intent(inout)     :: y
+   associate (DL => V%DL, VarVals => ValAry(V%iLoc(1):V%iLoc(2)))
+      select case (DL%Num)
+      case (ADI_y_AD_rotors_NacelleLoad)
+         call MV_UnpackMesh(V, ValAry, y%AD%rotors(DL%i1)%NacelleLoad)        ! Mesh
+      case (ADI_y_AD_rotors_HubLoad)
+         call MV_UnpackMesh(V, ValAry, y%AD%rotors(DL%i1)%HubLoad)            ! Mesh
+      case (ADI_y_AD_rotors_TowerLoad)
+         call MV_UnpackMesh(V, ValAry, y%AD%rotors(DL%i1)%TowerLoad)          ! Mesh
+      case (ADI_y_AD_rotors_BladeLoad)
+         call MV_UnpackMesh(V, ValAry, y%AD%rotors(DL%i1)%BladeLoad(DL%i2))   ! Mesh
+      case (ADI_y_AD_rotors_TFinLoad)
+         call MV_UnpackMesh(V, ValAry, y%AD%rotors(DL%i1)%TFinLoad)           ! Mesh
+      case (ADI_y_AD_rotors_WriteOutput)
+         y%AD%rotors(DL%i1)%WriteOutput(V%iLB:V%iUB) = VarVals                ! Rank 1 Array
+      case (ADI_y_HHVel)
+         y%HHVel(V%iLB:V%iUB, V%j) = VarVals                                  ! Rank 2 Array
+      case (ADI_y_PLExp)
+         y%PLExp = VarVals(1)                                                 ! Scalar
+      case (ADI_y_IW_WriteOutput)
+         y%IW_WriteOutput(V%iLB:V%iUB) = VarVals                              ! Rank 1 Array
+      case (ADI_y_WriteOutput)
+         y%WriteOutput(V%iLB:V%iUB) = VarVals                                 ! Rank 1 Array
+      end select
+   end associate
+end subroutine
+
+function ADI_OutputFieldName(DL) result(Name)
+   type(DatLoc), intent(in)      :: DL
+   character(32)                 :: Name
+   select case (DL%Num)
+   case (ADI_y_AD_rotors_NacelleLoad)
+       Name = "y%AD%rotors("//trim(Num2LStr(DL%i1))//")%NacelleLoad"
+   case (ADI_y_AD_rotors_HubLoad)
+       Name = "y%AD%rotors("//trim(Num2LStr(DL%i1))//")%HubLoad"
+   case (ADI_y_AD_rotors_TowerLoad)
+       Name = "y%AD%rotors("//trim(Num2LStr(DL%i1))//")%TowerLoad"
+   case (ADI_y_AD_rotors_BladeLoad)
+       Name = "y%AD%rotors("//trim(Num2LStr(DL%i1))//")%BladeLoad("//trim(Num2LStr(DL%i2))//")"
+   case (ADI_y_AD_rotors_TFinLoad)
+       Name = "y%AD%rotors("//trim(Num2LStr(DL%i1))//")%TFinLoad"
+   case (ADI_y_AD_rotors_WriteOutput)
+       Name = "y%AD%rotors("//trim(Num2LStr(DL%i1))//")%WriteOutput"
+   case (ADI_y_HHVel)
+       Name = "y%HHVel"
+   case (ADI_y_PLExp)
+       Name = "y%PLExp"
+   case (ADI_y_IW_WriteOutput)
+       Name = "y%IW_WriteOutput"
+   case (ADI_y_WriteOutput)
+       Name = "y%WriteOutput"
+   case default
+       Name = "Unknown Field"
+   end select
+end function
+
 END MODULE AeroDyn_Inflow_Types
+
 !ENDOFREGISTRYGENERATEDFILE

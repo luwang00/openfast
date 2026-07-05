@@ -63,7 +63,6 @@ SUBROUTINE Farm_PrintSum( farm, WD_InputFileData, ErrStat, ErrMsg )
    WRITE (UnSum,'(2X,A)'   )  'compiled with'
    Fmt = '(4x,A)'
    WRITE (UnSum,Fmt)  TRIM( GetNVD( NWTC_Ver ) )
-   WRITE (UnSum,Fmt)  TRIM( GetNVD( farm%p%Module_Ver( ModuleFF_SC    ) ) )
    WRITE (UnSum,Fmt)  TRIM( GetNVD( farm%p%Module_Ver( ModuleFF_FWrap ) ) )
    WRITE (UnSum,Fmt)  TRIM( GetNVD( farm%p%Module_Ver( ModuleFF_WD    ) ) )
    WRITE (UnSum,Fmt)  TRIM( GetNVD( farm%p%Module_Ver( ModuleFF_AWAE  ) ) )
@@ -73,20 +72,24 @@ SUBROUTINE Farm_PrintSum( farm, WD_InputFileData, ErrStat, ErrMsg )
    
    WRITE (UnSum,'(/,A)') 'Ambient Wind:'
    
-   if (     farm%AWAE%p%mod_AmbWind == 1 ) then
+   select case(farm%AWAE%p%mod_AmbWind)
+   case(1,4)
       strModDescr = 'High-Fidelity Precursor'
-   elseif ( farm%AWAE%p%mod_AmbWind == 2 ) then
+   case(2)
       strModDescr = 'One InflowWind Module'
-   else   ! farm%AWAE%p%mod_AmbWind == 3
+   case(3)    
       strModDescr = 'Multiple InflowWind Modules'
-   end if
+   end select
    
-   WRITE (UnSum,'(2X,A)') 'Ambient wind model: '//trim(strModDescr)
-   if ( farm%AWAE%p%mod_AmbWind == 1 ) then
-      WRITE (UnSum,'(2X,A)') 'Ambient wind input filepath: '//trim(farm%p%WindFilePath)
-   else
-      WRITE (UnSum,'(2X,A)') 'InflowWind module input file: '//trim(farm%p%WindFilePath)
-   end if
+   write (UnSum,'(2X,A)') 'Ambient wind model: '//trim(strModDescr)
+   select case(farm%AWAE%p%mod_AmbWind)
+   case (1) 
+      write (UnSum,'(2X,A)') 'Ambient wind input filepath: '//trim(farm%p%WindFilePath)
+   case (2,3)
+      write (UnSum,'(2X,A)') 'InflowWind module input file: '//trim(farm%p%WindFilePath)
+   case (4)
+      write (UnSum,'(2X,A)') 'AMReX wind directories: '//trim(farm%p%WindFilePath)
+   end select
    
    !..................................
    ! Turbine information.
@@ -107,7 +110,7 @@ SUBROUTINE Farm_PrintSum( farm, WD_InputFileData, ErrStat, ErrMsg )
                                                                       
    end do
    
-   WRITE (UnSum,'(/,A)'   )  'Wake Dynamics Finite-Difference Grid: '//trim(Num2LStr(farm%WD(1)%p%NumRadii))//' Radii, '//trim(Num2LStr(farm%WD(1)%p%NumPlanes))//' Planes'
+   WRITE (UnSum,'(/,A)'   )  'Wake Dynamics Finite-Difference Grid: '//trim(Num2LStr(farm%WD(1)%p%NumRadii))//' Radii'
    WRITE (UnSum,'(2X,A)')      'Radial Node Number  Output Node Number    Radius'
    WRITE (UnSum,'(2X,A)')      '       (-)                (-)              (m) '  
    do I = 0, farm%WD(1)%p%NumRadii-1
@@ -169,7 +172,23 @@ SUBROUTINE Farm_PrintSum( farm, WD_InputFileData, ErrStat, ErrMsg )
    end select
    WRITE (UnSum,'(2X,A)')      'Calibrated parameter for wake meandering (-): '//trim(Num2LStr(farm%AWAE%p%C_Meander))
    
-!FIXME: add summary info about WAT
+   if (farm%p%WAT == 0) then
+      write (UnSum,'(/,2X,A)') 'Wake added turbulence:  off'
+   else
+      write (UnSum,'(/,2X,A)') 'Wake-Added Turbulence (WAT):'
+      write (UnSum,'(4X,A,3(I8,1X))') 'WAT_NxNyNz:   ',farm%p%WAT_NxNyNz(1:3)
+      write (UnSum,'(4X,A,3(f9.3))')  'WAT_DxDyDz:   ',farm%p%WAT_DxDyDz(1:3)
+      if (farm%p%WAT_ScaleBox) then
+         write (UnSum,'(4X,A,A)')       'WAT_ScaleBox: ','.TRUE.'
+      else
+         write (UnSum,'(4X,A,A)')       'WAT_ScaleBox: ','.FALSE.'
+      endif
+      write (UnSum,'(4X,A)') 'coefficients:'
+      write (UnSum,'(16X,A)') 'k_c      f_min    D_min    D_max    e'
+      write (UnSum,'(A12,5(f9.3))') 'k_Def', WD_InputFileData%WAT_k_Def_k_c, WD_InputFileData%WAT_k_Def_FMin, WD_InputFileData%WAT_k_Def_DMin, WD_InputFileData%WAT_k_Def_DMax, WD_InputFileData%WAT_k_Def_Exp
+      write (UnSum,'(A12,5(f9.3))') 'k_Grad',WD_InputFileData%WAT_k_Grad_k_c,WD_InputFileData%WAT_k_Grad_FMin,WD_InputFileData%WAT_k_Grad_DMin,WD_InputFileData%WAT_k_Grad_DMax,WD_InputFileData%WAT_k_Grad_Exp
+   endif
+
 
    WRITE (UnSum,'(/,A)'   )  'Time Steps'
    WRITE (UnSum,'(2X,A)')      'Component                        Time Step         Subcyles'
@@ -269,7 +288,7 @@ SUBROUTINE Farm_InitOutput( farm, ErrStat, ErrMsg )
 !============================================================
 ! DEBUG OUTPUTS HERE
 !
-!      DO I = 0,farm%WD(1)%p%NumPlanes-1  ! Loop through all selected output channels
+!      DO I = 0,NINT(farm%WD(1)%y%NumPlanes)-1  ! Loop through all selected output channels
 !
 !         WRITE( farm%p%UnOu,'(A14)',ADVANCE='NO')   'PPLANEX'//trim(num2lstr(I))
 !         WRITE( farm%p%UnOu,'(A14)',ADVANCE='NO')   'PPLANEY'//trim(num2lstr(I))
@@ -302,7 +321,7 @@ SUBROUTINE Farm_InitOutput( farm, ErrStat, ErrMsg )
 !============================================================
 ! DEBUG OUTPUTS HERE
 !
-!      DO I = 0,farm%WD(1)%p%NumPlanes-1  ! Loop through all selected output channels
+!      DO I = 0,NINT(farm%WD(1)%y%NumPlanes)-1  ! Loop through all selected output channels
 !
 !         WRITE( farm%p%UnOu,'(A14)',ADVANCE='NO')   '      (m)     '
 !         WRITE( farm%p%UnOu,'(A14)',ADVANCE='NO')   '      (m)     '
@@ -314,7 +333,7 @@ SUBROUTINE Farm_InitOutput( farm, ErrStat, ErrMsg )
 !         WRITE( farm%p%UnOu,'(A14)',ADVANCE='NO' )  '    (m/s)     '
 !         WRITE( farm%p%UnOu,'(A14)',ADVANCE='NO' )  '    (m/s)     '
 !
-!         IF ( I < farm%WD(1)%p%NumPlanes-1 ) THEN
+!         IF ( I < NINT(farm%WD(1)%y%NumPlanes)-1 ) THEN
 !            WRITE( farm%p%UnOu,'(A14)',ADVANCE='NO' )  '      (-)     '
 !         END IF
 !
@@ -482,7 +501,7 @@ SUBROUTINE WriteFarmOutputToFile( t_global, farm, ErrStat, ErrMsg )
 !============================================================
 ! DEBUG OUTPUTS HERE
 !
-!      DO I = 0,farm%WD(1)%p%NumPlanes-1  ! Loop through all selected output channels
+!      DO I = 0,NINT(farm%WD(1)%y%NumPlanes)-1  ! Loop through all selected output channels
 !
 !         DO J = 1,3
 !            WRITE( TmpStr2, '('//trim(farm%p%OutFmt)//')' )  farm%WD(1)%y%p_plane(J,I)
@@ -533,12 +552,11 @@ END SUBROUTINE WriteFarmOutputToFile
 !----------------------------------------------------------------------------------------------------------------------------------
 !> This routine reads in the primary FAST.Farm input file, does some validation, and places the values it reads in the
 !!   parameter structure (p). It prints to an echo file if requested.
-SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_InitInp, OutList, ErrStat, ErrMsg )
+SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, OutList, ErrStat, ErrMsg )
    TYPE(Farm_ParameterType),       INTENT(INOUT) :: p                               !< The parameter data for the FAST (glue-code) simulation
    CHARACTER(*),                   INTENT(IN   ) :: InputFile                       !< Name of the file containing the primary input data
    TYPE(WD_InputFileType),         INTENT(  OUT) :: WD_InitInp                      !< input-file data for WakeDynamics module
    TYPE(AWAE_InputFileType),       INTENT(  OUT) :: AWAE_InitInp                    !< input-file data for AWAE module
-   TYPE(SC_InitInputType),         INTENT(  OUT) :: SC_InitInp                      !< input-file data for SC module
    CHARACTER(ChanLen),             INTENT(  OUT) :: OutList(:)                      !< list of user-requested output channels
    INTEGER(IntKi),                 INTENT(  OUT) :: ErrStat                         !< Error status
    CHARACTER(*),                   INTENT(  OUT) :: ErrMsg                          !< Error message
@@ -555,6 +573,9 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_Init
    LOGICAL                       :: Echo                                      ! Determines if an echo file should be written
    LOGICAL                       :: TabDelim                                  ! Determines if text output should be delimited by tabs (true) or space (false)
    CHARACTER(1024)               :: PriPath                                   ! Path name of the primary file
+   CHARACTER(1024)               :: InflowPathIfW                             ! Path name of the inflow file
+   CHARACTER(1024)               :: InflowPathVTK                             ! Path name of the VTK directory
+   CHARACTER(1024)               :: InflowPathAMReX                           ! Path name of the AMReX directory
    character(1024)               :: sDummy ! Dummy string
 
    CHARACTER(10)                 :: AbortLevel                                ! String that indicates which error level should be used to abort the program: WARNING, SEVERE, or FATAL
@@ -565,6 +586,9 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_Init
    CHARACTER(*),   PARAMETER     :: RoutineName = 'Farm_ReadPrimaryFile'
    Real(ReKi)                    :: DefaultReVal ! Default real value
    real(ReKi)                    :: TmpRAry5(5)    ! Temporary array for reading in array of 5
+   real(DbKi)                    :: DT_High_IfW, DT_Low_IfW
+   real(DbKi)                    :: DT_High_VTK, DT_Low_VTK
+   real(DbKi)                    :: DT_High_AMReX, DT_Low_AMReX
 
       ! Initialize some variables:
    UnEc = -1
@@ -627,16 +651,9 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_Init
       END SELECT
 
    CALL ReadVar( UnIn, InputFile, p%TMax, "TMax", "Total run time (s)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-   CALL ReadVar( UnIn, InputFile, p%UseSC, "UseSC", "Use a super controller? (flag)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-   CALL ReadVar( UnIn, InputFile, AWAE_InitInp%Mod_AmbWind, "Mod_AmbWind", "Ambient wind model (-) (switch) {1: high-fidelity precursor in VTK format, 2: one InflowWind module, 3: multiple InflowWind modules}", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+   CALL ReadVar( UnIn, InputFile, AWAE_InitInp%Mod_AmbWind, "Mod_AmbWind", "Ambient wind model (-) (switch) {1: high-fidelity precursor in VTK format, 2: one InflowWind module, 3: multiple InflowWind modules, 4: high-fidelity precursor in AMReX format}", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
    CALL ReadVar( UnIn, InputFile, p%WaveFieldMod, "Mod_WaveField", "Wave field handling (-) (switch) {1: use individual HydroDyn inputs without adjustment, 2: adjust wave phases based on turbine offsets from farm origin}", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
    CALL ReadVar( UnIn, InputFile, p%MooringMod, "Mod_SharedMooring", "Array-level mooring handling (-) (switch) {0: none; 3: array-level MoorDyn model}", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-
-   !---------------------- SUPER CONTROLLER ------------------------------------------------------------------
-   CALL ReadCom( UnIn, InputFile, 'Section Header: Super Controller', ErrStat2, ErrMsg2, UnEc ); if (Failed()) return
-   CALL ReadVar( UnIn, InputFile, p%SC_FileName, "SC_FileName", "Name/location of the dynamic library {.dll [Windows] or .so [Linux]} containing the Super Controller algorithms (quoated string)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-   IF ( PathIsRelative( p%SC_FileName ) ) p%SC_FileName = TRIM(PriPath)//TRIM(p%SC_FileName)
-   SC_InitInp%DLL_FileName =  p%SC_FileName
 
    !---------------------- SHARED MOORING SYSTEM ------------------------------------------------------------------
    CALL ReadCom( UnIn, InputFile, 'Section Header: SHARED MOORING SYSTEM', ErrStat2, ErrMsg2, UnEc ); if (Failed()) return
@@ -647,22 +664,16 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_Init
 
    !---------------------- AMBIENT WIND: PRECURSOR IN VTK FORMAT ---------------------------------------------
    CALL ReadCom( UnIn, InputFile, 'Section Header: Ambient Wind: Precursor in VTK Format', ErrStat2, ErrMsg2, UnEc ); if (Failed()) return
-   CALL ReadVar( UnIn, InputFile, p%DT_low, "DT_Low-VTK", "Time step for low-resolution wind data input files; will be used as the global FAST.Farm time step (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-   CALL ReadVar( UnIn, InputFile, p%DT_high, "DT_High-VTK", "Time step for high-resolution wind data input files (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-   CALL ReadVar( UnIn, InputFile, p%WindFilePath, "WindFilePath", "Path name of wind data files from ABLSolver precursor (string)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-   IF ( PathIsRelative( p%WindFilePath ) ) p%WindFilePath = TRIM(PriPath)//TRIM(p%WindFilePath)
+   CALL ReadVar( UnIn, InputFile, DT_Low_VTK, "DT_Low-VTK", "Time step for low-resolution wind data input files; will be used as the global FAST.Farm time step (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+   CALL ReadVar( UnIn, InputFile, DT_High_VTK, "DT_High-VTK", "Time step for high-resolution wind data input files (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+   CALL ReadVar( UnIn, InputFile, InflowPathVTK, "WindFilePath", "Path name of wind data files from ABLSolver precursor (string)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+   IF (PathIsRelative(InflowPathVTK)) InflowPathVTK = TRIM(PriPath)//TRIM(InflowPathVTK)
    CALL ReadVar( UnIn, InputFile, AWAE_InitInp%ChkWndFiles, "ChkWndFiles", "Check all the ambient wind files for data consistency? (flag)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
 
    !---------------------- AMBIENT WIND: INFLOWWIND MODULE ---------------------------------------------
    CALL ReadCom( UnIn, InputFile, 'Section Header: Ambient Wind: InflowWind Module', ErrStat2, ErrMsg2, UnEc ); if (Failed()) return
-   CALL ReadVar( UnIn, InputFile, AWAE_InitInp%DT_low, "DT_Low", "Time step for low-resolution wind data input files; will be used as the global FAST.Farm time step (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-   CALL ReadVar( UnIn, InputFile, AWAE_InitInp%DT_high, "DT_High", "Time step for high-resolution wind data input files (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-
-   ! Ensure consistency between AWAE_Inputs and FAST.Farm time steps
-   if ( AWAE_InitInp%Mod_AmbWind == 1) AWAE_InitInp%DT_high = p%DT_high
-   if ( AWAE_InitInp%Mod_AmbWind == 1) AWAE_InitInp%DT_low  = p%DT_low
-   if ( AWAE_InitInp%Mod_AmbWind > 1 ) p%DT_low = AWAE_InitInp%DT_low
-   if ( AWAE_InitInp%Mod_AmbWind > 1 ) p%DT_high = AWAE_InitInp%DT_high
+   CALL ReadVar( UnIn, InputFile, DT_Low_IfW, "DT_Low", "Time step for low-resolution wind data input files; will be used as the global FAST.Farm time step (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+   CALL ReadVar( UnIn, InputFile, DT_High_IfW, "DT_High", "Time step for high-resolution wind data input files (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
 
    ! low res
    CALL ReadVar( UnIn, InputFile, AWAE_InitInp%nX_Low,  "nX_Low",  "Number of low-resolution spatial nodes in X direction for wind data interpolation (-) [>=2]",   ErrStat2, ErrMsg2, UnEc); if (Failed()) return
@@ -681,9 +692,37 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_Init
    CALL ReadVar( UnIn, InputFile, AWAE_InitInp%nZ_High, "nZ_High", "Number of high-resolution spatial nodes in Z direction for wind data interpolation (-) [>=2]",  ErrStat2, ErrMsg2, UnEc); if (Failed()) return
 
    ! inflow file
-   CALL ReadVar( UnIn, InputFile, AWAE_InitInp%InflowFile, "InflowFile", "Name of file containing InflowWind module input parameters (quoted string)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
-   IF ( PathIsRelative( AWAE_InitInp%InflowFile ) ) AWAE_InitInp%InflowFile = TRIM(PriPath)//TRIM(AWAE_InitInp%InflowFile)
-   if ( AWAE_InitInp%Mod_AmbWind > 1 ) p%WindFilePath = AWAE_InitInp%InflowFile  ! For the summary file
+   CALL ReadVar( UnIn, InputFile, InflowPathIfW, "InflowFile", "Name of file containing InflowWind module input parameters (quoted string)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+   IF (PathIsRelative(InflowPathIfW)) InflowPathIfW = TRIM(PriPath)//TRIM(InflowPathIfW)
+
+   !---------------------- AMBIENT WIND: PRECURSOR IN AMReX FORMAT ---------------------------------------------
+   CALL ReadCom( UnIn, InputFile, 'Section Header: Ambient Wind: Precursor in AMReX Format', ErrStat2, ErrMsg2, UnEc ); if (Failed()) return
+
+   CALL ReadVar( UnIn, InputFile, InflowPathAMReX, "WindDirPrefix", "Directory prefix of AMReX wind sub-volumes {0=low-res, 1+=high-res} (quoted string)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+   IF (PathIsRelative(InflowPathAMReX)) InflowPathAMReX = TRIM(PriPath)//TRIM(InflowPathAMReX)
+
+   CALL ReadVar( UnIn, InputFile, AWAE_InitInp%DirStartIndex, "DirStartIndex", "AMReX sub-volume directory suffix to consider as time=0 (quoted string)", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+   CALL ReadVar( UnIn, InputFile, DT_Low_AMReX, "DT_Low-AMReX", "Time step for low-resolution wind data input files; will be used as the global FAST.Farm time step (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+   CALL ReadVar( UnIn, InputFile, DT_High_AMReX, "DT_High-AMReX", "Time step for high-resolution wind data input files (s) [>0.0]", ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+
+   ! Ensure consistency between AWAE_Inputs and FAST.Farm time steps
+   select case (AWAE_InitInp%Mod_AmbWind)
+   case (1)
+      p%DT_low = DT_Low_VTK
+      p%DT_high = DT_High_VTK
+      p%WindFilePath = InflowPathVTK
+   case (2,3)
+      p%DT_low = DT_Low_IfW
+      p%DT_high = DT_High_IfW
+      p%WindFilePath = InflowPathIfW
+   case (4)
+      p%DT_low = DT_Low_AMReX
+      p%DT_high = DT_High_AMReX
+      p%WindFilePath = InflowPathAMReX
+   end select
+   AWAE_InitInp%dt_low = p%DT_low
+   AWAE_InitInp%dt_high = p%DT_high
+   AWAE_InitInp%InflowFile = p%WindFilePath
 
    !---------------------- WIND TURBINES ---------------------------------------------
    CALL ReadCom( UnIn, InputFile, 'Section Header: Wind Turbines', ErrStat2, ErrMsg2, UnEc ); if (Failed()) return
@@ -695,31 +734,33 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_Init
    call AllocAry( p%WT_FASTInFile,  p%NumTurbines, 'WT_FASTInFile', ErrStat2, ErrMsg2);  CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName); if (Failed()) return
    call AllocAry( AWAE_InitInp%WT_Position, 3, p%NumTurbines, 'AWAE_InitInp%WT_Position', ErrStat2, ErrMsg2);  CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName); if (Failed()) return
 
-   if ( AWAE_InitInp%Mod_AmbWind > 1 ) then     ! Using InflowWind
+   select case (AWAE_InitInp%Mod_AmbWind)
+   case (2,3)
       call AllocAry(AWAE_InitInp%X0_high, p%NumTurbines, 'AWAE_InitInp%X0_high', ErrStat2, ErrMsg2); if (Failed()) return
       call AllocAry(AWAE_InitInp%Y0_high, p%NumTurbines, 'AWAE_InitInp%Y0_high', ErrStat2, ErrMsg2); if (Failed()) return
       call AllocAry(AWAE_InitInp%Z0_high, p%NumTurbines, 'AWAE_InitInp%Z0_high', ErrStat2, ErrMsg2); if (Failed()) return
       call AllocAry(AWAE_InitInp%dX_high, p%NumTurbines, 'AWAE_InitInp%dX_high', ErrStat2, ErrMsg2); if (Failed()) return
       call AllocAry(AWAE_InitInp%dY_high, p%NumTurbines, 'AWAE_InitInp%dY_high', ErrStat2, ErrMsg2); if (Failed()) return
       call AllocAry(AWAE_InitInp%dZ_high, p%NumTurbines, 'AWAE_InitInp%dZ_high', ErrStat2, ErrMsg2); if (Failed()) return
-   end if
+   end select
 
       ! WT_Position (WT_X, WT_Y, WT_Z) and WT_FASTInFile
    do i=1,p%NumTurbines
-      if ( AWAE_InitInp%Mod_AmbWind == 1 ) then
+      select case (AWAE_InitInp%Mod_AmbWind)
+      case (1,4)
          READ (UnIn, *, IOSTAT=IOS) p%WT_Position(:,i), p%WT_FASTInFile(i)
-      else
+      case (2,3)
          READ (UnIn, *, IOSTAT=IOS) p%WT_Position(:,i), p%WT_FASTInFile(i), AWAE_InitInp%X0_high(i), AWAE_InitInp%Y0_high(i), AWAE_InitInp%Z0_high(i), AWAE_InitInp%dX_high(i), AWAE_InitInp%dY_high(i), AWAE_InitInp%dZ_high(i)
-      end if
+      end select
       AWAE_InitInp%WT_Position(:,i) = p%WT_Position(:,i)
       CALL CheckIOS ( IOS, InputFile, 'Wind Turbine Columns', NumType, ErrStat2, ErrMsg2 ); if (Failed()) return
       IF ( UnEc > 0 ) THEN
-         if ( AWAE_InitInp%Mod_AmbWind == 1 ) then
+         select case (AWAE_InitInp%Mod_AmbWind)
+         case (1,4)
             WRITE( UnEc, "(3(ES11.4e2,2X),'""',A,'""',T50,' - WT(',I5,')')" ) p%WT_Position(:,i), TRIM( p%WT_FASTInFile(i) ), I
-         else
+         case (2,3)
             WRITE( UnEc, "(3(ES11.4e2,2X),'""',A,'""',T50,6(ES11.4e2,2X),' - WT(',I5,')')" ) p%WT_Position(:,i), TRIM( p%WT_FASTInFile(i) ), AWAE_InitInp%X0_high(i), AWAE_InitInp%Y0_high(i), AWAE_InitInp%Z0_high(i), AWAE_InitInp%dX_high(i), AWAE_InitInp%dY_high(i), AWAE_InitInp%dZ_high(i), I
-         end if
-
+         end select
       END IF
       IF ( PathIsRelative( p%WT_FASTInFile(i) ) ) p%WT_FASTInFile(i) = TRIM(PriPath)//TRIM(p%WT_FASTInFile(i))
    end do
@@ -731,7 +772,16 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_Init
    CALL ReadVar( UnIn, InputFile, p%RotorDiamRef     , "RotorDiamRef", "Reference turbine rotor diameter for wake calculations (m) [>0.0]", ErrStat2, ErrMsg2, UnEc); if(failed()) return
    CALL ReadVar( UnIn, InputFile, WD_InitInp%dr      , "dr"      ,  "Radial increment of radial finite-difference grid (m) [>0.0]", ErrStat2, ErrMsg2, UnEc); if(failed()) return
    CALL ReadVar( UnIn, InputFile, WD_InitInp%NumRadii, "NumRadii",  "Number of radii in the radial finite-difference grid (-) [>=2]", ErrStat2, ErrMsg2, UnEc); if(failed()) return
-   CALL ReadVar( UnIn, InputFile, WD_InitInp%NumPlanes,"NumPlanes", "Number of wake planes (-) [>=2]", ErrStat2, ErrMsg2, UnEc); if(failed()) return
+
+   CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%NumDFull, "NumDFull", &
+      "Distance of full wake propagation, expressed as a multiple of RotorDiamRef [>0.0] or DEFAULT [DEFAULT=15]", &
+      15.0_ReKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+
+   CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%NumDBuff, "NumDBuff", &
+      "Length of wake propagation buffer region, expressed as a multiple of RotorDiamRef [>=0.0] or DEFAULT [DEFAULT=5]", &
+       5.0_ReKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+
+   WD_InitInp%RotorDiamRef = p%RotorDiamRef
 
    ! f_c - Cut-off (corner) frequency of the low-pass time-filter for the wake advection, deflection, and meandering model (Hz) [>0.0] or DEFAULT [DEFAULT=0.0007]:
    DefaultReVal = 12.5_ReKi/(p%RotorDiamRef/2._ReKi) ! Eq. (32) of https://doi.org/10.1002/we.2785, with U=10, a=1/3
@@ -825,7 +875,7 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_Init
    !----------------------- CURL WAKE PARAMETERS ------------------------------------------
    CALL ReadCom        ( UnIn, InputFile, "Section Header: Curl wake parameters", ErrStat2, ErrMsg2, UnEc ); if(failed()) return
    CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%Swirl        ,    "Swirl", "Swirl switch", .True., ErrStat2, ErrMsg2, UnEc); if(failed()) return
-   CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%k_VortexDecay,    "k_VortexDecay", "Vortex decay constant", 0.0001, ErrStat2, ErrMsg2, UnEc); if(failed()) return
+   CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%k_VortexDecay,    "k_VortexDecay", "Vortex decay constant", 0.0, ErrStat2, ErrMsg2, UnEc); if(failed()) return
    CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%NumVortices,      "NumVortices", "Number of vortices in the curled wake", 100, ErrStat2, ErrMsg2, UnEc); if(failed()) return
    CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%sigma_D,          "sigma_D", "Gaussian vortex width", 0.2, ErrStat2, ErrMsg2, UnEc); if(failed()) return
    CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%FilterInit,       "FilterInit", "Filter Init", 1 , ErrStat2, ErrMsg2, UnEc); if(failed()) return
@@ -846,7 +896,7 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, SC_Init
    CALL ReadVar( UnIn, InputFile, p%WAT_BoxFile, 'WAT_BoxFile', "Filepath to the file containing the u-component of the turbulence box (either predefined or user-defined) (quoted string)", ErrStat2, ErrMsg2, UnEc ); if(failed()) return
    call ReadAry( UnIn, InputFile, p%WAT_NxNyNz, 3, "WAT_NxNyNz", "Number of points in the x, y, and z directions of the WAT_BoxFile [used only if WAT=2] (m)", ErrStat2, ErrMsg2, UnEc ); if(failed()) return
    call ReadAry( UnIn, InputFile, p%WAT_DxDyDz, 3, "WAT_DxDyDz", "Distance (in meters) between points in the x, y, and z directions of the WAT_BoxFile [used only if WAT=2] (m)", ErrStat2, ErrMsg2, UnEc ); if(failed()) return
-   call ReadVarWDefault( UnIn, InputFile, p%WAT_ScaleBox, "WAT_ScaleBox",   "Flag to scale the input turbulence box to zero mean and unit standard deviation at every node",  .False., ErrStat2, ErrMsg2, UnEc); if(failed()) return
+   call ReadVarWDefault( UnIn, InputFile, p%WAT_ScaleBox, "WAT_ScaleBox",   "Flag to scale the input turbulence box to zero mean and unit standard deviation at every node",  .True., ErrStat2, ErrMsg2, UnEc); if(failed()) return
    call ReadAryWDefault( UnIn, InputFile, TmpRAry5,  5, "WAT_k_Def",  &
          "Calibrated parameters for the influence of the maximum wake deficit on wake-added turbulence (set of 5 parameters: k_Def , DMin, DMax, FMin, Exp) (-) [>=0.0, >=0.0, >DMin, >=0.0 and <=1.0, >=0.0] or DEFAULT [DEFAULT=[0.6, 0.0, 0.0,  2.0, 1.0 ]]", &
          (/0.6_ReKi, 0.0_ReKi, 0.0_ReKi, 2.0_ReKi, 1.00_ReKi/), ErrStat2, ErrMsg2, UnEc); if(failed()) return
@@ -982,12 +1032,11 @@ CONTAINS
    !...............................................................................................................................
 END SUBROUTINE Farm_ReadPrimaryFile
 !----------------------------------------------------------------------------------------------------------------------------------
-SUBROUTINE Farm_ValidateInput( p, WD_InitInp, AWAE_InitInp, SC_InitInp, ErrStat, ErrMsg )
+SUBROUTINE Farm_ValidateInput( p, WD_InitInp, AWAE_InitInp, ErrStat, ErrMsg )
       ! Passed variables
    TYPE(Farm_ParameterType), INTENT(INOUT) :: p                               !< The parameter data for the FAST (glue-code) simulation
    TYPE(WD_InputFileType),   INTENT(IN   ) :: WD_InitInp                      !< input-file data for WakeDynamics module
    TYPE(AWAE_InputFileType), INTENT(INOUT) :: AWAE_InitInp                    !< input-file data for AWAE module
-   TYPE(SC_InitInputType),   INTENT(INOUT) :: SC_InitInp              ! input-file data for SC module
    INTEGER(IntKi),           INTENT(  OUT) :: ErrStat                         !< Error status
    CHARACTER(*),             INTENT(  OUT) :: ErrMsg                          !< Error message
 
@@ -1022,23 +1071,31 @@ SUBROUTINE Farm_ValidateInput( p, WD_InitInp, AWAE_InitInp, SC_InitInp, ErrStat,
 
    ! --- AMBIENT WIND: INFLOWWIND MODULE --- [used only for Mod_AmbWind=2 or 3] ---
    ! FIXME: this really should be checked with the turbine specific size diameter -- maybe relocate this check to AWAE or in FF after initializing all turbines?
-   if (AWAE_InitInp%Mod_AmbWind > 1) then
-      ! check that the grid is large enough to contain the turbine (only check Y and Z)
+   ! check that the grid is large enough to contain the turbine (only check Y and Z)
+   select case(AWAE_InitInp%Mod_AmbWind)
+   case (2)
+      call WrScr("Mod_AmbWind==2 will be depreciated and removed in a future release")
       do i=1,p%NumTurbines
          if (AWAE_InitInp%nY_High*AWAE_InitInp%dY_high(i) < p%RotorDiamRef) call SetErrStat(ErrID_Warn,'High res domain for turbine '//trim(Num2LStr(i))//' may be too small in Y (nY_High*dY_High < RotorDiamRef)',ErrStat,ErrMsg,RoutineName)
          if (AWAE_InitInp%nZ_High*AWAE_InitInp%dZ_high(i) < p%RotorDiamRef) call SetErrStat(ErrID_Warn,'High res domain for turbine '//trim(Num2LStr(i))//' may be too small in Z (nZ_High*dZ_High < RotorDiamRef)',ErrStat,ErrMsg,RoutineName)
-      enddo
-   endif
+      end do
+   case (3)
+      do i=1,p%NumTurbines
+         if (AWAE_InitInp%nY_High*AWAE_InitInp%dY_high(i) < p%RotorDiamRef) call SetErrStat(ErrID_Warn,'High res domain for turbine '//trim(Num2LStr(i))//' may be too small in Y (nY_High*dY_High < RotorDiamRef)',ErrStat,ErrMsg,RoutineName)
+         if (AWAE_InitInp%nZ_High*AWAE_InitInp%dZ_high(i) < p%RotorDiamRef) call SetErrStat(ErrID_Warn,'High res domain for turbine '//trim(Num2LStr(i))//' may be too small in Z (nZ_High*dZ_High < RotorDiamRef)',ErrStat,ErrMsg,RoutineName)
+      end do
+   end select
 
    ! --- WAKE DYNAMICS ---
    IF (WD_InitInp%Mod_Wake < 1 .or. WD_InitInp%Mod_Wake >3 ) CALL SetErrStat(ErrID_Fatal,'Mod_Wake needs to be 1,2 or 3',ErrStat,ErrMsg,RoutineName)
    IF (WD_InitInp%dr <= 0.0_ReKi) CALL SetErrStat(ErrID_Fatal,'dr (radial increment) must be larger than 0.',ErrStat,ErrMsg,RoutineName)
    IF (WD_InitInp%NumRadii < 2) CALL SetErrStat(ErrID_Fatal,'NumRadii (number of radii) must be at least 2.',ErrStat,ErrMsg,RoutineName)
-   IF (WD_InitInp%NumPlanes < 2) CALL SetErrStat(ErrID_Fatal,'NumPlanes (number of wake planes) must be at least 2.',ErrStat,ErrMsg,RoutineName)
+   IF (WD_InitInp%NumDFull <= 0.0_ReKi) CALL SetErrStat(ErrID_Fatal,'NumDFull (distance of full wake propagation as a multiple of RotorDiamRef) must be positive.',ErrStat,ErrMsg,RoutineName)
+   IF (WD_InitInp%NumDBuff <  0.0_ReKi) CALL SetErrStat(ErrID_Fatal,'NumDBuff (length of wake propagation buffer region as a multiple of RotorDiamRef) must be nonnegative.',ErrStat,ErrMsg,RoutineName)
 
-   IF (WD_InitInp%k_VortexDecay < 0.0_ReKi) CALL SetErrStat(ErrID_Fatal,'k_VortexDecay needs to be postive',ErrStat,ErrMsg,RoutineName)
-   IF (WD_InitInp%NumVortices < 2) CALL SetErrStat(ErrID_Fatal,'NumVorticies needs to be greater than 1',ErrStat,ErrMsg,RoutineName)
-   IF (WD_InitInp%sigma_D < 0.0_ReKi) CALL SetErrStat(ErrID_Fatal,'sigma_D needs to be postive',ErrStat,ErrMsg,RoutineName)
+   IF (WD_InitInp%k_VortexDecay < 0.0_ReKi) CALL SetErrStat(ErrID_Fatal,'k_VortexDecay must be >= 0',ErrStat,ErrMsg,RoutineName)
+   IF (WD_InitInp%NumVortices < 2) CALL SetErrStat(ErrID_Fatal,'NumVorticies must be greater than 1',ErrStat,ErrMsg,RoutineName)
+   IF (WD_InitInp%sigma_D < 0.0_ReKi) CALL SetErrStat(ErrID_Fatal,'sigma_D must be postive',ErrStat,ErrMsg,RoutineName)
    IF (WD_InitInp%f_c <= 0.0_ReKi) CALL SetErrStat(ErrID_Fatal,'f_c (cut-off [corner] frequency) must be more than 0 Hz.',ErrStat,ErrMsg,RoutineName)
    IF (WD_InitInp%C_NearWake <= 1.0_Reki) CALL SetErrStat(ErrID_Fatal,'C_NearWake parameter must be greater than 1.',ErrStat,ErrMsg,RoutineName)
    IF (WD_InitInp%k_vCurl < 0.0_Reki) CALL SetErrStat(ErrID_Fatal,'k_vCurl parameter must not be negative.',ErrStat,ErrMsg,RoutineName)
@@ -1096,9 +1153,9 @@ SUBROUTINE Farm_ValidateInput( p, WD_InitInp, AWAE_InitInp, SC_InitInp, ErrStat,
       ! summary table
       call WrScr('  Wake-Added Turbulence (WAT): coefficients:')
       call WrScr('                k_c      f_min    D_min    D_max    e')
-      write(tmpStr,'(A6,A6,6(f9.3))') '','k_Def', WD_InitInp%WAT_k_Def_k_c, WD_InitInp%WAT_k_Def_FMin, WD_InitInp%WAT_k_Def_DMin, WD_InitInp%WAT_k_Def_DMax, WD_InitInp%WAT_k_Def_Exp
+      write(tmpStr,'(A12,5(f9.3))') 'k_Def', WD_InitInp%WAT_k_Def_k_c, WD_InitInp%WAT_k_Def_FMin, WD_InitInp%WAT_k_Def_DMin, WD_InitInp%WAT_k_Def_DMax, WD_InitInp%WAT_k_Def_Exp
       call WrScr(tmpStr)
-      write(tmpStr,'(A6,A6,6(f9.3))') '','k_Grad',WD_InitInp%WAT_k_Grad_k_c,WD_InitInp%WAT_k_Grad_FMin,WD_InitInp%WAT_k_Grad_DMin,WD_InitInp%WAT_k_Grad_DMax,WD_InitInp%WAT_k_Grad_Exp
+      write(tmpStr,'(A12,5(f9.3))') 'k_Grad',WD_InitInp%WAT_k_Grad_k_c,WD_InitInp%WAT_k_Grad_FMin,WD_InitInp%WAT_k_Grad_DMin,WD_InitInp%WAT_k_Grad_DMax,WD_InitInp%WAT_k_Grad_Exp
       call WrScr(tmpStr)
    endif
 

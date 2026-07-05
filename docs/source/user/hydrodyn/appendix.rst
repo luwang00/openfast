@@ -8,7 +8,7 @@ The following is a HydroDyn primary input file for OC4 semi-submersible
 structure::
 
       ------- HydroDyn Input File ----------------------------------------------------
-      NREL 5.0 MW offshore baseline floating platform HydroDyn input properties for the OC4 Semi-submersible.
+      historic NREL 5.0 MW offshore baseline floating platform HydroDyn input properties for the OC4 Semi-submersible.
       False            Echo           - Echo the input file data (flag)
       ---------------------- FLOATING PLATFORM --------------------------------------- [unused with WaveMod=6]
                    1   PotMod         - Potential-flow model {0: none=no potential flow, 1: frequency-to-time-domain transforms based on WAMIT output, 2: fluid-impulse theory (FIT)} (switch)
@@ -24,7 +24,7 @@ structure::
               0.0125   RdtnDT         - Time step for wave radiation kernel calculations (sec) [only used when PotMod=1 and ExctnMod>0 or RdtnMod>0; DT<=RdtnDT<=0.1 recommended; determines RdtnOmegaMax=Pi/RdtnDT in the cosine transform]
                    1   NBody          - Number of WAMIT bodies to be used (-) [>=1; only used when PotMod=1. If NBodyMod=1, the WAMIT data contains a vector of size 6*NBody x 1 and matrices of size 6*NBody x 6*NBody; if NBodyMod>1, there are NBody sets of WAMIT data each with a vector of size 6 x 1 and matrices of size 6 x 6]
                    1   NBodyMod       - Body coupling model {1: include coupling terms between each body and NBody in HydroDyn equals NBODY in WAMIT, 2: neglect coupling terms between each body and NBODY=1 with XBODY=0 in WAMIT, 3: Neglect coupling terms between each body and NBODY=1 with XBODY=/0 in WAMIT} (switch) [only used when PotMod=1]
-        "marin_semi"   PotFile        - Root name of potential-flow model data; WAMIT output files containing the linear, nondimensionalized, hydrostatic restoring matrix (.hst), frequency-dependent hydrodynamic added mass matrix and damping matrix (.1), and frequency- and direction-dependent wave excitation force vector per unit wave amplitude (.3) (quoted string) [1 to NBody if NBodyMod>1] [MAKE SURE THE FREQUENCIES INHERENT IN THESE WAMIT FILES SPAN THE PHYSICALLY-SIGNIFICANT RANGE OF FREQUENCIES FOR THE GIVEN PLATFORM; THEY MUST CONTAIN THE ZERO- AND INFINITE-FREQUENCY LIMITS!]
+        "marin_semi"   PotFile        - Root name of potential-flow model data; WAMIT output files containing the linear, nondimensionalized, hydrostatic restoring matrix (.hst), frequency-dependent hydrodynamic added mass matrix and damping matrix (.1), and frequency- and direction-dependent wave excitation force vector per unit wave amplitude (.3 if FKMod=0 and .3sc if FKMod=1) (quoted string) [1 to NBody if NBodyMod>1] [MAKE SURE THE FREQUENCIES INHERENT IN THESE WAMIT FILES SPAN THE PHYSICALLY-SIGNIFICANT RANGE OF FREQUENCIES FOR THE GIVEN PLATFORM; THEY MUST CONTAIN THE ZERO- AND INFINITE-FREQUENCY LIMITS!]
                    1   WAMITULEN      - Characteristic body length scale used to redimensionalize WAMIT output (meters) [1 to NBody if NBodyMod>1] [only used when PotMod=1]
                    0   PtfmRefxt      - The xt offset of the body reference point(s) from (0,0,0) (meters) [1 to NBody] [only used when PotMod=1]
                    0   PtfmRefyt      - The yt offset of the body reference point(s) from (0,0,0) (meters) [1 to NBody] [only used when PotMod=1]
@@ -33,6 +33,9 @@ structure::
                13917   PtfmVol0       - Displaced volume of water when the body is in its undisplaced position (m^3) [1 to NBody] [only used when PotMod=1; USE THE SAME VALUE COMPUTED BY WAMIT AS OUTPUT IN THE .OUT FILE!]
                    0   PtfmCOBxt      - The xt offset of the center of buoyancy (COB) from (0,0) (meters) [1 to NBody] [only used when PotMod=1]
                    0   PtfmCOByt      - The yt offset of the center of buoyancy (COB) from (0,0) (meters) [1 to NBody] [only used when PotMod=1]
+                   0   NAddDOF        - Number of additional generalized DOF of each WAMIT body (-) [1 to NBody] [>=0; =0 if NBody>1; only used when PotMod=1]
+                   0   FKMod          - Nonlinear Froude-Krylov and hydrostatic load model {0: none, 1: nonlinear F-K and hydrostatics} (switch) [1 to NBody if NBodyMod>1; only used when PotMod=1; must provide GeoFile if FKMod=1]
+            "unused"   GeoFile        - Full name(s) of geometry file (ASCII STL format) for nonlinear Froude-Krylov and hydrostatic load integration (quoted string) [1 to NBody; only used when PotMod=1 and when the corresponding FKMod=1]
       ---------------------- 2ND-ORDER FLOATING PLATFORM FORCES ---------------------- [unused with WaveMod=0 or 6, or PotMod=0 or 2]
                    0   MnDrift        - Mean-drift 2nd-order forces computed                                       {0: None; [7, 8, 9, 10, 11, or 12]: WAMIT file to use} [Only one of MnDrift, NewmanApp, or DiffQTF can be non-zero. If NBody>1, MnDrift  /=8]
                    0   NewmanApp      - Mean- and slow-drift 2nd-order forces computed with Newman's approximation {0: None; [7, 8, 9, 10, 11, or 12]: WAMIT file to use} [Only one of MnDrift, NewmanApp, or DiffQTF can be non-zero. If NBody>1, NewmanApp/=8. Used only when WaveDirMod=0]
@@ -64,8 +67,9 @@ structure::
                    0             0             0             0             0             0
                    0             0             0             0             0             0
       ---------------------- STRIP THEORY OPTIONS --------------------------------------
-                   0   WaveDisp       - Method of computing Wave Kinematics {0: use undisplaced position, 1: use displaced position) } (switch) [If PtfmYMod=1, need WaveDisp=1]
-                   0   AMMod          - Method of computing distributed added-mass force. (0: Only and always on nodes below SWL at the undisplaced position. 2: Up to the instantaneous free surface) [overwrite to 0 when WaveMod = 0 or 6 or when WaveStMod = 0 in SeaState]
+                   0   WaveDisp       - Method of computing Wave Kinematics {0: use undisplaced position, 1: use displaced position} (switch)
+                   0   AMMod          - Method of computing distributed added-mass force. {0: Only and always on nodes below SWL at the undisplaced position. 1: Up to the instantaneous free surface} (switch) [overwrite to 0 when WaveStMod = 0 in SeaState]
+                   0   HstMod         - Method of computing hydrostatic loads. {0: Up to the still water level. 1: Up to the instantaneous free surface} (switch) [overwrite to 0 when WaveStMod = 0 in SeaState]
       ---------------------- AXIAL COEFFICIENTS --------------------------------------
                    2   NAxCoef        - Number of axial coefficients (-)
       AxCoefID  AxCd     AxCa     AxCp    AxFDMod   AxVnCOff  AxFDLoFSc
@@ -120,24 +124,36 @@ structure::
          42    14.43376    25.00000   -19.94000      1            0
          43   -28.86751     0.00000   -19.94000      1            0
          44    14.43376   -25.00000   -19.94000      1            0
-      ---------------------- MEMBER CROSS-SECTION PROPERTIES -------------------------
-                   4   NPropSets      - Number of member property sets (-)
+      ---------------- CYLINDRICAL MEMBER CROSS-SECTION PROPERTIES -------------------
+                   4   NPropSetsCyl    - Number of cylindrical member property sets (-)
       PropSetID    PropD         PropThck
          (-)        (m)            (m)
           1        6.50000        0.03000          ! Main Column
           2       12.00000        0.06000          ! Upper Columns
           3       24.00000        0.06000          ! Base Columns
           4        1.60000        0.01750          ! Pontoons
-      ---------------------- SIMPLE HYDRODYNAMIC COEFFICIENTS (model 1) --------------
+      ---------------- RECTANGULAR MEMBER CROSS-SECTION PROPERTIES -------------------
+                   0   NPropSetsRec    - Number of rectangular member property sets (-)
+      MPropSetID   PropA      PropB    PropThck
+         (-)        (m)        (m)       (m)
+      -------- SIMPLE CYLINDRICAL-MEMBER HYDRODYNAMIC COEFFICIENTS (model 1) ---------
       SimplCd    SimplCdMG    SimplCa    SimplCaMG    SimplCp    SimplCpMG   SimplAxCd  SimplAxCdMG   SimplAxCa  SimplAxCaMG  SimplAxCp   SimplAxCpMG    SimplCb    SimplCbMG
          (-)         (-)         (-)         (-)         (-)         (-)         (-)         (-)         (-)         (-)         (-)         (-)            (-)         (-)
          0.00        0.00        0.00        0.00        1.00        1.00        0.00        0.00        0.00        0.00        1.00        1.00           1.00        1.00
-      ---------------------- DEPTH-BASED HYDRODYNAMIC COEFFICIENTS (model 2) ---------
-                   0   NCoefDpth       - Number of depth-dependent coefficients (-)
+      -------- SIMPLE RECTANGULAR-MEMBER HYDRODYNAMIC COEFFICIENTS (model 1) ---------
+      SimplCdA    SimplCdAMG    SimplCdB    SimplCdBMG    SimplCaA    SimplCaAMG    SimplCaB    SimplCaBMG    SimplCp    SimplCpMG   SimplAxCd  SimplAxCdMG   SimplAxCa  SimplAxCaMG  SimplAxCp   SimplAxCpMG  SimplCb  SimplCbMG
+        (-)         (-)           (-)         (-)           (-)         (-)           (-)         (-)           (-)         (-)         (-)         (-)          (-)         (-)         (-)         (-)          (-)       (-)
+        0.0         0.0           0.0         0.0           0.0         0.0           0.0         0.0           0.0         0.0         0.0         0.0          0.0         0.0         0.0         0.0          1.0       1.0
+      ------ DEPTH-BASED CYLINDRICAL-MEMBER HYDRODYNAMIC COEFFICIENTS (model 2) -------
+                   0   NCoefDpthCyl    - Number of depth-dependent cylindrical member coefficients (-)
       Dpth      DpthCd   DpthCdMG   DpthCa   DpthCaMG       DpthCp   DpthCpMG   DpthAxCd   DpthAxCdMG   DpthAxCa   DpthAxCaMG   DpthAxCp   DpthAxCpMG   DpthCb   DpthCbMG
       (m)       (-)      (-)        (-)      (-)            (-)      (-)        (-)        (-)          (-)        (-)          (-)        (-)           (-)      (-)
-      ---------------------- MEMBER-BASED HYDRODYNAMIC COEFFICIENTS (model 3) --------
-                  25   NCoefMembers       - Number of member-based coefficients (-)
+      ------ DEPTH-BASED RECTANGULAR-MEMBER HYDRODYNAMIC COEFFICIENTS (model 2) -------
+                   0   NCoefDpthRec    - Number of depth-dependent rectangular member coefficients (-)
+      Dpth    DpthCdA   DpthCdAMG    DpthCdB   DpthCdBMG   DpthCaA   DpthCaAMG   DpthCaB   DpthCaBMG     DpthCp   DpthCpMG   DpthAxCd   DpthAxCdMG   DpthAxCa   DpthAxCaMG   DpthAxCp   DpthAxCpMG   DpthCb   DpthCbMG
+      (m)       (-)       (-)          (-)       (-)         (-)       (-)        (-)        (-)          (-)        (-)       (-)        (-)          (-)        (-)          (-)        (-)          (-)      (-)
+      ------ MEMBER-BASED CYLINDRICAL-MEMBER HYDRODYNAMIC COEFFICIENTS (model 3) ------
+                  25   NCoefMembersCyl    - Number of member-based cylindrical member coefficients (-)
       MemberID    MemberCd1     MemberCd2    MemberCdMG1   MemberCdMG2    MemberCa1     MemberCa2    MemberCaMG1   MemberCaMG2    MemberCp1     MemberCp2    MemberCpMG1   MemberCpMG2   MemberAxCd1   MemberAxCd2  MemberAxCdMG1 MemberAxCdMG2  MemberAxCa1   MemberAxCa2  MemberAxCaMG1 MemberAxCaMG2  MemberAxCp1  MemberAxCp2   MemberAxCpMG1   MemberAxCpMG2    MemberCb1     MemberCb2    MemberCbMG1   MemberCbMG2
          (-)         (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)           (-)              (-)           (-)           (-)           (-)
           1          0.56          0.56          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00             1.00          1.00          1.00          1.00          ! Main Column
@@ -165,41 +181,45 @@ structure::
          20          0.63          0.63          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00             1.00          1.00          1.00          1.00          ! Cross Brace 1
          21          0.63          0.63          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00             1.00          1.00          1.00          1.00          ! Cross Brace 2
          22          0.63          0.63          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00          0.00             1.00          1.00          1.00          1.00          ! Cross Brace 3
+      ------ MEMBER-BASED RECTANGULAR-MEMBER HYDRODYNAMIC COEFFICIENTS (model 3) ------
+                  0   NCoefMembersRec - Number of member-based rectangular member coefficients (-)
+      MemberID    MemberCdA1     MemberCdA2    MemberCdAMG1   MemberCdAMG2    MemberCdB1     MemberCdB2    MemberCdBMG1   MemberCdBMG2    MemberCaA1     MemberCaA2    MemberCaAMG1   MemberCaAMG2    MemberCaB1     MemberCaB2    MemberCaBMG1   MemberCaBMG2    MemberCp1     MemberCp2    MemberCpMG1   MemberCpMG2   MemberAxCd1   MemberAxCd2  MemberAxCdMG1 MemberAxCdMG2  MemberAxCa1   MemberAxCa2  MemberAxCaMG1 MemberAxCaMG2  MemberAxCp1  MemberAxCp2   MemberAxCpMG1   MemberAxCpMG2   MemberCb1     MemberCb2    MemberCbMG1   MemberCbMG2
+         (-)         (-)            (-)           (-)            (-)             (-)            (-)           (-)            (-)             (-)            (-)           (-)            (-)             (-)            (-)           (-)            (-)             (-)           (-)          (-)           (-)           (-)           (-)          (-)           (-)            (-)           (-)          (-)           (-)              (-)           (-)          (-)           (-)            (-)           (-)          (-)           (-)
       -------------------- MEMBERS -------------------------------------------------
                   25   NMembers       - Number of members (-)
-      MemberID  MJointID1  MJointID2  MPropSetID1  MPropSetID2  MDivSize   MCoefMod   MHstLMod  PropPot   [MCoefMod=1: use simple coeff table, 2: use depth-based coeff table, 3: use member-based coeff table] [ PropPot/=0 if member is modeled with potential-flow theory]
-        (-)        (-)        (-)         (-)          (-)        (m)      (switch)   (switch)  (flag)
-          1         1          2           1            1         1.0000      3          1       TRUE           ! Main Column
-          2         3          4           2            2         1.0000      3          1       TRUE           ! Upper Column 1
-          3         5          6           2            2         1.0000      3          1       TRUE           ! Upper Column 2
-          4         7          8           2            2         1.0000      3          1       TRUE           ! Upper Column 3
-          5        42          3           3            3         1.0000      3          1       TRUE           ! Base Column 1
-          6        43          5           3            3         1.0000      3          1       TRUE           ! Base Column 2
-          7        44          7           3            3         1.0000      3          1       TRUE           ! Base Column 3
-         23         9         42           3            3         1.0000      3          1       TRUE           ! Base column cap 1
-         24        10         43           3            3         1.0000      3          1       TRUE           ! Base column cap 2
-         25        11         44           3            3         1.0000      3          1       TRUE           ! Base column cap 3
-          8        12         13           4            4         1.0000      3          1       TRUE           ! Delta Pontoon, Upper 1
-          9        14         15           4            4         1.0000      3          1       TRUE           ! Delta Pontoon, Upper 2
-         10        16         17           4            4         1.0000      3          1       TRUE           ! Delta Pontoon, Upper 3
-         11        18         19           4            4         1.0000      3          1       TRUE           ! Delta Pontoon, Lower 1
-         12        20         21           4            4         1.0000      3          1       TRUE           ! Delta Pontoon, Lower 2
-         13        22         23           4            4         1.0000      3          1       TRUE           ! Delta Pontoon, Lower 3
-         14        24         25           4            4         1.0000      3          1       TRUE           ! Y Pontoon, Upper 1
-         15        26         27           4            4         1.0000      3          1       TRUE           ! Y Pontoon, Upper 2
-         16        28         29           4            4         1.0000      3          1       TRUE           ! Y Pontoon, Upper 3
-         17        30         31           4            4         1.0000      3          1       TRUE           ! Y Pontoon, Lower 1
-         18        32         33           4            4         1.0000      3          1       TRUE           ! Y Pontoon, Lower 2
-         19        34         35           4            4         1.0000      3          1       TRUE           ! Y Pontoon, Lower 3
-         20        36         37           4            4         1.0000      3          1       TRUE           ! Cross Brace 1
-         21        38         39           4            4         1.0000      3          1       TRUE           ! Cross Brace 2
-         22        40         41           4            4         1.0000      3          1       TRUE           ! Cross Brace 3
+      MemberID  MJointID1  MJointID2  MPropSetID1  MPropSetID2  MSecGeom    MSpinOrient   MDivSize   MCoefMod  MHstLMod  PropPot   [MCoefMod=1: use simple coeff table, 2: use depth-based coeff table, 3: use member-based coeff table] [ PropPot/=0 if member is modeled with potential-flow theory]
+        (-)        (-)        (-)         (-)          (-)      (switch)       (deg)        (m)      (switch)  (switch)  (flag)
+         1          1          2           1            1           1            0         1.0000        3         1      TRUE           ! Main Column
+         2          3          4           2            2           1            0         1.0000        3         1      TRUE           ! Upper Column 1
+         3          5          6           2            2           1            0         1.0000        3         1      TRUE           ! Upper Column 2
+         4          7          8           2            2           1            0         1.0000        3         1      TRUE           ! Upper Column 3
+         5         42          3           3            3           1            0         1.0000        3         1      TRUE           ! Base Column 1
+         6         43          5           3            3           1            0         1.0000        3         1      TRUE           ! Base Column 2
+         7         44          7           3            3           1            0         1.0000        3         1      TRUE           ! Base Column 3
+        23          9         42           3            3           1            0         1.0000        3         1      TRUE           ! Base column cap 1
+        24         10         43           3            3           1            0         1.0000        3         1      TRUE           ! Base column cap 2
+        25         11         44           3            3           1            0         1.0000        3         1      TRUE           ! Base column cap 3
+         8         12         13           4            4           1            0         1.0000        3         1      TRUE           ! Delta Pontoon, Upper 1
+         9         14         15           4            4           1            0         1.0000        3         1      TRUE           ! Delta Pontoon, Upper 2
+        10         16         17           4            4           1            0         1.0000        3         1      TRUE           ! Delta Pontoon, Upper 3
+        11         18         19           4            4           1            0         1.0000        3         1      TRUE           ! Delta Pontoon, Lower 1
+        12         20         21           4            4           1            0         1.0000        3         1      TRUE           ! Delta Pontoon, Lower 2
+        13         22         23           4            4           1            0         1.0000        3         1      TRUE           ! Delta Pontoon, Lower 3
+        14         24         25           4            4           1            0         1.0000        3         1      TRUE           ! Y Pontoon, Upper 1
+        15         26         27           4            4           1            0         1.0000        3         1      TRUE           ! Y Pontoon, Upper 2
+        16         28         29           4            4           1            0         1.0000        3         1      TRUE           ! Y Pontoon, Upper 3
+        17         30         31           4            4           1            0         1.0000        3         1      TRUE           ! Y Pontoon, Lower 1
+        18         32         33           4            4           1            0         1.0000        3         1      TRUE           ! Y Pontoon, Lower 2
+        19         34         35           4            4           1            0         1.0000        3         1      TRUE           ! Y Pontoon, Lower 3
+        20         36         37           4            4           1            0         1.0000        3         1      TRUE           ! Cross Brace 1
+        21         38         39           4            4           1            0         1.0000        3         1      TRUE           ! Cross Brace 2
+        22         40         41           4            4           1            0         1.0000        3         1      TRUE           ! Cross Brace 3
       ---------------------- FILLED MEMBERS ------------------------------------------
                    2   NFillGroups     - Number of filled member groups (-) [If FillDens = DEFAULT, then FillDens = WtrDens; FillFSLoc is related to MSL2SWL]
-      FillNumM FillMList FillFSLoc     FillDens
-      (-)      (-)       (m)           (kg/m^3)
-       3   2   3   4    -6.17           1025
-       3   5   6   7   -14.89           1025
+      FillNumM  FillMList  FillFSLoc     FillDens
+      (-)          (-)        (m)        (kg/m^3)
+       3        2   3   4    -6.17         1025
+       3        5   6   7   -14.89         1025
       ---------------------- MARINE GROWTH -------------------------------------------
                    0   NMGDepths      - Number of marine-growth depths specified (-)
       MGDpth     MGThck       MGDens
@@ -248,6 +268,7 @@ structure::
            0.0125        TimeInterval      - Time step for the simulation (sec)
       ---------------------- PRP INPUTS (Platform Reference Point) ------------------
                 0   PRPInputsMod      - Model for the PRP (platform reference point) inputs {0: all inputs are zero for every timestep, 1: steady-state inputs, 2: read inputs from a file (InputsFile)} (switch)
+                0   NAddDOF           - Number of additional generalized DOF of the WAMIT body (-)
                 0   PtfmRefzt         - Vertical distance from the ground level to the platform reference point (m)
       "not_used"    PRPInputsFile     - Filename for the PRP HydroDyn input InputsMod = 2 (quoted string)
       ---------------------- PRP STEADY STATE INPUTS  -------------------------------
@@ -287,6 +308,7 @@ JαAxi, JαAyi, JαAzi                                              (m/s\ :sup:`
 JαDynP                                                           (Pa)                                                                                                       Total (first- plus second-order) fluid particle dynamic pressure at Jα
 **Total and Additional Loads**                                                                                                                                              
 BαAddFxi, BαAddFyi, BαAddFzi, BαAddMxi, BαAddMyi, BαAddMzi       (N), (N), (N), (N·m), (N·m), (N·m)                                                                         Loads due to additional preload, stiffness, and damping at Bα
+BαADOFβAdd                                                       (-)                                                                                                        Loads due to additional preload, stiffness, and damping at Bα in additional generalized DOF β
 HydroFxi, HydroFyi, HydroFzi, HydroMxi, HydroMyi, HydroMzi       (N), (N), (N), (N·m), (N·m), (N·m)                                                                         Total integrated hydrodynamic loads from both potential flow and strip theory at (0,0,0)
 **Loads from Potential-Flow Solution**                                                                                                                                      
 BαWvsFxi, BαWvsFyi, BαWvsFzi, BαWvsMxi, BαWvsMyi, BαWvsMzi       (N), (N), (N), (N·m), (N·m), (N·m)                                                                         Total (first- plus second-order) wave-excitation loads from diffraction at Bα
@@ -294,6 +316,10 @@ BαWvsF1xi, BαWvsF1yi, BαWvsF1zi, BαWvsM1xi, BαWvsM1yi, BαWvsM1zi (N), (N),
 BαWvsF2xi, BαWvsF2yi, BαWvsF2zi, BαWvsM2xi, BαWvsM2yi, BαWvsM2zi (N), (N), (N), (N·m), (N·m), (N·m)                                                                         Second-order wave-excitation loads from diffraction at Bα
 BαHdSFxi, BαHdSFyi, BαHdSFzi, BαHdSMxi, BαHdSMyi, BαHdSMzi       (N), (N), (N), (N·m), (N·m), (N·m)                                                                         Hydrostatic loads at Bα
 BαRdtFxi, BαRdtFyi, BαRdtFzi, BαRdtMxi, BαRdtMyi, BαRdtMzi       (N), (N), (N), (N·m), (N·m), (N·m)                                                                         Wave-radiation loads at Bα
+BαNFKFxi, BαNFKFyi, BαNFKFzi, BαNFKMxi, BαNFKMyi, BαNFKMzi       (N), (N), (N), (N·m), (N·m), (N·m)                                                                         Mesh-based nonlinear Froude-Krylov and hydrostatic loads at Bα
+BαADOFβWvs                                                       (-)                                                                                                        Wave-excitation load at Bα in additional generalized DOF β (first-order only)
+BαADOFβHds                                                       (-)                                                                                                        Hydrostatic load at Bα in additional generalized DOF β
+BαADOFβRdt                                                       (-)                                                                                                        Wave-radiation load at Bα in additional generalized DOF β
 **Structural Motions**                                                                                                                                                      
 PRPSurge, PRPSway, PRPHeave, PRPRoll, PRPPitch, PRPYaw           (m), (m), (m), (rad), (rad), (rad)                                                                         Displacements and rotations at platform reference point (PRP)
 PRPTVxi, PRPTVyi, PRPTVzi, PRPRVxi, PRPRVyi, PRPRVzi             (m/s), (m/s), (m/s), (rad/s), (rad/s), (rad/s)                                                             Translational and rotational velocities of the PRP
@@ -301,6 +327,7 @@ PRPTAxi, PRPTAyi, PRPTAzi, PRPRAxi, PRPRAyi, PRPRAzi             (m/s\ :sup:`2`)
 BαSurge, BαSway, BαHeave, BαRoll, BαPitch BαYaw                  (m), (m), (m), (rad), (rad), (rad)                                                                         Displacements and rotations at Bα
 BαTVxi, BαTVyi, BαTVzi, BαRVxi, BαRVyi, BαRVzi                   (m/s), (m/s), (m/s), (rad/s), (rad/s), (rad/s)                                                             Translational and rotational velocities at Bα
 BαTAxi, BαTAyi, BαTAzi, BαRAxi, BαRAyi, BαRAzi                   (m/s\ :sup:`2`), (m/s\ :sup:`2`), (m/s\ :sup:`2`), (rad/s\ :sup:`2`), (rad/s\ :sup:`2`), (rad/s\ :sup:`2`) Translational and rotational accelerations at Bα
+BαADOFβD, BαADOFβV, BαADOFβA                                     (-), (-/s), (-/s\ :sup:`2`)                                                                                Displacement, velocity, and acceleration of Bα additional generalized DOF β
 MαNβSTVxi, MαNβSTVyi, MαNβSTVzi                                  (m/s), (m/s), (m/s)                                                                                        Structural translational velocities at MαNβ
 MαNβSTAxi, MαNβSTAyi, MαNβSTAzi                                  (m/s\ :sup:`2`), (m/s\ :sup:`2`), (m/s\ :sup:`2`)                                                          Structural translational accelerations at MαNβ
 JαSTVxi, JαSTVyi, JαSTVzi                                        (m/s), (m/s), (m/s)                                                                                        Structural translational velocities at Jα

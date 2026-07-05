@@ -26,6 +26,7 @@
 PROGRAM FAST_Farm
 
    USE FAST_Farm_Subs
+   USE amrex_utils
 
    IMPLICIT NONE
 
@@ -49,8 +50,8 @@ REAL(DbKi)                            :: PrevSimTime        !< Previous time mes
 REAL(ReKi)                            :: PrevClockTime      !< Previous clock time in seconds past midnight
 INTEGER                               :: SimStrtTime (8)    !< An array containing the elements of the start time (after initialization).
 INTEGER                               :: ProgStrtTime (8)   !< An array containing the elements of the program start time (before initialization).
-REAL(ReKi)                            :: SimStrtCPU         !< User CPU time for simulation (without intialization)
-REAL(ReKi)                            :: ProgStrtCPU        !< User CPU time for program (with intialization)
+REAL(ReKi)                            :: SimStrtCPU         !< User CPU time for simulation (without initialization)
+REAL(ReKi)                            :: ProgStrtCPU        !< User CPU time for program (with initialization)
 
 ! these should probably go in the FAST.Farm registry:
 type(All_FastFarm_Data)               :: farm  
@@ -82,6 +83,9 @@ type(All_FastFarm_Data)               :: farm
    else if ( len( trim(FlagArg) ) > 0 ) then ! Any other flag (-v,-h) end normally
       call NormStop()
    endif
+
+   ! Initialize AMReX library
+   call amrex_init(arg_parmparse=.false.)
 
    CALL FAST_ProgStart( Farm_Ver ) ! put this after CheckArgs because CheckArgs assumes we haven't called this routine, yet.
    
@@ -157,6 +161,9 @@ type(All_FastFarm_Data)               :: farm
    !...............................................................................................................................         
    
    call FARM_End(farm, ErrStat, ErrMsg)
+
+   ! Finalize AMReX library
+   call amrex_finalize()
    
    CALL RunTimes( ProgStrtTime, ProgStrtCPU, SimStrtTime, SimStrtCPU, t )   
    call NormStop()
@@ -190,6 +197,8 @@ CONTAINS
             END IF
             
             call FARM_End(farm, ErrStat2, ErrMsg2)                                 
+            ! Finalize AMReX library
+            call amrex_finalize()
             call ProgAbort('', TrapErrors=.FALSE., TimeWait=3._ReKi )
             
          END IF

@@ -73,8 +73,7 @@ releases:
 
    -  Support full-system linearization.
 
--  Support an interface to Simulink for super and individual wind
-   turbine controllers.
+-  Support an interface to Simulink for individual wind turbine controllers.
 
 -  Implement checkpoint-restart capability.
 
@@ -89,12 +88,12 @@ releases:
    naming convention used for the FAST.Farm-generated visualization
    output files in VTK format (with leading zeros and without the *t*).
 
--  Support super controller-, inflow-, and wake-related output channels
+-  Support inflow-, and wake-related output channels
    for more than the first 9 wind turbines in the wind farm.
 
 -  Interface FAST.Farm to the Wind-Plant Integrated System Design &
    Engineering Model
-   (`WISDEM <https://github.com/NREL/WISDEM>`__\ :math:`^\text{TM}`) for
+   (`WISDEM <https://github.com/NatLabRockies/WISDEM>`__\ :math:`^\text{TM}`) for
    systems-engineering applications (multidisciplinary design, analysis,
    and optimization; uncertainty quantification; and so on).
 

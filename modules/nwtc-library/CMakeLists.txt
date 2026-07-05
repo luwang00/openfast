@@ -17,6 +17,7 @@
 if (GENERATE_TYPES)
   generate_f90_types(src/Registry_NWTC_Library_base.txt ${CMAKE_CURRENT_SOURCE_DIR}/src/NWTC_Library_Types.f90 -noextrap)
   generate_f90_types(src/Registry_NWTC_Library_mesh.txt ${CMAKE_CURRENT_SOURCE_DIR}/src/NWTC_Library_IncSubs.f90 -incsubs -noextrap)
+  generate_f90_types(src/GridInterp.txt                 ${CMAKE_CURRENT_SOURCE_DIR}/src/GridInterp_Types.f90 -noextrap)
   # Generate Registry_NWTC_Library.txt by concatenating _base.txt and _mesh.txt
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS 
     src/Registry_NWTC_Library_mesh.txt 
@@ -68,6 +69,7 @@ set(NWTCLIBS_SOURCES
   src/NWTC_Base.f90
   src/SingPrec.f90
   src/ModReg.f90
+  src/ModVar.f90
 
   src/ModMesh.f90
   src/ModMesh_Mapping.f90
@@ -78,11 +80,16 @@ set(NWTCLIBS_SOURCES
   src/NWTC_Num.f90
   src/NWTC_Str.f90
   src/NWTC_RandomNumber.f90
+  src/NWTC_C_Binding.f90
   
   src/NWTC_Library_Types.f90
   src/VTK.f90
   src/YAML.f90
   src/JSON.f90
+  src/KdTree.f90
+
+  src/GridInterp.f90
+  src/GridInterp_Types.f90
 
   # RanLux sources
   src/ranlux/RANLUX.f90
@@ -160,6 +167,9 @@ add_dependencies(nwtclibs nwtc_library_inc_subs)
 target_link_libraries(nwtclibs PUBLIC
   ${LAPACK_LIBRARIES} 
   ${CMAKE_DL_LIBS} 
+)
+target_include_directories(nwtclibs PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
 )
 if (USE_DLL_INTERFACE)
   target_compile_definitions(nwtclibs PRIVATE USE_DLL_INTERFACE)

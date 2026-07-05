@@ -89,11 +89,11 @@ program SeaStateDriver
    character(1024)                                     :: drvrFilename         ! Filename and path for the driver input file.  This is passed in as a command line argument when running the Driver exe.
    type(SeaSt_Drvr_InitInput)                          :: drvrInitInp          ! Initialization data for the driver program
    
-   integer                                             :: StrtTime (8)         ! Start time of simulation (including intialization)
+   integer                                             :: StrtTime (8)         ! Start time of simulation (including initialization)
    integer                                             :: SimStrtTime (8)      ! Start time of simulation (after initialization)
    real(ReKi)                                          :: PrevClockTime        ! Clock time at start of simulation in seconds
    real(ReKi)                                          :: UsrTime1             ! User CPU time for simulation initialization
-   real(ReKi)                                          :: UsrTime2             ! User CPU time for simulation (without intialization)
+   real(ReKi)                                          :: UsrTime2             ! User CPU time for simulation (without initialization)
    real(DbKi)                                          :: TiLstPrn             ! The simulation time of the last print
    real(DbKi)                                          :: t_global             ! Current simulation time (for global/FAST simulation)
    real(DbKi)                                          :: SttsTime             ! Amount of time between screen status messages (sec)
@@ -161,6 +161,7 @@ program SeaStateDriver
    InitInData%OutRootName  = drvrInitInp%OutRootName
    InitInData%TMax         = (drvrInitInp%NSteps-1) * drvrInitInp%TimeInterval  ! Starting time is always t = 0.0
    InitInData%HasIce       = .false.
+   InitInData%WaveTimeShift = 0.0_DbKi       ! for phase shifting wave field in time (positive value only)
   
       ! Get the current time
    call date_and_time ( Values=StrtTime )                               ! Let's time the whole simulation
@@ -192,6 +193,7 @@ program SeaStateDriver
          ! Clean up and exit
       call SeaSt_DvrCleanup()
    end if
+   p%WaveField%hasCurrField = .FALSE.
 
    if ( Interval /= drvrInitInp%TimeInterval) then
       call SetErrStat( ErrID_Fatal, 'The SeaState Module attempted to change timestep interval, but this is not allowed.  The SeaState Module must use the Driver Interval.', ErrStat, ErrMsg, 'Driver')

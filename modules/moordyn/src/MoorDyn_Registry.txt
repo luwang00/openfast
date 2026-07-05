@@ -11,7 +11,17 @@
 #   column   10   Units
 # Keyword   ModuleName/ModName   Derived data type   Field type   Variable name      variable dimension   Initial value   for mix language, not used   Description   Units
 
+# ...... Include files (definitions from NWTC Library) ............................................................................
+# make sure that the file name does not have any trailing white spaces!
 include Registry_NWTC_Library.txt
+usefrom SeaSt_WaveField.txt
+
+
+## ====== parameters =======
+param     MoorDyn/MD  -                IntKi              MD_MaxNCoef     -   30    -   "maximum number of entries to allow in nonlinear coefficient lookup tables" -
+param     MoorDyn/MD  -                IntKi              MD_MaxBdAtch    -  100    -   "maximum number of attachments to a body" -
+param     MoorDyn/MD  -                IntKi              MD_MaxPtAtch    -  100    -   "maximum number of attachments to a point" -
+param     MoorDyn/MD  -                IntKi              MD_MaxFailLines -   30    -   "maximum number of line failures that can be simulated" -
 
 ## ====== some data read from the input file, but not needed after init ======
 typedef   MoorDyn/MD  MD_InputFileType DbKi               DTIC           -    0.5   -   "convergence check time step for IC generation"              "[s]"
@@ -20,26 +30,22 @@ typedef   ^           ^                ReKi               CdScaleIC      -    1 
 typedef   ^           ^                ReKi               threshIC       -    0.01  -   "convergence tolerance for ICs  (0.01 means 1%)"              "[]"
 
 ## ============================== Define initialization input types here: =============================================================================================================================
-typedef   MoorDyn/MD  InitInputType    ReKi               g              -   -999.9 -   "gravity constant"   "[m/s^2]"
-typedef   ^           ^                ReKi               rhoW           -   -999.9 -   "sea density"        "[kg/m^3]"
-typedef   ^           ^                ReKi               WtrDepth       -   -999.9 -   "depth of water"     "[m]"
-typedef   ^           ^                ReKi               PtfmInit      {:}{:} -    -   "initial position of platform(s) shape: 6, nTurbines"     -
-typedef   ^           ^                IntKi              FarmSize       -    0     -   "Indicates normal FAST module mode if 0, FAST.Farm coupled mode and =nTurbines if >0"     -
-typedef   ^           ^                ReKi               TurbineRefPos {:}{:} -    -   "reference position of turbines in farm, shape: 3, nTurbines"     -
-typedef   ^           ^                ReKi               Tmax           -     -    -   "simulation duration" "[s]"
-typedef   ^           ^                CHARACTER(1024)    FileName       -   ""     -   "MoorDyn input file"
-typedef   ^           ^                CHARACTER(1024)    RootName       -   -      -   "RootName for writing output files"              -
-typedef   ^           ^                LOGICAL            UsePrimaryInputFile    -   .TRUE.  -  "Read input file instead of passed data"   -
-typedef   ^           ^                FileInfoType       PassedPrimaryInputData -   -       -  "Primary input file as FileInfoType (set by driver/glue code) -- String array with metadata"   -
-typedef   ^           ^                LOGICAL            Echo           -   ""     -   "echo parameter - do we want to echo the header line describing the input file?"
-typedef   ^           ^                CHARACTER(ChanLen) OutList        {:}   ""   -   "string containing list of output channels requested in input file"
-typedef   ^           ^                Logical            Linearize      -   .FALSE. -  "Flag that tells this module if the glue code wants to linearize." -
-typedef   ^           ^                Logical            VisMeshes      -   .FALSE. -  "Glue code requesting visualization meshes" -
-
-#typedef   ^       ^                    DbKi         UGrid                  {:}{:}{:} -  -   "water velocities time series at each grid point"            -
-#typedef   ^       ^                    DbKi         UdGrid                 {:}{:}{:} -  -   "water accelerations time series at each grid point"            -
-#typedef   ^       ^                    DbKi         zetaGrid               {:}{:}    -  -   "water surface elevations time series at each grid point"            -
-#typedef   ^       ^                    DbKi         PDynGrid               {:}{:}    -  -   "water dynamic pressure time series at each grid point"            -
+typedef   MoorDyn/MD  InitInputType    ReKi                  g              -   -999.9 -   "gravity constant"   "[m/s^2]"
+typedef   ^           ^                ReKi                  rhoW           -   -999.9 -   "sea density"        "[kg/m^3]"
+typedef   ^           ^                ReKi                  WtrDepth       -   -999.9 -   "depth of water"     "[m]"
+typedef   ^           ^                ReKi                  PtfmInit      {:}{:} -    -   "initial position of platform(s) shape: 6, nTurbines"     -
+typedef   ^           ^                IntKi                 FarmSize       -    0     -   "Indicates normal FAST module mode if 0, FAST.Farm coupled mode and =nTurbines if >1"     -
+typedef   ^           ^                ReKi                  TurbineRefPos {:}{:} -    -   "reference position of turbines in farm, shape: 3, nTurbines"     -
+typedef   ^           ^                ReKi                  Tmax           -     -    -   "simulation duration" "[s]"
+typedef   ^           ^                CHARACTER(1024)       FileName       -   ""     -   "MoorDyn input file"
+typedef   ^           ^                CHARACTER(1024)       RootName       -   -      -   "RootName for writing output files"              -
+typedef   ^           ^                LOGICAL               UsePrimaryInputFile    -   .TRUE.  -  "Read input file instead of passed data"   -
+typedef   ^           ^                FileInfoType          PassedPrimaryInputData -   -       -  "Primary input file as FileInfoType (set by driver/glue code) -- String array with metadata"   -
+typedef   ^           ^                LOGICAL               Echo           -   ""     -   "echo parameter - do we want to echo the header line describing the input file?"
+typedef   ^           ^                CHARACTER(ChanLen)    OutList        {:}   ""   -   "string containing list of output channels requested in input file"
+typedef   ^           ^                Logical               Linearize      -   .FALSE. -  "Flag that tells this module if the glue code wants to linearize." -
+typedef   ^           ^                Logical               VisMeshes      -   .FALSE. -  "Glue code requesting visualization meshes" -
+typedef   ^           ^                SeaSt_WaveFieldType   *WaveField     -     -     -  "Pointer to SeaState wave field" -
 
 # nvm # Farm-level simulation inputs - these are passed by FAST.Farm - the arrays are populated from the individual turbine-level MoorDyn instances
 # nvm typedef   ^       ^                    MeshType     FarmCoupledKinematics  {:}    -    -   "array of input kinematics meshes from each of the turbine-level MoorDyn instances"  "[m, m/s]"
@@ -69,14 +75,17 @@ typedef  ^            ^                DbKi               dF             -      
 typedef  ^            ^                DbKi               cF             -       -  -   "Center VIV synchronization in non-dimensional frequency"
 typedef  ^            ^                IntKi              ElasticMod     -       -  -   "Which elasticity model to use: {1 basic, 2 viscoelastic, 3 viscoelastic+meanload} "     -
 typedef  ^            ^                IntKi              nEApoints      -       -  -   "number of values in stress-strain lookup table (0 means using constant E)"
-typedef  ^            ^                DbKi               stiffXs        {30}    -  -   "x array for stress-strain lookup table (up to nCoef)"
-typedef  ^            ^                DbKi               stiffYs        {30}    -  -   "y array for stress-strain lookup table"
+typedef  ^            ^                DbKi               stiffXs  {MD_MaxNCoef} -  -   "x array for stress-strain lookup table (up to MD_MaxNCoef)"
+typedef  ^            ^                DbKi               stiffYs  {MD_MaxNCoef} -  -   "y array for stress-strain lookup table"
 typedef  ^            ^                IntKi              nBApoints      -       -  -   "number of values in stress-strainrate lookup table (0 means using constant c)"
-typedef  ^            ^                DbKi               dampXs         {30}    -  -   "x array for stress-strainrate lookup table (up to nCoef)"
-typedef  ^            ^                DbKi               dampYs         {30}    -  -   "y array for stress-strainrate lookup table"
+typedef  ^            ^                DbKi               dampXs   {MD_MaxNCoef} -  -   "x array for stress-strainrate lookup table (up to MD_MaxNCoef)"
+typedef  ^            ^                DbKi               dampYs   {MD_MaxNCoef} -  -   "y array for stress-strainrate lookup table"
 typedef  ^            ^                IntKi              nEIpoints      -       -  -   "number of values in bending stress-strain lookup table (0 means using constant E)"
-typedef  ^            ^                DbKi               bstiffXs       {30}    -  -   "x array for stress-strain lookup table (up to nCoef)"
-typedef  ^            ^                DbKi               bstiffYs       {30}    -  -   "y array for stress-strain lookup table"
+typedef  ^            ^                DbKi               bstiffXs {MD_MaxNCoef} -  -   "x array for stress-strain lookup table (up to MD_MaxNCoef)"
+typedef  ^            ^                DbKi               bstiffYs {MD_MaxNCoef} -  -   "y array for stress-strain lookup table"
+typedef  ^            ^                IntKi              syropeWCForm   -       -  -   "Syrope working curve formula (1 = LINEAR, 2 = QUADRATIC, 3 = EXP)"
+typedef  ^            ^                DbKi               syropeWCK1     -       -  -   "Coefficient for the Syrope working curve formula"
+typedef  ^            ^                DbKi               syropeWCK2     -       -  -   "Coefficient for the Syrope working curve formula"
 
 # rod properties from rod dictionary input
 typedef  ^            MD_RodProp       IntKi              IdNum          -       -  -   "integer identifier of this set of rod properties"
@@ -93,13 +102,13 @@ typedef  ^            ^                DbKi               CaEnd          -      
 # this is the Body type, which holds data for each body object
 typedef  ^            MD_Body          IntKi              IdNum          -       -  -   "integer identifier of this Point"
 typedef  ^            ^                IntKi              typeNum        -       -  -   "integer identifying the type.  0=free, 1=fixed, -1=coupled, 2=coupledpinned"
-typedef  ^            ^                IntKi              AttachedC      {30}    -  -   "list of IdNums of points attached to this body"
-typedef  ^            ^                IntKi              AttachedR      {30}    -  -   "list of IdNums of rods attached to this body"
-typedef  ^            ^                IntKi              nAttachedC     -       -  -   "number of attached points"
+typedef  ^            ^                IntKi              AttachedC   {MD_MaxBdAtch} - - "list of IdNums of points attached to this body"
+typedef  ^            ^                IntKi              AttachedR   {MD_MaxBdAtch} - - "list of IdNums of rods attached to this body"
+typedef  ^            ^                IntKi              nAttachedP     -       -  -   "number of attached points"
 typedef  ^            ^                IntKi              nAttachedR     -       -  -   "number of attached rods"
-typedef  ^            ^                DbKi               rPointRel    {3}{30}   -  -   "relative position of point on body"
-typedef  ^            ^                DbKi               r6RodRel     {6}{30}   -  -   "relative position and orientation of rod on body"
-typedef  ^            ^                DbKi               bodyM          -       -  -   "body mass (seperate from attached objects)" "[kg]"
+typedef  ^            ^                DbKi               rPointRel  {3}{MD_MaxBdAtch} - - "relative position of point on body"
+typedef  ^            ^                DbKi               r6RodRel   {6}{MD_MaxBdAtch} - - "relative position and orientation of rod on body"
+typedef  ^            ^                DbKi               bodyM          -       -  -   "body mass (separate from attached objects)" "[kg]"
 typedef  ^            ^                DbKi               bodyV          -       -  -   "body volume (for buoyancy calculation)" "[m^3]"
 typedef  ^            ^                DbKi               bodyI          {3}     -  -   "body 3x3 inertia matrix diagonals" "[kg-m^2]"
 typedef  ^            ^                DbKi               bodyCdA        {6}     -  -   "product of drag force and frontal area of body" "[m^2]"
@@ -128,8 +137,8 @@ typedef  ^            ^                DbKi               BquadL         {3}    
 typedef  ^            MD_Point       IntKi              IdNum            -       -  -   "integer identifier of this point"
 typedef  ^            ^                CHARACTER(10)      type           -       -  -   "type of point: fix, vessel, point"
 typedef  ^            ^                IntKi              typeNum        -       -  -   "integer identifying the type.  1=fixed, -1=coupled, 0=free"
-typedef  ^            ^                IntKi              Attached       {10}    -  -   "list of IdNums of lines attached to this point node"
-typedef  ^            ^                IntKi              Top            {10}    -  -   "list of ints specifying whether each line is attached at 1 = top/fairlead(end B), 0 = bottom/anchor(end A)"
+typedef  ^            ^                IntKi              Attached   {MD_MaxPtAtch} - - "list of IdNums of lines attached to this point node"
+typedef  ^            ^                IntKi              Top        {MD_MaxPtAtch} - - "list of ints specifying whether each line is attached at 1 = top/fairlead(end B), 0 = bottom/anchor(end A)"
 typedef  ^            ^                IntKi              nAttached      -       -  -   "number of attached lines"
 typedef  ^            ^                DbKi               pointM         -       -  -   "point mass" "[kg]"
 typedef  ^            ^                DbKi               pointV         -       -  -   "point volume" "[m^3]"
@@ -157,13 +166,13 @@ typedef  ^            MD_Rod           IntKi              IdNum          -      
 typedef  ^            ^                CHARACTER(10)      type           -       -  -   "type of Rod.  should match one of RodProp names"
 typedef  ^            ^                IntKi              PropsIdNum     -       -  -   "the IdNum of the associated rod properties"     -
 typedef  ^            ^                IntKi              typeNum        -       -  -   "integer identifying the type.  0=free, 1=pinned, 2=fixed, -1=coupledpinned, -2=coupled"
-typedef  ^            ^                IntKi              AttachedA      {10}    -  -   "list of IdNums of lines attached to end A"
-typedef  ^            ^                IntKi              AttachedB      {10}    -  -   "list of IdNums of lines attached to end B"
-typedef  ^            ^                IntKi              TopA           {10}    -  -   "list of ints specifying whether each line is attached at 1 = top/fairlead(end B), 0 = bottom/anchor(end A)"
-typedef  ^            ^                IntKi              TopB           {10}    -  -   "list of ints specifying whether each line is attached at 1 = top/fairlead(end B), 0 = bottom/anchor(end A)"
+typedef  ^            ^                IntKi              AttachedA  {MD_MaxPtAtch} - - "list of IdNums of lines attached to end A"
+typedef  ^            ^                IntKi              AttachedB  {MD_MaxPtAtch} - - "list of IdNums of lines attached to end B"
+typedef  ^            ^                IntKi              TopA       {MD_MaxPtAtch} - - "list of ints specifying whether each line is attached at 1 = top/fairlead(end B), 0 = bottom/anchor(end A)"
+typedef  ^            ^                IntKi              TopB       {MD_MaxPtAtch} - - "list of ints specifying whether each line is attached at 1 = top/fairlead(end B), 0 = bottom/anchor(end A)"
 typedef  ^            ^                IntKi              nAttachedA     -       -  -   "number of attached lines to Rod end A"
 typedef  ^            ^                IntKi              nAttachedB     -       -  -   "number of attached lines to Rod end B"
-typedef  ^            ^                IntKi              OutFlagList   {20}     -  -   "array specifying what line quantities should be output (1 vs 0)"   -
+typedef  ^            ^                IntKi              OutFlagList   {55}     -  -   "array specifying what line quantities should be output (1 vs 0)"   -
 typedef  ^            ^                IntKi              N             -        -  -   "The number of elements in the line"              -
 typedef  ^            ^                IntKi              endTypeA      -        -  -   "type of point at end A: 0=pinned to Point, 1=cantilevered to Rod."  -
 typedef  ^            ^                IntKi              endTypeB      -        -  -   "type of point at end B: 0=pinned to Point, 1=cantilevered to Rod."  -
@@ -217,7 +226,7 @@ typedef  ^            ^                DbKi               RodWrOutput  {:}      
 typedef  ^            ^                DbKi               FextU        {3}      -  -   "vector of user-defined external force on the rod end A always in the local body-fixed frame" "[N]"
 typedef  ^            ^                DbKi               Blin         {2}      -  -   "linear damping, transverse damping for rod element always in the local body-fixed frame" "[N/(m/s)]"
 typedef  ^            ^                DbKi               Bquad        {2}      -  -   "quadratic damping, transverse damping for rod element always in the local body-fixed frame" "[N/(m/s)^2]"
-
+typedef  ^            ^                DbKi               VOF          {:}       -  -   "Node-based volume-of-fluid for submergence"
 
 
 # this is the Line type, which holds data for each line object
@@ -250,14 +259,18 @@ typedef  ^            ^                DbKi               Cl             -      
 typedef  ^            ^                DbKi               dF             -       -  -   "+- range of VIV synchronization in non-dimensional frequency"
 typedef  ^            ^                DbKi               cF             -       -  -   "Center VIV synchronization in non-dimensional frequency"
 typedef  ^            ^                IntKi              nEApoints     -        -  -   "number of values in stress-strain lookup table (0 means using constant E)"
-typedef  ^            ^                DbKi               stiffXs       {30}     -  -   "x array for stress-strain lookup table (up to nCoef)"
-typedef  ^            ^                DbKi               stiffYs       {30}     -  -   "y array for stress-strain lookup table"
+typedef  ^            ^                DbKi               stiffXs  {MD_MaxNCoef} -  -   "x array for stress-strain lookup table (up to MD_MaxNCoef)"
+typedef  ^            ^                DbKi               stiffYs  {MD_MaxNCoef} -  -   "y array for stress-strain lookup table"
+typedef  ^            ^                DbKi               stiffZs  {MD_MaxNCoef} -  -   "z array for stress-strain original working curve (Syrope model only)"
+typedef  ^            ^                DbKi               stiffxs_ {MD_MaxNCoef} -  -   "auxiliary x array for Syrope working curve"
+typedef  ^            ^                DbKi               stiffys_ {MD_MaxNCoef} -  -   "auxiliary y array for Syrope working curve"
+typedef  ^            ^                DbKi               stiffzs_ {MD_MaxNCoef} -  -   "auxiliary z array for Syrope working curve"
 typedef  ^            ^                IntKi              nBApoints     -        -  -   "number of values in stress-strainrate lookup table (0 means using constant c)"
-typedef  ^            ^                DbKi               dampXs        {30}     -  -   "x array for stress-strainrate lookup table (up to nCoef)"
-typedef  ^            ^                DbKi               dampYs        {30}     -  -   "y array for stress-strainrate lookup table"
+typedef  ^            ^                DbKi               dampXs   {MD_MaxNCoef} -  -   "x array for stress-strainrate lookup table (up to MD_MaxNCoef)"
+typedef  ^            ^                DbKi               dampYs   {MD_MaxNCoef} -  -   "y array for stress-strainrate lookup table"
 typedef  ^            ^                IntKi              nEIpoints     -        -  -   "number of values in bending stress-strain lookup table (0 means using constant E)"
-typedef  ^            ^                DbKi               bstiffXs      {30}     -  -   "x array for stress-strain lookup table (up to nCoef)"
-typedef  ^            ^                DbKi               bstiffYs      {30}     -  -   "y array for stress-strain lookup table"
+typedef  ^            ^                DbKi               bstiffXs {MD_MaxNCoef} -  -   "x array for stress-strain lookup table (up to MD_MaxNCoef)"
+typedef  ^            ^                DbKi               bstiffYs {MD_MaxNCoef} -  -   "y array for stress-strain lookup table"
 typedef  ^            ^                DbKi               time           -       -  -   "current time"         "[s]"
 typedef  ^            ^                DbKi               r            {:}{:}    -  -   "node positions"    -
 typedef  ^            ^                DbKi               rd           {:}{:}    -  -   "node velocities"  -
@@ -277,6 +290,11 @@ typedef  ^            ^                DbKi               zeta         {:}      
 typedef  ^            ^                DbKi               PDyn         {:}       -  -   "water dynamic pressure at node"  "[Pa]"
 typedef  ^            ^                DbKi               T            {:}{:}    -  -   "segment tension vectors"  "[N]"
 typedef  ^            ^                DbKi               Td           {:}{:}    -  -   "segment internal damping force vectors"  "[N]"
+typedef  ^            ^                IntKi              syropeWCForm  -        -  -   "Syrope working curve formula (1 = LINEAR, 2 = QUADRATIC, 3 = EXP)"
+typedef  ^            ^                DbKi               syropeWCK1    -        -  -   "Coefficient for the Syrope working curve formula"
+typedef  ^            ^                DbKi               syropeWCK2    -        -  -   "Coefficient for the Syrope working curve formula"
+typedef  ^            ^                DbKi               Tmax         {:}       -  -   "segment preceding highest mean tensions"  "[N]"
+typedef  ^            ^                DbKi               Tmean        {:}       -  -   "segment mean tensions"  "[N]"
 typedef  ^            ^                DbKi               W            {:}{:}    -  -   "weight/buoyancy vectors"  "[N]"
 typedef  ^            ^                DbKi               Dp           {:}{:}    -  -   "node drag (transverse)"  "[N]"
 typedef  ^            ^                DbKi               Dq           {:}{:}    -  -   "node drag (axial)"  "[N]"
@@ -294,13 +312,13 @@ typedef  ^            ^                IntKi              LineUnOut     -       
 typedef  ^            ^                DbKi               LineWrOutput {:}       -  -   "one row of output data for this line"
 # NOTE: Below are vars used in the line VIV model
 typedef  ^            ^                DbKi               phi          {:}       -  -   "phase of lift force" 
-typedef  ^            ^                LOGICAL            IC_gen        -   .FALSE. -   "boolean to indicate dynamic relaxation occuring"  "-"
 typedef  ^            ^                DbKi               n_m           -       500 -   "Num timesteps for rolling RMS of crossflow velocity phase"  "-"
 typedef  ^            ^                DbKi               phi_yd        -        -  -   "The crossflow motion phase"  "-"
 typedef  ^            ^                DbKi               t_old         -        -  -   "old t"  "s"
 typedef  ^            ^                DbKi               yd_rms_old   {:}       -  -   "node old cf vel rms"  "m/s"
 typedef  ^            ^                DbKi               ydd_rms_old  {:}       -  -   "node old cf accel rms"  "m/s^2"
 typedef  ^            ^                DbKi               rdd_old      {:}{:}    -  -   "node accelerations previous iteration"  "m/s^2"
+typedef  ^            ^                Logical            store_rdd     -     .FALSE.  -   "flag to store node accelerations (for VIV or output)"  -
 
 
 # this is the ExtLd type, which holds data for each external load specification
@@ -314,8 +332,8 @@ typedef  ^            ^                LOGICAL            isGlobal        -     
 typedef  ^            MD_Fail          IntKi              IdNum           -        -  -   "integer identifier of this failure" "-"
 typedef  ^            ^                IntKi              attachID        -        -  -   "ID of connection or Rod the lines are attached to" "-"
 typedef  ^            ^                IntKi              isRod           -        -  -   "1 Rod end A, 2 Rod end B, 0 if point" "-"
-typedef  ^            ^                IntKi              lineIDs         {30}     -  -   "array of one or more lines to detach (starting from 1...)" "-"
-typedef  ^            ^                IntKi              lineTops        {30}     -  -   "an array that will be FILLED IN to return which end of each line was disconnected ... 1 = top/fairlead(end B), 0 = bottom/anchor(end A)" "-"
+typedef  ^            ^                IntKi              lineIDs         {MD_MaxFailLines} - - "array of one or more lines to detach (starting from 1...)" "-"
+typedef  ^            ^                IntKi              lineTops        {MD_MaxFailLines} - - "an array that will be FILLED IN to return which end of each line was disconnected ... 1 = top/fairlead(end B), 0 = bottom/anchor(end A)" "-"
 typedef  ^            ^                IntKi              nLinesToDetach  -        -  -   "how many lines to dettach" "-"
 typedef  ^            ^                DbKi               failTime        -        -  -   "time of failure" "s"
 typedef  ^            ^                DbKi               failTen         -        -  -   "tension threshold of failure" "N"
@@ -338,14 +356,7 @@ typedef   ^            ^               CHARACTER(ChanLen)  writeOutputUnt  {:} "
 typedef   ^            ^               ProgDesc            Ver              -  ""  -   "this module's name, version, and date"
 typedef   ^            ^               LOGICAL             CableCChanRqst  {:}  .FALSE.  -   "flag indicating control channel for drive line active tensioning is requested"   -
 # --- InitOutputs for linearization ---
-typedef   ^            ^               CHARACTER(LinChanLen)  LinNames_y   {:}  -   -   "Names of the outputs used in linearization" -
-typedef   ^            ^               CHARACTER(LinChanLen)  LinNames_x   {:}  -   -   "Names of the continuous states used in linearization" -
-typedef   ^            ^               CHARACTER(LinChanLen)  LinNames_u   {:}  -   -   "Names of the inputs used in linearization" -
-typedef   ^            ^               LOGICAL                RotFrame_y   {:}  -   -   "Flag that tells FAST/MBC3 if the outputs used in linearization are in the rotating frame" -
-typedef   ^            ^               LOGICAL                RotFrame_x   {:}  -   -   "Flag that tells FAST/MBC3 if the continuous states used in linearization are in the rotating frame (not used for glue)" -
-typedef   ^            ^               LOGICAL                RotFrame_u   {:}  -   -   "Flag that tells FAST/MBC3 if the inputs used in linearization are in the rotating frame" -
-typedef   ^            ^               LOGICAL                IsLoad_u     {:}  -   -   "Flag that tells FAST if the inputs used in linearization are loads (for preconditioning matrix)" -
-typedef   ^            ^               IntKi                  DerivOrder_x {:}  -   -   "Integer that tells FAST/MBC3 the maximum derivative order of continuous states used in linearization" -
+typedef   ^            ^               ModVarsType            Vars          -   -   -   "Module Variables"  -
 
 
 ## ============================== Define Continuous states here: =====================================================================================================================================
@@ -360,9 +371,114 @@ typedef   ^       ConstraintStateType  SiKi                dummy            -   
 ## ============================== Define Other states here: =====================================================================================================================================
 typedef   ^       OtherStateType       SiKi                dummy             -  -  -   "Remove this variable if you have other states" -
 
+## ============================== Parameters ============================================================================================================================================
+typedef   ^       ParameterType        IntKi               nLineTypes     -     0    -   "number of line types"                       ""
+typedef   ^       ^                    IntKi               nRodTypes      -     0    -   "number of rod types"                        ""
+typedef   ^       ^                    IntKi               nPoints        -     0    -   "number of Point objects"               ""
+typedef   ^       ^                    IntKi               nPointsExtra   -     0    -   "number of Point objects including space for extra ones that could arise from line failures"               ""
+typedef   ^       ^                    IntKi               nBodies        -     0    -   "number of Body objects"                     ""
+typedef   ^       ^                    IntKi               nRods          -     0    -   "number of Rod objects"                      ""
+typedef   ^       ^                    IntKi               nLines         -     0    -   "number of Line objects"                     ""
+typedef   ^       ^                    IntKi               nSyropeLineICs -     0    -   "number of Syrope Line initial conditions"   ""
+typedef   ^       ^                    IntKi               nExtLds        -     0    -   "number of external loads or damping"        ""
+typedef   ^       ^                    IntKi               nCtrlChans     -     0    -   "number of distinct control channels specified for use as inputs"        ""
+typedef   ^       ^                    IntKi               nFails         -     0    -   "number of failure conditions"                     ""
+typedef   ^       ^                    IntKi               nFreeBodies    -     0    -   ""             ""
+typedef   ^       ^                    IntKi               nFreeRods      -     0    -   ""             ""
+typedef   ^       ^                    IntKi               nFreePoints    -     0    -   ""             ""
+typedef   ^       ^                    IntKi               nCpldBodies    {:}   -    -   "number of coupled bodies (for FAST.Farm, size>1 with an entry for each turbine)"             ""
+typedef   ^       ^                    IntKi               nCpldRods      {:}   -    -   "number of coupled rods (for FAST.Farm, size>1 with an entry for each turbine)"             ""
+typedef   ^       ^                    IntKi               nCpldPoints    {:}   -    -   "number of coupled points (for FAST.Farm, size>1 with an entry for each turbine)"             ""
+typedef   ^       ^                    IntKi               NConns         -     0    -   "number of Connect type Points - not to be confused with NPoints"             ""
+typedef   ^       ^                    IntKi               NAnchs         -     0    -   "number of Anchor type Points"             ""
+typedef   ^       ^                    DbKi                Tmax           -     -    -   "simulation duration" "[s]"
+typedef   ^       ^                    IntKi               tScheme        -     0    -   "Time integration scheme (0 = RK2, 1 = RK4). Default is RK2"    - 
+typedef   ^       ^                    DbKi                g              -  9.81    -   "gravitational constant (positive)"   "[m/s^2]"
+typedef   ^       ^                    DbKi                rhoW           -  1025    -   "density of seawater"              "[kg/m^3]"
+typedef   ^       ^                    DbKi                WtrDpth        -     -    -   "water depth"                      "[m]"
+typedef   ^       ^                    DbKi                kBot           -     -    -   "bottom stiffness"                 "[Pa/m]"
+typedef   ^       ^                    DbKi                cBot           -     -    -   "bottom damping"                  "[Pa-s/m]"
+typedef   ^       ^                    DbKi                dtM0           -     -    -   "desired mooring model time step"          "[s]"
+typedef   ^       ^                    DbKi                dtCoupling     -     -    -   "coupling time step that MoorDyn should expect"              "[s]"
+typedef   ^       ^                    IntKi               NumOuts        -     -    -   "Number of parameters in the output list (number of outputs requested)"    -
+typedef   ^       ^                    DbKi                dtOut          -     -    -   "interval for writing output file lines"              "[s]"
+typedef   ^       ^                    CHARACTER(1024)     RootName       -     -    -   "RootName for writing output files"          -
+typedef   ^       ^                    MD_OutParmType      OutParam       {:}   -    -   "Names and units (and other characteristics) of all requested output parameters"          -
+typedef   ^       ^                    CHARACTER(1)        Delim          -     -    -   "Column delimiter for output text files"     -
+typedef   ^       ^                    IntKi               MDUnOut        -     -    -   "Unit number of main output file"
+typedef   ^       ^                    CHARACTER(1024)     PriPath        -     -    -   "The path to the primary MoorDyn input file, used if looking for additional input files"
+typedef   ^       ^                    IntKi               writeLog       -     -1   -   "Switch for level of log file output"
+#NOTE: there may be an issue with start/restart with the UnLog stored in parameters. We'll ignore this for now -- ADP
+typedef   ^       ^                    IntKi               UnLog          -     -1   -   "Unit number of log file"
+typedef   ^       ^                    IntKi               WaveKin        -     0    -   "Flag for whether or how to consider wave kinematics. (0: no waves, 1: old method, 2: hybrid method, 3: SeaState method)"
+typedef   ^       ^                    IntKi               Current        -     0    -   "Flag for whether or how to consider currents. (0: no currents, 1: old method, 2: hybrid method, 3: SeaState method)"
+typedef   ^       ^                    IntKi               WaterKin       -     0    -   "Flag for whether or how to consider water kinematics. (0: no kinematics, 1: old method, 2: hybrid method, 3: SeaState method)"
+typedef   ^       ^                    SeaSt_WaveFieldType *WaveField     -     -    -   "Pointer to SeaState wave field" -
+typedef   ^       ^                    IntKi               nTurbines      -     -    -   "Number of turbines if MoorDyn is performing an array-level simulation with FAST.Farm, otherwise 1"
+typedef   ^       ^                    ReKi                TurbineRefPos {:}{:} -    -   "reference position of turbines in farm, shape: 3, nTurbines"     -
+typedef   ^       ^                    DbKi                mu_kT          -     -    -   "transverse kinetic friction coefficient" "(-)"
+typedef   ^       ^                    DbKi                mu_kA          -     -    -   "axial kinetic friction coefficient" "(-)"
+typedef   ^       ^                    DbKi                mc             -     -    -   "ratio of the static friction coefficient to the kinetic friction coefficient" "(-)"
+typedef   ^       ^                    DbKi                cv             -     -    -   "saturated damping coefficient" "(-)"
+typedef   ^       ^                    IntKi        inertialF             -     0    -   "Indicates MoorDyn returning inertial moments for coupled 6DOF objects. 0: no, 1: yes, 2: yes with ramp to inertialF_rampT" - 
+typedef   ^       ^                    R8Ki         inertialF_rampT       -    30    -   "Ramp time for inertial forces" -
+typedef   ^       ^                    R8Ki          waveKin_rampT        -     0    -   "Ramp time for water kinematics" -
+typedef   ^       ^                    IntKi               OutSwitch      -     1    -   "Switch to disable outputs when running with full OF. 0: no MD main outfile, 1: write MD main outfile" "(-)"
+typedef   ^       ^                    IntKi             disableOutTime   -     0    -   "Disables the printing of the fairtens and timestep in init to the console, useful for the MATLAB wrapper" "(-)"
+# --- parameters for wave and current ---
+typedef   ^       ^                    IntKi        nxWave             -            -  -   "number of x wave grid points"            -
+typedef   ^       ^                    IntKi        nyWave             -            -  -   "number of y wave grid points"            -
+typedef   ^       ^                    IntKi        nzWave             -            -  -   "number of z wave grid points"            -
+typedef   ^       ^                    IntKi        ntWave             -            -  -   "number of wave time steps"            -
+typedef   ^       ^                    SiKi         pxWave             {:}          -  -   "x location of wave grid points"            -
+typedef   ^       ^                    SiKi         pyWave             {:}          -  -   "y location of wave grid points"            -
+typedef   ^       ^                    SiKi         pzWave             {:}          -  -   "z location of wave grid points"            -
+typedef   ^       ^                    SiKi         dtWave             -            -  -   "wave data time step"            -
+typedef   ^       ^                    SiKi         uxWave             {:}{:}{:}{:} -  -   "wave velocities time series at each grid point"            -
+typedef   ^       ^                    SiKi         uyWave             {:}{:}{:}{:} -  -   "wave velocities time series at each grid point"            -
+typedef   ^       ^                    SiKi         uzWave             {:}{:}{:}{:} -  -   "wave velocities time series at each grid point"            -
+typedef   ^       ^                    SiKi         axWave             {:}{:}{:}{:} -  -   "wave accelerations time series at each grid point"            -
+typedef   ^       ^                    SiKi         ayWave             {:}{:}{:}{:} -  -   "wave accelerations time series at each grid point"            -
+typedef   ^       ^                    SiKi         azWave             {:}{:}{:}{:} -  -   "wave accelerations time series at each grid point"            -
+typedef   ^       ^                    SiKi         PDyn               {:}{:}{:}{:} -  -   "wave dynamic pressure time series at each grid point"            -
+typedef   ^       ^                    SiKi         zeta               {:}{:}{:}    -  -   "wave surface elevations time series at each surface grid point"   -
+typedef   ^       ^                    IntKi        nzCurrent          -            -  -   "number of z current grid points"            -
+typedef   ^       ^                    SiKi         pzCurrent          {:}          -  -   "z location of current grid points"            -
+typedef   ^       ^                    SiKi         uxCurrent          {:}          -  -   "current velocities time series at each grid point"            -
+typedef   ^       ^                    SiKi         uyCurrent          {:}          -  -   "current velocities time series at each grid point"            -
+# --- Parameters for linearization ---
+typedef   ^       ^                    Logical      VisMeshes           -           -  -   "Using visualization meshes as requested by glue code" -
+typedef   ^       ^                    VisDiam      VisRodsDiam        {:}          -  -   "Diameters for visualization of rods" -
+
+
+# ============================== Inputs ============================================================================================================================================
+typedef   ^       InputType            MeshType     CoupledKinematics      {:}    -  -   "array of meshes for each coupling point (6 DOF info used for rods and bodies)"  "[m, m/s]"  <<<< will use this eventually!
+typedef   ^       ^                    ReKi         DeltaL                 {:}    -  -   "change in line length command for each channel"       "[m]"
+typedef   ^       ^                    ReKi         DeltaLdot              {:}    -  -   "rate of change of line length command for each channel"       "[m]"
+#typedef   ^       ^                    DbKi         U                      {:}{:} -  -   "water velocities at each node"            -
+#typedef   ^       ^                    DbKi         Ud                     {:}{:} -  -   "water accelerations at each node"            -
+#typedef   ^       ^                    DbKi         zeta                   {:}    -  -   "water surface elevations above each node"            -
+#typedef   ^       ^                    DbKi         PDyn                   {:}    -  -   "water dynamic pressure at each node"            -
+
+
+## ============================== Outputs ============================================================================================================================================
+typedef   ^       OutputType           MeshType     CoupledLoads           {:}   -    -   "array of point meshes for mooring reaction forces (and moments) at coupling points"         "[N]"
+typedef   ^       ^                    ReKi         WriteOutput            {:}   -    -   "output vector returned to glue code" ""
+# should CoupledLoads be an array?
+#typedef   ^       ^                    DbKi         rAll                {:}{:} -    -   "Mesh of all point positions: bodies, rods, points, line internal nodes"   -
+typedef   ^       ^                    MeshType     VisLinesMesh          {:}   -    -   "Line2 mesh for visualizing mooring lines" -
+typedef   ^       ^                    MeshType     VisRodsMesh           {:}   -    -   "Line2 mesh for visualizing mooring rods" -
+typedef   ^       ^                    MeshType     VisBodiesMesh         {:}   -    -   "Point mesh for visualizing mooring bodies" -
+typedef   ^       ^                    MeshType     VisAnchsMesh          {:}   -    -   "Point mesh for visualizing mooring anchors" -
+
 
 ## ============================== Define Misc variables here: =====================================================================================================================================
-typedef   ^       MiscVarType          MD_LineProp         LineTypeList     {:}  -  -   "array of properties for each line type"   -
+typedef   ^       MiscVarType          ModJacType          Jac               -   -  -   "Jacobian values corresponding to module variables"   -
+typedef   ^       ^                    MD_ContinuousStateType   x_perturb    -   -  -   "States for calculating Jacobians"   -
+typedef   ^       ^                    MD_ContinuousStateType   dxdt_lin     -   -  -   "States for calculating Jacobians"   -
+typedef   ^       ^                    MD_InputType        u_perturb         -   -  -   "Inputs for calculating Jacobians"   -
+typedef   ^       ^                    MD_OutputType       y_lin             -   -  -   "Outputs for calculating Jacobians"  -
+typedef   ^       ^                    MD_LineProp         LineTypeList     {:}  -  -   "array of properties for each line type"   -
 typedef   ^       ^                    MD_RodProp          RodTypeList      {:}  -  -   "array of properties for each rod type"   -
 typedef   ^       ^                    MD_Body             GroundBody        -   -  -   "the single ground body which is the parent of all stationary points"   -
 typedef   ^       ^                    MD_Body             BodyList         {:}  -  -   "array of body objects"   -
@@ -399,106 +515,5 @@ typedef   ^       ^                    DbKi             BathymetryGrid   {:}{:} 
 typedef   ^       ^                    DbKi                BathGrid_Xs      {:}  -  -   "array of x-coordinates in the bathymetry grid"
 typedef   ^       ^                    DbKi                BathGrid_Ys      {:}  -  -   "array of y-coordinates in the bathymetry grid"
 typedef   ^       ^                    IntKi               BathGrid_npoints {:}  -  -   "number of grid points to describe the bathymetry grid"
-
-
-## ============================== Parameters ============================================================================================================================================
-typedef   ^       ParameterType        IntKi               nLineTypes     -     0    -   "number of line types"                       ""
-typedef   ^       ^                    IntKi               nRodTypes      -     0    -   "number of rod types"                        ""
-typedef   ^       ^                    IntKi               nPoints        -     0    -   "number of Point objects"               ""
-typedef   ^       ^                    IntKi               nPointsExtra   -     0    -   "number of Point objects including space for extra ones that could arise from line failures"               ""
-typedef   ^       ^                    IntKi               nBodies        -     0    -   "number of Body objects"                     ""
-typedef   ^       ^                    IntKi               nRods          -     0    -   "number of Rod objects"                      ""
-typedef   ^       ^                    IntKi               nLines         -     0    -   "number of Line objects"                     ""
-typedef   ^       ^                    IntKi               nExtLds        -     0    -   "number of external loads or damping"        ""
-typedef   ^       ^                    IntKi               nCtrlChans     -     0    -   "number of distinct control channels specified for use as inputs"        ""
-typedef   ^       ^                    IntKi               nFails         -     0    -   "number of failure conditions"                     ""
-typedef   ^       ^                    IntKi               nFreeBodies    -     0    -   ""             ""
-typedef   ^       ^                    IntKi               nFreeRods      -     0    -   ""             ""
-typedef   ^       ^                    IntKi               nFreePoints    -     0    -   ""             ""
-typedef   ^       ^                    IntKi               nCpldBodies    {:}   -    -   "number of coupled bodies (for FAST.Farm, size>1 with an entry for each turbine)"             ""
-typedef   ^       ^                    IntKi               nCpldRods      {:}   -    -   "number of coupled rods (for FAST.Farm, size>1 with an entry for each turbine)"             ""
-typedef   ^       ^                    IntKi               nCpldPoints    {:}   -    -   "number of coupled points (for FAST.Farm, size>1 with an entry for each turbine)"             ""
-typedef   ^       ^                    IntKi               NConns         -     0    -   "number of Connect type Points - not to be confused with NPoints"             ""
-typedef   ^       ^                    IntKi               NAnchs         -     0    -   "number of Anchor type Points"             ""
-typedef   ^       ^                    DbKi                Tmax           -     -    -   "simulation duration" "[s]"
-typedef   ^       ^                    IntKi               tScheme        -     0    -   "Time integration scheme (0 = RK2, 1 = RK4). Default is RK2"    - 
-typedef   ^       ^                    DbKi                g              -  9.81    -   "gravitational constant (positive)"   "[m/s^2]"
-typedef   ^       ^                    DbKi                rhoW           -  1025    -   "density of seawater"              "[kg/m^3]"
-typedef   ^       ^                    DbKi                WtrDpth        -     -    -   "water depth"                      "[m]"
-typedef   ^       ^                    DbKi                kBot           -     -    -   "bottom stiffness"                 "[Pa/m]"
-typedef   ^       ^                    DbKi                cBot           -     -    -   "bottom damping"                  "[Pa-s/m]"
-typedef   ^       ^                    DbKi                dtM0           -     -    -   "desired mooring model time step"          "[s]"
-typedef   ^       ^                    DbKi                dtCoupling     -     -    -   "coupling time step that MoorDyn should expect"              "[s]"
-typedef   ^       ^                    IntKi               NumOuts        -     -    -   "Number of parameters in the output list (number of outputs requested)"    -
-typedef   ^       ^                    DbKi                dtOut          -     -    -   "interval for writing output file lines"              "[s]"
-typedef   ^       ^                    CHARACTER(1024)     RootName       -     -    -   "RootName for writing output files"          -
-typedef   ^       ^                    MD_OutParmType      OutParam       {:}   -    -   "Names and units (and other characteristics) of all requested output parameters"          -
-typedef   ^       ^                    CHARACTER(1)        Delim          -     -    -   "Column delimiter for output text files"     -
-typedef   ^       ^                    IntKi               MDUnOut        -     -    -   "Unit number of main output file"
-typedef   ^       ^                    CHARACTER(1024)     PriPath        -     -    -   "The path to the primary MoorDyn input file, used if looking for additional input files"
-typedef   ^       ^                    IntKi               writeLog       -     -1   -   "Switch for level of log file output"
-#NOTE: there may be an issue with start/restart with the UnLog stored in parameters. We'll ignore this for now -- ADP
-typedef   ^       ^                    IntKi               UnLog          -     -1   -   "Unit number of log file"
-typedef   ^       ^                    IntKi               WaveKin        -     -    -   "Flag for whether or how to consider water kinematics"
-typedef   ^       ^                    IntKi               Current        -     -    -   "Flag for whether or how to consider water kinematics"
-typedef   ^       ^                    IntKi               nTurbines      -     -    -   "Number of turbines if MoorDyn is performing an array-level simulation with FAST.Farm, otherwise 0"
-typedef   ^       ^                    ReKi                TurbineRefPos {:}{:} -    -   "reference position of turbines in farm, shape: 3, nTurbines"     -
-typedef   ^       ^                    DbKi                mu_kT          -     -    -   "transverse kinetic friction coefficient" "(-)"
-typedef   ^       ^                    DbKi                mu_kA          -     -    -   "axial kinetic friction coefficient" "(-)"
-typedef   ^       ^                    DbKi                mc             -     -    -   "ratio of the static friction coefficient to the kinetic friction coefficient" "(-)"
-typedef   ^       ^                    DbKi                cv             -     -    -   "saturated damping coefficient" "(-)"
-typedef   ^       ^                    IntKi        inertialF             -     0    -   "Indicates MoorDyn returning inertial moments for coupled 6DOF objects. 0: no, 1: yes, 2: yes with ramp to inertialF_rampT" - 
-typedef   ^       ^                    R8Ki         inertialF_rampT       -    30    -   "Ramp time for inertial forces" - 
-typedef   ^       ^                    IntKi               OutSwitch      -     1    -   "Switch to disable outputs when running with full OF. 0: no MD main outfile, 1: write MD main outfile" "(-)"
-# --- parameters for wave and current ---
-typedef   ^       ^                    IntKi        nxWave             -            -  -   "number of x wave grid points"            -
-typedef   ^       ^                    IntKi        nyWave             -            -  -   "number of y wave grid points"            -
-typedef   ^       ^                    IntKi        nzWave             -            -  -   "number of z wave grid points"            -
-typedef   ^       ^                    IntKi        ntWave             -            -  -   "number of wave time steps"            -
-typedef   ^       ^                    SiKi         pxWave             {:}          -  -   "x location of wave grid points"            -
-typedef   ^       ^                    SiKi         pyWave             {:}          -  -   "y location of wave grid points"            -
-typedef   ^       ^                    SiKi         pzWave             {:}          -  -   "z location of wave grid points"            -
-typedef   ^       ^                    SiKi         dtWave             -            -  -   "wave data time step"            -
-typedef   ^       ^                    SiKi         uxWave             {:}{:}{:}{:} -  -   "wave velocities time series at each grid point"            -
-typedef   ^       ^                    SiKi         uyWave             {:}{:}{:}{:} -  -   "wave velocities time series at each grid point"            -
-typedef   ^       ^                    SiKi         uzWave             {:}{:}{:}{:} -  -   "wave velocities time series at each grid point"            -
-typedef   ^       ^                    SiKi         axWave             {:}{:}{:}{:} -  -   "wave accelerations time series at each grid point"            -
-typedef   ^       ^                    SiKi         ayWave             {:}{:}{:}{:} -  -   "wave accelerations time series at each grid point"            -
-typedef   ^       ^                    SiKi         azWave             {:}{:}{:}{:} -  -   "wave accelerations time series at each grid point"            -
-typedef   ^       ^                    SiKi         PDyn               {:}{:}{:}{:} -  -   "wave dynamic pressure time series at each grid point"            -
-typedef   ^       ^                    SiKi         zeta               {:}{:}{:}    -  -   "wave surface elevations time series at each surface grid point"   -
-typedef   ^       ^                    IntKi        nzCurrent          -            -  -   "number of z current grid points"            -
-typedef   ^       ^                    SiKi         pzCurrent          {:}          -  -   "z location of current grid points"            -
-typedef   ^       ^                    SiKi         uxCurrent          {:}          -  -   "current velocities time series at each grid point"            -
-typedef   ^       ^                    SiKi         uyCurrent          {:}          -  -   "current velocities time series at each grid point"            -
-# --- Parameters for linearization ---
-typedef   ^       ^                    Integer      Nx0                -            -  -   "copy of initial size of system state vector, for linearization routines" -
-typedef   ^       ^                    Integer      Jac_u_indx         {:}{:}       -  -   "matrix to help fill/pack the u vector in computing the jacobian" -
-typedef   ^       ^                    R8Ki         du                 {:}          -  -   "vector that determines size of perturbation for u (inputs)"
-typedef   ^       ^                    R8Ki         dx                 {:}          -  -   "vector that determines size of perturbation for x (continuous states)"
-typedef   ^       ^                    Integer      Jac_ny              -           -  -   "number of outputs in jacobian matrix" -
-typedef   ^       ^                    Integer      Jac_nx              -           -  -   "number of continuous states in jacobian matrix" -
-typedef   ^       ^                    Integer      dxIdx_map2_xStateIdx {:}        -  -   "Mapping array from index of dX array to corresponding state index" -
-typedef   ^       ^                    Logical      VisMeshes           -           -  -   "Using visualization meshes as requested by glue code" -
-typedef   ^       ^                    VisDiam      VisRodsDiam        {:}          -  -   "Diameters for visualization of rods" -
-
-
-# ============================== Inputs ============================================================================================================================================
-typedef   ^       InputType            MeshType     CoupledKinematics      {:}    -  -   "array of meshes for each coupling point (6 DOF info used for rods and bodies)"  "[m, m/s]"  <<<< will use this eventually!
-typedef   ^       ^                    ReKi         DeltaL                 {:}    -  -   "change in line length command for each channel"       "[m]"
-typedef   ^       ^                    ReKi         DeltaLdot              {:}    -  -   "rate of change of line length command for each channel"       "[m]"
-#typedef   ^       ^                    DbKi         U                      {:}{:} -  -   "water velocities at each node"            -
-#typedef   ^       ^                    DbKi         Ud                     {:}{:} -  -   "water accelerations at each node"            -
-#typedef   ^       ^                    DbKi         zeta                   {:}    -  -   "water surface elevations above each node"            -
-#typedef   ^       ^                    DbKi         PDyn                   {:}    -  -   "water dynamic pressure at each node"            -
-
-
-## ============================== Outputs ============================================================================================================================================
-typedef   ^       OutputType           MeshType     CoupledLoads           {:}   -    -   "array of point meshes for mooring reaction forces (and moments) at coupling points"         "[N]"
-typedef   ^       ^                    ReKi         WriteOutput            {:}   -    -   "output vector returned to glue code" ""
-# should CoupledLoads be an array?
-#typedef   ^       ^                    DbKi         rAll                {:}{:} -    -   "Mesh of all point positions: bodies, rods, points, line internal nodes"   -
-typedef   ^       ^                    MeshType     VisLinesMesh          {:}   -    -   "Line2 mesh for visualizing mooring lines" -
-typedef   ^       ^                    MeshType     VisRodsMesh           {:}   -    -   "Line2 mesh for visualizing mooring rods" -
-typedef   ^       ^                    MeshType     VisBodiesMesh         {:}   -    -   "Point mesh for visualizing mooring bodies" -
-typedef   ^       ^                    MeshType     VisAnchsMesh          {:}   -    -   "Point mesh for visualizing mooring anchors" -
+typedef   ^       ^          GridInterp_MiscVarType        WaveField_m       -   -  -   "misc var information from the SeaState Interpolation module"   -
+typedef  ^        ^                    LOGICAL             IC_gen           - .FALSE. -   "boolean to indicate dynamic relaxation occuring"  "-"

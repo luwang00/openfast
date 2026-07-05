@@ -46,6 +46,8 @@ Degrees of Freedom
 
 **EdgeDOF**     - First edgewise blade mode DOF (flag)
 
+**PitchDOF**    - Blade pitch DOF (flag)
+
 **TeetDOF**     - Rotor-teeter DOF (flag) [unused for 3 blades]
 
 **DrTrDOF**     - Drivetrain rotational-flexibility DOF (flag)
@@ -179,9 +181,23 @@ Mass and Inertia
 
 **TipMass(3)**  - Tip-brake mass, blade 3 (kg) [unused for 2 blades]
 
+**PBrIner(1)**  - Pitch bearing/actuator inertia, blade 1 (kg m^2)
+
+**PBrIner(2)**  - Pitch bearing/actuator inertia, blade 2 (kg m^2)
+
+**PBrIner(3)**  - Pitch bearing/actuator inertia, blade 3 (kg m^2) [unused for 2 blades]
+
+**BlPIner(1)**  - Pitch inertia of an undeflected blade, blade 1 (kg m^2)
+
+**BlPIner(2)**  - Pitch inertia of an undeflected blade, blade 2 (kg m^2)
+
+**BlPIner(3)**  - Pitch inertia of an undeflected blade, blade 3 (kg m^2) [unused for 2 blades]
+
 **HubMass**     - Hub mass (kg)
 
-**HubIner**     - Hub inertia about rotor axis [3 blades] or teeter axis [2 blades] (kg m^2)
+**HubIner**     - Hub inertia about rotor axis (2 or 3-blades) (kg m^2)
+
+**HubIner_Teeter**     - Hub inertia about teeter axis (2-blades) (kg m^2)
 
 **GenIner**     - Generator inertia about HSS (kg m^2)
 

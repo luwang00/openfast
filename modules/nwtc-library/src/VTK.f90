@@ -5,9 +5,10 @@
 module VTK
 
    use Precision, only: IntKi, SiKi, ReKi
-   use NWTC_Base, only: ErrID_None, ErrID_Fatal, AbortErrLev, ErrMsgLen, SetErrStat
+   use NWTC_Base, only: ErrID_None, ErrID_Fatal, ErrID_Warn, AbortErrLev, ErrMsgLen
    use NWTC_IO, only: GetNewUnit, NewLine, WrScr, ReadStr, OpenFOutFile
-   use NWTC_IO, only: OpenFinpFile, ReadCom, Conv2UC
+   use NWTC_IO, only: OpenFinpFile, ReadCom, Conv2UC, num2lstr, AllocAry
+   use NWTC_IO, only: SetErrStat
 
    implicit none
 
@@ -30,6 +31,14 @@ module VTK
       real(ReKi),dimension(3)   :: PO_g
    END TYPE VTK_Misc
 
+   type, public :: vtk_field
+      character(len=255) :: fieldname =''       !< fieldname
+      real(ReKi), dimension(:,:), allocatable :: values ! <
+      type(vtk_field), pointer :: next => null()
+   end type vtk_field
+
+
+
    interface vtk_dataset_structured_grid; module procedure &
          vtk_dataset_structured_grid_flat, &
          vtk_dataset_structured_grid_grid
@@ -48,6 +57,7 @@ module VTK
    end interface
    interface vtk_cell_data_scalar; module procedure &
          vtk_cell_data_scalar_1d,&
+         vtk_cell_data_scalar_1di,&
          vtk_cell_data_scalar_2d 
    end interface
 
@@ -73,8 +83,14 @@ module VTK
    public :: vtk_cell_data_vector
    public :: WrVTK_SP_header
    public :: WrVTK_SP_vectors3D
-   public :: ReadVTK_SP_info
+   public :: ReadVTK_SP_info      !< Structured points
    public :: ReadVTK_SP_vectors
+   public :: ReadVTK_PD_info      !< Polydata
+   public :: ReadVTK_CD_fields    !< read fields
+   ! --- VTK fields
+   public :: VTK_printFields
+   public :: VTK_getField
+   public :: VTK_destroyFields
    ! --- VTK XML routines
    public :: WrVTK_header
    public :: WrVTK_footer
@@ -93,10 +109,10 @@ contains
       INTEGER(IntKi)  , INTENT(  OUT)        :: ErrStat              !< error level/status of OpenFOutFile operation
       CHARACTER(*)    , INTENT(  OUT)        :: ErrMsg               !< message when error occurs
    
-      !$OMP critical(fileopen_critical)
+      !$OMP critical(fileopenNWTCio_critical)
       CALL GetNewUnit( Un, ErrStat, ErrMsg )      
       CALL OpenFOutFile ( Un, TRIM(FileName), ErrStat, ErrMsg )
-      !$OMP end critical(fileopen_critical)
+      !$OMP end critical(fileopenNWTCio_critical)
          if (ErrStat >= AbortErrLev) return
       
       ! Write a VTP mesh file (Polygonal VTK file) with positions and polygons (surfaces)
@@ -119,7 +135,9 @@ contains
       WRITE(Un,'(A)')         '    </Piece>'
       WRITE(Un,'(A)')         '  </PolyData>'
       WRITE(Un,'(A)')         '</VTKFile>'
+      !$OMP critical(fileopenNWTCio_critical)
       CLOSE(Un)         
+      !$OMP end critical(fileopenNWTCio_critical)
    
       RETURN
    END SUBROUTINE WrVTK_footer                
@@ -159,13 +177,14 @@ contains
          closeOnReturn = .FALSE.
       END IF
       
-      !$OMP critical(fileopen_critical)
-      CALL GetNewUnit( Un, ErrStat, ErrMsg )      
-      CALL OpenFInpFile ( Un, TRIM(FileName), ErrStat, ErrMsg )
-      !$OMP end critical(fileopen_critical)
+      !$OMP critical(fileopenNWTCio_critical)
+      CALL GetNewUnit( Un, ErrStat, ErrMsg )
+      CALL OpenFInpFile ( Un, TRIM(FileName), ErrStat2, ErrMsg2 )
+      !$OMP end critical(fileopenNWTCio_critical)
+      call SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,RoutineName)
          if (ErrStat >= AbortErrLev) return
       
-       CALL ReadCom( Un, FileName, 'File header: Module Version (line 1)', ErrStat2, ErrMsg2, 0 )
+      CALL ReadCom( Un, FileName, 'File header: Module Version (line 1)', ErrStat2, ErrMsg2, 0 )
          CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
    
       CALL ReadStr( Un, FileName, descr, 'descr', 'File Description line', ErrStat2, ErrMsg2, 0 )
@@ -315,7 +334,9 @@ contains
       END IF
       
       IF ( (ErrStat >= AbortErrLev) .or. closeOnReturn ) THEN        
+         !$OMP critical(fileopenNWTCio_critical)
          close(Un)
+         !$OMP end critical(fileopenNWTCio_critical)
          Un = -1
          RETURN
       END IF
@@ -343,13 +364,293 @@ contains
       
       READ(Un,*, IOSTAT=ErrStat2)  gridVals(1:3,1:dims(1),1:dims(2),1:dims(3))
       
+      !$OMP critical(fileopenNWTCio_critical)
       close(Un)
+      !$OMP end critical(fileopenNWTCio_critical)
       if (ErrStat2 /= 0) then
          CALL SetErrStat( ErrID_Fatal, 'Invalid vtk file: '//trim(FileName)//'.', ErrStat, ErrMsg, 'ReadVTK_SP_vectors' )
       end if
       
    END SUBROUTINE ReadVTK_SP_vectors
-   
+
+!=======================================================================
+!> Read the header/points/polygons for a vtk, ascii, polydata (PD) file.
+!! NOTE: the file is not closed upon exiting the routine, unless an error occurs.
+!! Example: 
+!!    # vtk DataFile Version 2.0
+!!    SourcePanels - Ellipsoid - n1=67 - n2=65
+!!    ASCII
+!!     
+!!    DATASET POLYDATA
+!!    POINTS 3 double
+!!      0.0  0.0 -1.0
+!!      0.0  0.0  0.0
+!!      0.0  0.0  1.0
+!!    
+!!    POLYGONS 1 5
+!!    4      0   1   2  0
+!!
+!!    CELL_DATA 1
+!!    SCALARS Pressure double
+!!    LOOKUP_TABLE default
+!!       1.0
+!!    VECTORS Velocity double
+!!       0.0 0.0 1.0
+!!
+   subroutine ReadVTK_PD_info(filename, descr, points, polygons, fid, errStat, errMsg)
+      character(*)   , intent(in   )                            :: filename !< name of output file
+      character(1024), intent(  out)                              :: descr    !< line describing the contents of the file
+      real(ReKi)  ,    intent(  out), dimension(:,:), allocatable :: points   !< Points 3 x nPoints
+      integer(IntKi) , intent(  out), dimension(:,:), allocatable :: polygons !< Polygons connectivity, typically 4 x nPolygons
+      integer(IntKi) , intent(  out)                              :: fid      !< unit number of opened file
+      integer(IntKi) , intent(  out)                              :: errStat  !< error level/status of openfoutfile operation
+      character(*)   , intent(  out)                              :: errMsg   !< message when error occurs
+      integer(IntKi)       :: errStat2              ! local error level/status of openfoutfile operation
+      character(ErrMsgLen) :: errMsg2               ! local message when error occurs
+      character(1024)      :: sdummy1, sdummy2, line
+      integer(IntKi)       :: iline, i
+      integer(IntKi)       :: nPoints, nPoly, nTot, nPerLine
+      integer(IntKi)       :: iSection    !< keep track of section we are currently reading 0=header, 2=points, 3=polygons
+      errStat = ErrID_None
+      errMsg  = ''
+      call GetNewUnit(fid, errStat2, errMsg2)
+      call OpenFInpFile(fid, trim(filename), errStat2, errMsg2); if(Failed()) return
+      ! 
+      descr=''
+      iline = 0
+      iSection = 0
+      do 
+         iline = iline+1
+         call ReadStr(fid, Filename, line, 'line', 'line', errStat2, errMsg2); if(Failed()) return
+         call Conv2UC(line)
+         if (index(adjustl(line), 'DATASET POLYDATA') == 1) then
+            iSection = 1
+
+         else if (index(adjustl(line), 'POINTS') == 1) then
+            if (iSection/=1) then
+               errStat2 = ErrID_Fatal
+               errMsg2  = 'Cannot read section `Points` if section `Dataset polydata` not read'
+            endif
+            ! --- Reading points
+            iSection = 2
+            read(line, *, iostat=errStat2) sdummy1, nPoints, sdummy2
+            errMsg2='Problem reading number of points'; if(Failed()) return
+            call AllocAry(points, 3, nPoints, 'points', errStat2, errMsg2); if(Failed()) return
+            do i =1,nPoints
+               iline = iline + i
+               read(fid, *, iostat=errStat2) points(:,i)
+               errMsg2='Problem reading point '//trim(num2lstr(i)); if(Failed()) return
+            enddo
+
+         else if (index(adjustl(line), 'POLYGONS') == 1) then
+            if (iSection/=2) then
+               errStat2 = ErrID_Fatal
+               errMsg2  = 'Cannot read section `Polygons` if section `Points` not read'
+            endif
+            ! --- Reading polygons
+            iSection = 3
+            read(line, *, iostat=errStat2) sdummy1, nPoly, nTot
+            errMsg2='Problem reading number of polygons'; if(Failed()) return
+            call AllocAry(polygons, 4, nPoly, 'points', errStat2, errMsg2); if(Failed()) return
+            do i =1,nPoly
+               iline = iline + i
+               read(fid, *, iostat=errStat2) nPerLine, polygons(:,i)
+               errMsg2='Problem reading polygon '//trim(num2lstr(i)); if(Failed()) return
+            enddo
+            exit
+         else
+            if (iSection==0) then
+               descr = trim(descr)//'|'//trim(line)
+            endif
+         end if
+      end do
+      if (iSection/=3) then
+         errStat2 = ErrID_Fatal
+         errMsg2  = 'Not all sections were read properly for VTK polydata file.'
+      endif
+   contains
+      logical function Failed()
+         if (errStat2/=ErrID_None) then
+            errStat2 = ErrID_Fatal ! All errors are fatal
+            errMsg2 = trim(errMsg2)//', on line '//trim(num2lstr(iline))//char(10)//'    File: '//trim(filename)
+            close(fid)
+         endif
+         call SeterrStat(errStat2, errMsg2, errStat, errMsg, 'ReadVTK_PD_info')
+         Failed =  errStat >= AbortErrLev
+      end function
+   end subroutine ReadVTK_PD_info
+
+   !> Read Cell Data in file, return fields, a list of scalar or vector fields
+   subroutine ReadVTK_CD_fields(filename, fid, nCells, fields, errStat, errMsg) 
+      use, intrinsic :: iso_fortran_env, only : iostat_end
+      character(*)   , intent(in   )  :: filename !< name of output file
+      integer(IntKi) , intent(in   )  :: fid      !< unit number of opened file
+      integer(IntKi) , intent(in   )  :: nCells   !< Number of cells
+      type(vtk_field), pointer :: fields   !< Fields to be read
+      integer(IntKi) , intent(out)    :: errStat  !< error level/status of openfoutfile operation
+      character(*)   , intent(out)    :: errMsg   !< message when error occurs
+      integer(IntKi)       :: errStat2                   ! local error level/status of openfoutfile operation
+      character(ErrMsgLen) :: errMsg2                    ! local message when error occurs
+      character(1024)      :: line
+      character(128)       :: sType, fieldname, datatype
+      type(vtk_field), pointer :: head
+      type(vtk_field), pointer :: new_field
+      errStat = ErrID_None
+      errMsg  = ''
+      ! Read untill cell_data
+      call ReadVTK_until(filename, fid, 'CELL_DATA', errStat2, errMsg2); if(Failed()) return
+      if (errStat2==ErrID_Warn) return ! We return if not found
+      ! 
+      do
+          read(fid, '(A)', iostat = errStat2) line 
+          if (errStat2 == iostat_end) then
+             close(fid)
+             return
+          endif
+
+          if (index(adjustl(line), 'SCALARS') > 0) then
+             call prepare_new_field(1); if(Failed()) return
+             call read_field(); if(Failed()) return
+             call prepend_field()
+
+          else if (index(adjustl(line), 'VECTORS') > 0) then
+             call prepare_new_field(3); if(Failed()) return
+             call read_field(); if(Failed()) return
+             call prepend_field()
+          else
+             ! pass
+          endif
+      end do
+      ! Should never be reached
+   contains
+      logical function Failed()
+         call SeterrStat(errStat2, errMsg2, errStat, errMsg, 'ReadVTK_CD_fields')
+         Failed =  errStat >= AbortErrLev
+         if (Failed .and. fid>0) close(fid)
+      end function
+
+      subroutine prepare_new_field(nDim)
+         integer, intent(in) :: nDim 
+         read(line, *) sType, fieldname, datatype
+         call Conv2UC(fieldname)
+         !print*,'VTK: Cell Data: Type: ',trim(sType),', Name: ',trim(fieldname), ', Type:',trim(datatype)
+         errMsg2 = 'Error allocating new field'
+         allocate(new_field, stat = errStat2)
+         allocate(new_field%values(nDim, nCells), stat = errStat2)
+         if (errStat2/=0) then
+            errStat2 = ErrID_Fatal
+            return
+         endif
+         new_field%fieldname = fieldname
+         ! If the line starts with LOOKUP_TABLE DEFAULT, we ignore the line
+         errMsg2 = 'Error reading lookup table'
+         read(fid, '(A)', iostat = errStat2) line 
+         if (errStat2/=0) then
+            errStat2 = ErrID_Fatal
+            return
+         endif
+         call Conv2UC(line)
+         if (index(adjustl(line), 'LOOKUP_TABLE DEFAULT') <= 0) then
+            backspace(fid)
+         endif
+      end subroutine 
+      subroutine read_field()
+         integer :: i
+         do i = 1, nCells
+            read(fid, *, iostat=errStat2) new_field%values(:,i)
+            if (errStat2/=0) then
+               errStat2= ErrID_Fatal 
+               errMsg2 ='Error reading line '//trim(num2lstr(i))//' of table '//trim(new_field%fieldname)//' in VTK file: '//trim(filename)
+               return
+            endif
+         end do
+      end subroutine
+
+      subroutine prepend_field()
+         if (associated(fields)) new_field%next => fields
+         fields => new_field
+         nullify(new_field)
+      end subroutine
+
+   end subroutine ReadVTK_CD_fields
+
+   !> Loop and print the list
+   subroutine VTK_printFields(list)
+      type(vtk_field), pointer, intent(in) :: list
+      type(vtk_field), pointer :: field
+      type(vtk_field), pointer :: head
+      integer :: n,m
+      head => list
+      if (.not.associated(head)) then
+         call WrScr('VTK list of fields empty.')
+      endif
+      do while (associated(head))
+         if (allocated(head%values)) then
+            n = size(head%values,1)
+            m = size(head%values,2)
+         else
+            n=-1
+            m=-1
+         endif
+         print *, 'VTK: Fieldname: ', head%fieldname(1:10), ' alloc: ', allocated(head%values), ' shape:',n, m
+         head => head%next
+      end do
+   end subroutine VTK_printFields
+
+   ! Loop through list of fields and find the field with the requested fieldname
+   subroutine VTK_getField(list, fieldname, field)
+      type(vtk_field), pointer, intent(in)  :: list
+      character(*),             intent(in)  :: fieldname
+      type(vtk_field), pointer, intent(out) :: field
+      character(len(fieldname)) :: fieldname_UP
+      type(vtk_field), pointer :: head
+      fieldname_UP = adjustl(fieldname)
+      call Conv2UC(fieldname_UP)
+      nullify(field)
+      head => list
+      do while (associated(head))
+         if (trim(adjustl(head%fieldname)) == trim(fieldname_UP)) then
+            field => head
+            exit
+         else
+            head => head%next
+         endif
+      end do
+   end subroutine
+
+   !>  Deallocate the list of fields
+   subroutine VTK_destroyFields(list)
+      type(vtk_field), pointer :: list, next
+      do while (associated(list))
+         next => list%next
+         if (allocated(list%values)) deallocate(list%values)
+         deallocate(list)
+         list => next
+      end do
+   end subroutine VTK_destroyFields
+
+
+   !> Read until an UpperCase Keyword is found
+   subroutine ReadVTK_until(filename, fid, KeyUpper, errStat, errMsg) 
+      character(*)   , intent(in   ) :: filename !< name of output file
+      integer(IntKi) , intent(in   ) :: fid      !< unit number of opened file
+      character(*)   , intent(in   ) :: KeyUpper !< Key in upperCase
+      integer(IntKi) , intent(out)   :: errStat  !< error level/status of openfoutfile operation
+      character(*)   , intent(out)   :: errMsg   !< message when error occurs
+      integer(IntKi)       :: errStat2              ! local error level/status of openfoutfile operation
+      character(1024)      :: line
+      errStat = ErrID_None
+      errMsg  = ''
+      line=''
+      do
+          read(fid, *, iostat=errStat2) line ! Read each line until "CELL_DATA" is encountered
+          if (errStat2/=0) exit ! We return from this for loop and fail
+          if (index(adjustl(line), KeyUpper) > 0) return ! Key was found
+      end do
+      errStat = ErrID_Warn
+      errMsg  = 'Key '//trim(KeyUpper)//' not found in VTK file:'//trim(filename)
+   end subroutine ReadVTK_until
+
 !=======================================================================
 !> This routine writes out the heading for an vtk, ascii, structured_points dataset file .
 !! It tries to open a text file for writing and returns the Unit number of the opened file.
@@ -361,10 +662,10 @@ contains
       INTEGER(IntKi)  , INTENT(  OUT)        :: ErrStat              !< error level/status of OpenFOutFile operation
       CHARACTER(*)    , INTENT(  OUT)        :: ErrMsg               !< message when error occurs
    
-      !$OMP critical(fileopen_critical)
+      !$OMP critical(fileopenNWTCio_critical)
       CALL GetNewUnit( Un, ErrStat, ErrMsg )      
       CALL OpenFOutFile ( Un, TRIM(FileName), ErrStat, ErrMsg )
-      !$OMP end critical(fileopen_critical)
+      !$OMP end critical(fileopenNWTCio_critical)
          if (ErrStat >= AbortErrLev) return
       
       WRITE(Un,'(A)')  '# vtk DataFile Version 3.0'
@@ -406,7 +707,9 @@ contains
       WRITE(Un,'(A,i15)')         'POINT_DATA ',  nPts
       WRITE(Un,'(A)')            'VECTORS '//trim(dataDescr)//' float'
       WRITE(Un,'(3(f10.2,1X))')   gridVals
+      !$OMP critical(fileopenNWTCio_critical)
       close(Un)
+      !$OMP end critical(fileopenNWTCio_critical)
       RETURN
       
    END SUBROUTINE WrVTK_SP_vectors3D
@@ -452,7 +755,7 @@ contains
         logical :: b
 
         if (.not. mvtk%bFileOpen) then
-            !$OMP critical(fileopen_critical)
+            !$OMP critical(fileopenNWTCio_critical)
             CALL GetNewUnit( mvtk%vtk_unit )   
             if (mvtk%bBinary) then
                 ! Fortran 2003 stream, otherwise intel fortran !
@@ -468,7 +771,7 @@ contains
             else
                 open(mvtk%vtk_unit,file=trim(adjustl(filename)),iostat=iostatvar,action="write",status='replace')
             endif
-            !$OMP end critical(fileopen_critical)
+            !$OMP end critical(fileopenNWTCio_critical)
             if (iostatvar == 0) then
                 if (mvtk%bBinary) then
                     write(mvtk%vtk_unit)'# vtk DataFile Version 3.0'//NewLine
@@ -498,7 +801,9 @@ contains
     subroutine vtk_close_file(mvtk)
         type(VTK_Misc),intent(inout) :: mvtk
         if ( mvtk%bFileOpen ) then
+            !$OMP critical(fileopenNWTCio_critical)
             close(mvtk%vtk_unit)
+            !$OMP end critical(fileopenNWTCio_critical)
             mvtk%bFileOpen=.false.
         endif
     endsubroutine
@@ -886,6 +1191,25 @@ contains
                 write(mvtk%vtk_unit,fmt='(A,A,A)') 'SCALARS ', sname, ' double'
                 write(mvtk%vtk_unit,'(A)') 'LOOKUP_TABLE default'
                 write(mvtk%vtk_unit,'(1'//RFMT//')')D
+            endif
+        endif
+    end subroutine
+
+    subroutine vtk_cell_data_scalar_1di(D,sname,mvtk)
+        integer(IntKi), dimension(:),intent(in)::D
+        character(len=*),intent(in) ::sname
+        type(VTK_Misc),intent(inout) :: mvtk
+
+        if ( mvtk%bFileOpen ) then
+            if (mvtk%bBinary) then
+                write(mvtk%vtk_unit)'SCALARS '//trim(sname)//' int 1'//NewLine
+                write(mvtk%vtk_unit)'LOOKUP_TABLE default'//NewLine
+                write(mvtk%vtk_unit)D
+                write(mvtk%vtk_unit)NewLine
+            else
+                write(mvtk%vtk_unit,fmt='(A,A,A)') 'SCALARS ', sname, ' int'
+                write(mvtk%vtk_unit,'(A)') 'LOOKUP_TABLE default'
+                write(mvtk%vtk_unit,'(1I0)')D
             endif
         endif
     end subroutine

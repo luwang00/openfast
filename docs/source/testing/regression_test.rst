@@ -13,18 +13,20 @@ tests:
 - :ref:`regression_test_windows`
 
 Each locally computed result is compared to a static set of baseline
-results. To account for system, hardware, and compiler
-differences, the regression test attempts to match the current machine and
-compiler type to the appropriate solution set from these combinations:
+results. The results are computed using the following OS, compiler, and hardware
+combination:
 
 ================== ============== ============================
  Operating System   Compiler       Hardware
 ================== ============== ============================
- macOS 10.15        GNU 10.2       2020 MacbookPro
- Ubuntu 20.04       Intel oneAPI   Docker
- Ubuntu 20.04       GNU 10.2       Docker
- Windows 10         Intel oneAPI   Dell Precision 3530
+ Ubuntu 22.04       GNU 12.3.0     GitHub actions
 ================== ============== ============================
+
+Note that if you run the regression tests locally, there may small numerical
+differences due to your compiler and hardware combination that may cause a few
+tests to fail.  If you use the ``bokeh`` package while running the tests, you
+will see a resulting *html* file with plots showing the differences for any
+tests that fail (these differences should be small).
 
 The compiler versions, specific math libraries, and more info on hardware used
 to generate the baseline solutions are documented in the
@@ -62,16 +64,55 @@ reported as failed. The failure criteria is outlined below.
     else:
         pass = False
 
+
+Testing Environment
+-------------------
+We recommend using ``conda`` to create a local environment to install the
+required packages for *OpenFAST* testing. You can use the following process as a
+rough guide for setting up the necessary environment on Linux/MacOS based
+systems.
+
+1. create a new ``conda`` environment for *OpenFAST* testing and install python:
+
+   - ``conda install python``
+
+2. from the ``<openfast>/build`` directory, setup the environment with the
+following commands:
+
+   - ``pip install ../requirements.txt``
+
+      Installs basic dependencies for testing.
+
+   - ``pip install -e ../glue-codes/python/.``
+
+      Installs the ``pyOpenFAST`` package from *OpenFAST* repository
+
+   - ``pip install -e ../openfast_io/.``
+      Installs the ``openfast_io`` package from *OpenFAST* repository
+
+
 Dependencies
 ------------
 The following packages are required for regression testing (see also the
 ``requirements.txt`` file in the root directory for the python modules):
 
-- CMake and CTest (Optional)
-- Python >=3.7,<=3.11
+- CMake and CTest
+- Python >=3.7
 - numpy
 - vtk
 - bokeh>=2.4,!=3.0.0,!=3.0.1,!=3.0.2,!=3.0.3 (Optional)
+
+In addition to the above packages, two packages from the *OpenFAST* repository
+are required.  We recommend installing these in a ``conda`` enviroment as
+described in the above section so that it will not interfere with your system
+Python installation.  Using the ``pip install -e`` command will install using
+the local directory instead placing them within the system Python directories.
+
+- ``pyOpenFAST`` is a package for interfacing Python to the c-bindings libraries
+  of *OpenFAST* modules.  This is used in some testing at the module level.
+- ``openfast_io`` is a package for reading and writing *OpenFAST* input files.
+  This is used in some of the testing.
+
 
 .. _python_driver:
 
@@ -112,8 +153,8 @@ executing with the help option:
 
 .. note::
 
-    For the NREL 5MW turbine test cases, an external ServoDyn controller must
-    be compiled and included in the appropriate directory or all NREL 5MW
+    For the Jonkman 5-MW (formerly called the NREL 5-MW) turbine test cases, an external ServoDyn controller must
+    be compiled and included in the appropriate directory or all Jonkman 5-MW (formerly called the NREL 5-MW)
     cases will fail without starting. More information is available in the
     documentation for the `r-test repository <https://github.com/openfast/r-test#note---servodyn-external-controllers-for-5mw_baseline-cases>`__,
     but be aware that these three DISCON controllers must exist
@@ -159,8 +200,8 @@ be sure to execute the build command with the ``install`` target:
 
 .. note::
 
-    REMINDER: For the NREL 5MW turbine test cases, an external ServoDyn controller must
-    be compiled and included in the appropriate directory or all NREL 5MW
+    REMINDER: For the 5MW turbine test cases, an external ServoDyn controller must
+    be compiled and included in the appropriate directory or all 5MW
     cases will fail without starting. More information is available in the
     documentation for the `r-test repository <https://github.com/openfast/r-test#note---servodyn-external-controllers-for-5mw_baseline-cases>`__,
     but be aware that these three DISCON controllers must exist
@@ -402,7 +443,7 @@ with the naming scheme ``execute<Module>RegressionTest.py``.
 The first step to adding a new regression test case is to verify that
 a script exists for the target module. If it does not, an issue
 should be opened in `OpenFAST Issues <https://github.com/openfast/openfast/issues>`_
-to coordinate with the NREL team on creating this script.
+to coordinate with the NLR team on creating this script.
 
 The next step is to add the test case in the appropriate location in
 the `r-test` submodule. The directory structure in r-test mirrors the
@@ -440,4 +481,4 @@ CMake driver, so follow the instructions above to edit ``CTestList.cmake``.
 
 Finally, the new test cases in the r-test submodule must be added to the
 r-test repository. To do this, open a new issue in `r-test Issues <https://github.com/openfast/r-test/issues>`_
-requesting for support from the NREL team to commit your test.
+requesting for support from the NLR team to commit your test.

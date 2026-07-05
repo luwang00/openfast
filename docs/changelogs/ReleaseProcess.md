@@ -13,6 +13,7 @@
 3. Update the versions in docs/source/user/api_change.rst
 4. Verify readthedocs builds correctly
 5. Update `openfast_io/pyproject.toml`
+6. Update `glue-codes/python/pyproject.toml` (for `pyOpenFAST`)
 
 ****
 
@@ -32,6 +33,8 @@
 3. delete `rc-` branch if merging from one
 
 ### Windows executables build and upload
+NOTE: if available, use the `deploy` action on GitHub to build all the executables and upload those instead of this process.  This manual process is for when the GH action doesn't work.
+
 After posting and tagging release
 1. Pull main and tags
    * `git fetch --tags OpenFAST`
@@ -45,37 +48,37 @@ After posting and tagging release
    git update-index --assume-unchanged vs-build/MAPlib/MAP_dll.vcxproj vs-uild/Registry/FAST_Registry.vcxproj
    ```
 
-4. Compile executables for Windows builds
+4. Compile executables for Windows builds (manual process - use GH actions `deploy` if possible)
    * Run one of the executables and check the version info. Muck about with VS if there is an issue.
    * Also run `dumpbin.exe /dependents <exe>.exe` to check static linking
    * NOTE: build the simulink last -- it messes up some things otherwise
-    - [ ] AeroDisk_Driver_x64.exe
-    - [ ] AeroDyn_Driver_x64.exe
-    - [ ] AeroDyn_Driver_x64_OpenMP.exe
-    - [ ] AeroDyn_Inflow_C_Binding_x64.dll
-    - [ ] AeroDyn_Inflow_C_Binding_x64_OpenMP.dll
-    - [ ] BeamDyn_Driver_x64.exe
-    - [ ] DISCON.dll (x64)
-    - [ ] DISCON_ITIBarge.dll (x64)
-    - [ ] DISCON_OC3Hywind.dll (x64)
-    - [ ] DISCON_SC.dll (x64)
-    - [ ] FAST.Farm_x64.exe
-    - [ ] FAST.Farm_x64_OMP.exe
-    - [ ] FAST_SFunc.mexw64 -- build from MATLAB
-    - [ ] HydroDynDriver_x64.exe
-    - [ ] HydroDyn_C_Binding_x64.dll
-    - [ ] IfW_C_Binding_x64.dll
-    - [ ] InflowWind_Driver_x64.exe
-    - [ ] InflowWind_Driver_x64_OpenMP.exe
-    - [ ] MoorDyn_Driver_x64.exe
-    - [ ] MoorDyn_C_Binding_x64.dll
-    - [ ] OpenFAST-Simulink_x64.dll -- change `additional dependencies` in the `OpenFAST-Simulink` project in `FAST` to point to correct install of MATLAB
-    - [ ] openfast_x64.exe
-    - [ ] SeaStateDriver_x64.exe
-    - [ ] SimpleElastoDyn_x64.exe
-    - [ ] SubDyn_x64.exe
-    - [ ] Turbsim_x64.exe
-    - [ ] UnsteadyAero_x64.exe
+    - [ ] `AeroDisk_Driver_x64.exe`
+    - [ ] `AeroDyn_Driver_x64.exe`
+    - [ ] `AeroDyn_Driver_x64_OpenMP.exe`
+    - [ ] `AeroDyn_Inflow_c_binding_x64.dll`
+    - [ ] `AeroDyn_Inflow_c_binding_x64_OpenMP.dll`
+    - [ ] `BeamDyn_Driver_x64.exe`
+    - [ ] `DISCON.dll` (x64)
+    - [ ] `DISCON_ITIBarge.dll` (x64)
+    - [ ] `DISCON_OC3Hywind.dll` (x64)
+    - [ ] `FAST.Farm_x64.exe`
+    - [ ] `FAST.Farm_x64_OMP.exe`
+    - [ ] `FAST_SFunc.mexw64` -- build from MATLAB
+    - [ ] `HydroDynDriver_x64.exe`
+    - [ ] `HydroDyn_c_binding_x64.dll`
+    - [ ] `InflowWind_c_binding_x64.dll`
+    - [ ] `InflowWind_Driver_x64.exe`
+    - [ ] `InflowWind_Driver_x64_OpenMP.exe`
+    - [ ] `MoorDyn_Driver_x64.exe`
+    - [ ] `MoorDyn_c_binding_x64.dll`
+    - [ ] `OpenFAST-Simulink_x64.dll` -- change `additional dependencies` in the `OpenFAST-Simulink` project in `FAST` to point to correct install of MATLAB
+    - [ ] `openfast_x64.exe`
+    - [ ] `SeaStateDriver_x64.exe`
+    - [ ] `SeaState_c_binding_x64.dll`
+    - [ ] `SimpleElastoDyn_x64.exe`
+    - [ ] `SubDyn_x64.exe`
+    - [ ] `Turbsim_x64.exe`
+    - [ ] `UnsteadyAero_x64.exe`
 5. Upload all filesUnset the no tracking of files
    ```
    git ls-files -v | grep "^[a-z]"
@@ -83,6 +86,6 @@ After posting and tagging release
    ```
 ## Post-release
 ### Docker Image push to ghcr.io
-1. Build latest `OpenFAST/main` image locally.
+1. Build latest `OpenFAST/main` image locally (GH actions fails due to memory usage)
 2. Push image to ghcr.io/openfast/openfast using tags `latest` and `<version>`
 

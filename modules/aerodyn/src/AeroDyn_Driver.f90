@@ -26,8 +26,8 @@ program AeroDyn_Driver
    ! Program variables
    REAL(ReKi)                       :: PrevClockTime ! Clock time at start of simulation in seconds [(s)]
    REAL(ReKi)                       :: UsrTime1      ! User CPU time for simulation initialization [(s)]
-   REAL(ReKi)                       :: UsrTime2      ! User CPU time for simulation (without intialization) [(s)]
-   INTEGER(IntKi) , DIMENSION(1:8)  :: StrtTime      ! Start time of simulation (including intialization) [-]
+   REAL(ReKi)                       :: UsrTime2      ! User CPU time for simulation (without initialization) [(s)]
+   INTEGER(IntKi) , DIMENSION(1:8)  :: StrtTime      ! Start time of simulation (including initialization) [-]
    INTEGER(IntKi) , DIMENSION(1:8)  :: SimStrtTime   ! Start time of simulation (after initialization) [-]
    REAL(DbKi)                       :: t_global         ! global-loop time marker
    REAL(DbKi)                       :: t_final         ! global-loop time marker
@@ -41,12 +41,12 @@ program AeroDyn_Driver
 
    ! -----
    dat%initialized=.false.
-   call Dvr_Init(dat%dvr, dat%ADI, dat%FED, dat%errStat, dat%errMsg); call CheckError()
+   call Dvr_Init(dat%dvr, dat%ADI, dat%FED, dat%SeaSt, dat%errStat, dat%errMsg); call CheckError()
 
    do iCase= 1,dat%dvr%numCases
 
       ! Initial case
-      call Dvr_InitCase(iCase, dat%dvr, dat%ADI, dat%FED, dat%errStat, dat%errMsg); call CheckError()
+      call Dvr_InitCase(iCase, dat%dvr, dat%ADI, dat%FED, dat%SeaSt, dat%errStat, dat%errMsg); call CheckError()
       dat%initialized=.true.
    
       ! Init of time estimator
@@ -58,7 +58,7 @@ program AeroDyn_Driver
 
       ! One time loop
       do nt = 1, dat%dvr%numSteps
-         call Dvr_TimeStep(nt, dat%dvr, dat%ADI, dat%FED, dat%errStat, dat%errMsg); call CheckError()
+         call Dvr_TimeStep(nt, dat%dvr, dat%ADI, dat%FED, dat%SeaSt, dat%errStat, dat%errMsg); call CheckError()
          ! Time update to screen
          t_global=nt*dat%dvr%dt
          !if (dat%dvr%analysisType/=idAnalysisCombi) then

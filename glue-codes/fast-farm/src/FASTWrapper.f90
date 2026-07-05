@@ -44,7 +44,7 @@ MODULE FASTWrapper
 
    PUBLIC :: FWrap_t0                             !  call to compute outputs at t0 [and initialize some more variables]
    PUBLIC :: FWrap_Increment                      !  call to update states to n+1 and compute outputs at n+1
-   PUBLIC :: FWrap_SetInputs  
+   PUBLIC :: FWrap_SetWindTStart
    PUBLIC :: FWrap_CalcOutput  
    
 
@@ -76,6 +76,8 @@ SUBROUTINE FWrap_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, Init
 
    TYPE(FAST_ExternInitType)                       :: ExternInitData 
    INTEGER(IntKi)                                  :: j,k,nb      
+   REAL(ReKi)                                      :: p0(3)       ! hub location (in FAST with 0,0,0 as turbine reference)
+   REAL(R8Ki)                                      :: orientation(3,3)  ! temp orientation array
    
    INTEGER(IntKi)                                  :: ErrStat2    ! local error status
    CHARACTER(ErrMsgLen)                            :: ErrMsg2     ! local error message
@@ -105,25 +107,6 @@ SUBROUTINE FWrap_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, Init
       !.... Lidar data (unused) ....
    ExternInitData%Tmax = InitInp%TMax
 
-   
-      !.... supercontroller ....
-   if ( InitInp%UseSC ) then
-      ExternInitData%NumSC2Ctrl     = InitInp%NumSC2Ctrl     ! "number of controller inputs [from supercontroller]"
-      ExternInitData%NumCtrl2SC     = InitInp%NumCtrl2SC     ! "number of controller outputs [to supercontroller]"
-      ExternInitData%NumSC2CtrlGlob = InitInp%NumSC2CtrlGlob ! "number of global controller inputs [from supercontroller]"
-      call AllocAry(ExternInitData%fromSCGlob, InitInp%NumSC2CtrlGlob, 'ExternInitData%InitScOutputsGlob (global inputs to turbine controller from supercontroller)',       ErrStat2, ErrMsg2);   if (Failed()) return;
-      call AllocAry(ExternInitData%fromSC, InitInp%NumSC2Ctrl, ' ExternInitData%InitScOutputsTurbine (turbine-related inputs for turbine controller from supercontroller)', ErrStat2, ErrMsg2);   if (Failed()) return;
-      ExternInitData%fromSCGlob = InitInp%fromSCGlob
-      ExternInitData%fromSC =  InitInp%fromSC
-      call AllocAry(u%fromSCglob, InitInp%NumSC2CtrlGlob, 'u%fromSCglob (global inputs to turbine controller from supercontroller)', ErrStat2, ErrMsg2);   if (Failed()) return;
-      call AllocAry(u%fromSC, InitInp%NumSC2Ctrl, 'u%fromSC (turbine-related inputs for turbine controller from supercontroller)',   ErrStat2, ErrMsg2);   if (Failed()) return;
-   else
-      
-      ExternInitData%NumSC2Ctrl     = 0 ! "number of controller inputs [from supercontroller]"
-      ExternInitData%NumCtrl2SC     = 0 ! "number of controller outputs [to supercontroller]"
-      ExternInitData%NumSC2CtrlGlob = 0 ! "number of global controller inputs [from supercontroller]"
-   
-   end if
       !.... multi-turbine options ....
    ExternInitData%TurbIDforName = InitInp%TurbNum
    ExternInitData%TurbinePos = InitInp%p_ref_Turbine
@@ -136,7 +119,7 @@ SUBROUTINE FWrap_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, Init
    ExternInitData%windGrid_n(1) = InitInp%nX_high
    ExternInitData%windGrid_n(2) = InitInp%nY_high
    ExternInitData%windGrid_n(3) = InitInp%nZ_high
-   ExternInitData%windGrid_n(4) = InitInp%n_high_low
+   ExternInitData%windGrid_n(4) = InitInp%n_high_low+1      ! include a step at t-dt_high
    
    ExternInitData%windGrid_delta(1) = InitInp%dX_high
    ExternInitData%windGrid_delta(2) = InitInp%dY_high
@@ -178,10 +161,6 @@ SUBROUTINE FWrap_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, Init
    call AllocAry(y%AzimAvg_Ct, p%nr, 'y%AzimAvg_Ct (azimuth-averaged ct)', ErrStat2, ErrMsg2);   if (Failed()) return;
    call AllocAry(y%AzimAvg_Cq, p%nr, 'y%AzimAvg_Cq (azimuth-averaged cq)', ErrStat2, ErrMsg2);   if (Failed()) return;
    
-   if ( InitInp%UseSC ) then
-      call AllocAry(y%toSC, InitInp%NumCtrl2SC, 'y%toSC (turbine controller outputs to Super Controller)', ErrStat2, ErrMsg2);   if (Failed()) return;
-   end if
-   
    if (m%Turbine%p_FAST%CompAero == MODULE_AD) then
       nb = size(m%Turbine%AD%y%rotors(1)%BladeLoad)
       allocate( m%ADRotorDisk(nb), m%TempDisp(nb), m%TempLoads(nb), m%AD_L2L(nb), STAT=ErrStat2 ); if (Failed0("ADRotorDisk meshes.")) return;
@@ -219,12 +198,19 @@ SUBROUTINE FWrap_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, Init
                          )
             if (Failed()) return;
             
-            ! set node initial position/orientation
-         ! shortcut for 
-         ! call MeshPositionNode(m%ADRotorDisk(k), j, [0,0,r(j)], errStat2, errMsg2)
-         m%ADRotorDisk(k)%Position(3,:) = p%r ! this will get overwritten later, but we check that we have no zero-length elements in MeshCommit()
+         ! set node initial position/orientation
+         ! NOTE:  the mesh data for ADRotorDisk gets overwritten before use so it isn't actually important
+         !        that this match the method used later in the code.  We can't use the method from later
+         !        in the code since the `hub_theta_x_root` is not known at this point.  So instead, we
+         !        will use the input blade root orientation to set the direction.  This does not result
+         !        in a flat disk, but should allow the mesh mapping to work.
+         p0 = m%Turbine%AD%Input(1)%rotors(1)%HubMotion%Position(:,1) + m%Turbine%AD%Input(1)%rotors(1)%HubMotion%TranslationDisp(:,1) 
+         m%ADRotorDisk(k)%RefOrientation(:,:,1) = m%Turbine%AD%Input(1)%rotors(1)%BladeRootMotion(k)%Orientation(:,:,1)
+         do j=1,p%nr
+            m%ADRotorDisk(k)%Position(:,j) = p0 + p%r(j)*m%ADRotorDisk(k)%RefOrientation(3,:,1)
+         end do
          m%ADRotorDisk(k)%TranslationDisp = 0.0_R8Ki ! this happens by default, anyway....
-         
+
             ! create line2 elements
          do j=1,p%nr-1
             call MeshConstructElement( m%ADRotorDisk(k), ELEMENT_LINE2, errStat2, errMsg2, p1=j, p2=j+1 );   if (Failed()) return;
@@ -252,12 +238,12 @@ contains
    ! check for failed where /= 0 is fatal
    logical function Failed0(txt)
       character(*), intent(in) :: txt
-      if (errStat /= 0) then
+      if (ErrStat2 /= 0) then
          ErrStat2 = ErrID_Fatal
          ErrMsg2  = "Could not allocate memory for "//trim(txt)
-         call SetErrStat(errStat2, errMsg2, errStat, errMsg, RoutineName)
+         call SetErrStat(ErrStat2, ErrMsg2, errStat, errMsg, RoutineName)
       endif
-      Failed0 = errStat >= AbortErrLev
+      Failed0 = ErrStat >= AbortErrLev
       if(Failed0) call cleanUp()
    end function Failed0
 END SUBROUTINE FWrap_Init
@@ -406,7 +392,7 @@ SUBROUTINE FWrap_Increment( t, n, u, p, x, xd, z, OtherState, y, m, ErrStat, Err
    !ELSE
    !   
          ! set the inputs needed for FAST
-      !call FWrap_SetInputs(u, m, t)   <<< moved up into FAST.Farm FARM_UpdateStates
+      !call FWrap_SetWindTStart(u, m, t)   <<< moved up into FAST.Farm FARM_UpdateStates
       
       ! call FAST p%n_FAST_low times   (p%n_FAST_low is simply the number of steps to make per wrapper call. It is affected by MooringMod)
       do n_ss = 1, p%n_FAST_low 
@@ -448,7 +434,7 @@ SUBROUTINE FWrap_t0( u, p, x, xd, z, OtherState, y, m, ErrStat, ErrMsg )
    ErrMsg  = ''
 
       ! set the inputs needed for FAST:
-   call FWrap_SetInputs(u, m, 0.0_DbKi)
+   call FWrap_SetWindTStart(u, m, 0.0_DbKi)
       
       ! compute the FAST t0 solution:
    call FAST_Solution0_T(m%Turbine, ErrStat2, ErrMsg2 )
@@ -502,11 +488,6 @@ SUBROUTINE FWrap_CalcOutput(p, u, y, m, ErrStat, ErrMsg)
    ErrStat = ErrID_None
    ErrMsg  = ''
 
-   ! Turbine-dependent commands to the super controller:
-   if (m%Turbine%p_FAST%UseSC) then
-      y%toSC = m%Turbine%SC_DX%u%toSC
-   end if
-   
    
    if (m%Turbine%p_FAST%CompAero == MODULE_AD) then
       ! ....... outputs from AeroDyn v15 ............
@@ -704,29 +685,18 @@ SUBROUTINE FWrap_CalcOutput(p, u, y, m, ErrStat, ErrMsg)
 END SUBROUTINE FWrap_CalcOutput
 !----------------------------------------------------------------------------------------------------------------------------------
 !> This subroutine sets the inputs needed before calling an instance of FAST
-SUBROUTINE FWrap_SetInputs(u, m, t)
+SUBROUTINE FWrap_SetWindTStart(u, m, t)
 
    TYPE(FWrap_InputType),           INTENT(INOUT)  :: u           !< Inputs at t
    TYPE(FWrap_MiscVarType),         INTENT(INOUT)  :: m           !< Misc variables for optimization (not copied in glue code)
    REAL(DbKi),                      INTENT(IN   )  :: t           !< current simulation time
 
    ! set the 4d-wind-inflow input array (a bit of a hack [simplification] so that we don't have large amounts of data copied in multiple data structures):
-      m%Turbine%IfW%p%FlowField%Grid4D%TimeStart = t
+   ! NOTE: the wind data starts at `t - DT_high` as one extra slice of wind data is added at start.  If AeroDyn is updated to not require the `t-DT_high`
+   !        timestep, this can be changed
+   m%Turbine%IfW%p%FlowField%Grid4D%TimeStart = t - m%Turbine%IfW%p%FlowField%Grid4D%delta(4)
       
-      ! do something with the inputs from the super-controller:
-   if ( m%Turbine%p_FAST%UseSC )  then
-      
-      if ( associated(m%Turbine%SC_DX%y%fromSCglob) ) then
-         m%Turbine%SC_DX%y%fromSCglob = u%fromSCglob   ! Yes, we set the inputs of FWrap to the 'outputs' of the SC_DX object, GJH
-      end if
-
-      if ( associated(m%Turbine%SC_DX%y%fromSC) ) then
-         m%Turbine%SC_DX%y%fromSC     = u%fromSC       ! Yes, we set the inputs of FWrap to the 'outputs' of the SC_DX object, GJH
-      end if
-
-   end if   
-   
-END SUBROUTINE FWrap_SetInputs
+END SUBROUTINE FWrap_SetWindTStart
 !----------------------------------------------------------------------------------------------------------------------------------
 END MODULE FASTWrapper
 !**********************************************************************************************************************************
