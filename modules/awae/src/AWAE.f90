@@ -48,6 +48,20 @@ module AWAE
                                                !   continuous states, and updating discrete states
    public :: AWAE_CalcOutput                     ! Routine for computing outputs
    public :: AWAE_CalcConstrStateResidual        ! Tight coupling routine for returning the constraint state residual
+   public :: AWAE_ResetTiming                    ! Reset compile-time timing accumulators
+   public :: AWAE_GetTimingData                  ! Retrieve compile-time timing accumulators
+   public :: AWAE_DrainTimingData                ! Retrieve and reset compile-time timing accumulators
+   public :: AWAE_SetTimingStage                 ! Set timing label prefix used by AWAE_CalcOutput timing
+
+   integer(IntKi), parameter, public :: AWAE_MaxTimingEntries = 32
+
+#ifdef FF_TIMING_PRINTS
+   integer(IntKi), save              :: AWAE_TimingCount = 0
+   character(128), save              :: AWAE_TimingLabel(AWAE_MaxTimingEntries)
+   real(DbKi), save                  :: AWAE_TimingSerial(AWAE_MaxTimingEntries) = 0.0_DbKi
+   real(DbKi), save                  :: AWAE_TimingPar(AWAE_MaxTimingEntries) = 0.0_DbKi
+   character(64), save               :: AWAE_TimingPrefix = ''
+#endif
 
 
       ! Unit testing routines
@@ -57,6 +71,108 @@ module AWAE
    public :: AWAE_TEST_Interp2D
 
    contains
+
+subroutine AWAE_SetTimingStage(stage)
+   character(*), intent(in) :: stage
+#ifdef FF_TIMING_PRINTS
+   AWAE_TimingPrefix = stage
+#endif
+end subroutine AWAE_SetTimingStage
+
+subroutine AWAE_ResetTiming()
+#ifdef FF_TIMING_PRINTS
+   AWAE_TimingCount   = 0
+   AWAE_TimingLabel   = ''
+   AWAE_TimingSerial  = 0.0_DbKi
+   AWAE_TimingPar     = 0.0_DbKi
+   AWAE_TimingPrefix  = ''
+#endif
+end subroutine AWAE_ResetTiming
+
+subroutine AWAE_GetTimingData(numEntries, labels, serialTimes, parTimes)
+   integer(IntKi), intent(out) :: numEntries
+   character(*), intent(out)   :: labels(:)
+   real(DbKi), intent(out)     :: serialTimes(:)
+   real(DbKi), intent(out)     :: parTimes(:)
+   integer(IntKi)              :: n, i
+
+   numEntries = 0
+   labels = ''
+   serialTimes = 0.0_DbKi
+   parTimes = 0.0_DbKi
+
+#ifdef FF_TIMING_PRINTS
+   n = min(AWAE_TimingCount, min(size(labels), min(size(serialTimes), size(parTimes))))
+   numEntries = n
+   do i = 1, n
+      labels(i) = AWAE_TimingLabel(i)
+      serialTimes(i) = AWAE_TimingSerial(i)
+      parTimes(i) = AWAE_TimingPar(i)
+   end do
+#endif
+end subroutine AWAE_GetTimingData
+
+subroutine AWAE_DrainTimingData(numEntries, labels, serialTimes, parTimes)
+   integer(IntKi), intent(out) :: numEntries
+   character(*), intent(out)   :: labels(:)
+   real(DbKi), intent(out)     :: serialTimes(:)
+   real(DbKi), intent(out)     :: parTimes(:)
+
+   call AWAE_GetTimingData(numEntries, labels, serialTimes, parTimes)
+#ifdef FF_TIMING_PRINTS
+   AWAE_TimingCount = 0
+   AWAE_TimingLabel = ''
+   AWAE_TimingSerial = 0.0_DbKi
+   AWAE_TimingPar = 0.0_DbKi
+#endif
+end subroutine AWAE_DrainTimingData
+
+#ifdef FF_TIMING_PRINTS
+real(DbKi) function AWAE_WallTime()
+#ifdef _OPENMP
+   AWAE_WallTime = omp_get_wtime()
+#else
+   call cpu_time(AWAE_WallTime)
+#endif
+end function AWAE_WallTime
+
+subroutine AWAE_AddTiming(label, serialDt, parDt)
+   character(*), intent(in) :: label
+   real(DbKi),   intent(in) :: serialDt
+   real(DbKi),   intent(in) :: parDt
+   integer(IntKi)           :: i
+
+   do i = 1, AWAE_TimingCount
+      if (trim(AWAE_TimingLabel(i)) == trim(label)) then
+         AWAE_TimingSerial(i) = AWAE_TimingSerial(i) + serialDt
+         AWAE_TimingPar(i) = AWAE_TimingPar(i) + parDt
+         return
+      end if
+   end do
+
+   if (AWAE_TimingCount < AWAE_MaxTimingEntries) then
+      AWAE_TimingCount = AWAE_TimingCount + 1
+      AWAE_TimingLabel(AWAE_TimingCount) = label
+      AWAE_TimingSerial(AWAE_TimingCount) = serialDt
+      AWAE_TimingPar(AWAE_TimingCount) = parDt
+   end if
+end subroutine AWAE_AddTiming
+
+subroutine AWAE_AddStageTiming(action, serialStart, parStart)
+   character(*), intent(in) :: action
+   real(DbKi),   intent(in) :: serialStart
+   real(DbKi),   intent(in) :: parStart
+   real(DbKi)               :: serialEnd, parEnd
+   character(128)           :: label
+
+   if (len_trim(AWAE_TimingPrefix) == 0) return
+
+   call cpu_time(serialEnd)
+   parEnd = AWAE_WallTime()
+   label = trim(AWAE_TimingPrefix)//':'//trim(action)
+   call AWAE_AddTiming(label, serialEnd-serialStart, parEnd-parStart)
+end subroutine AWAE_AddStageTiming
+#endif
 
 
 subroutine ExtractSlice( sliceType, s, s0, szs, sz1, sz2, ds,  V, slice)
@@ -1724,10 +1840,16 @@ subroutine AWAE_UpdateStates(n, u, p, x, xd, z, OtherState, m, errStat, errMsg)
    real(ReKi), allocatable    :: AccUVW(:,:)
    logical                    :: WriteWindVTK
    real(DbKi)                 :: t
-   
+#ifdef FF_TIMING_PRINTS
+   real(DbKi)                                      :: tmSer0, tmPar0
+#endif
+
    errStat = ErrID_None
    errMsg  = ""
-   
+
+#ifdef FF_TIMING_PRINTS
+   if (len_trim(AWAE_TimingPrefix) == 0) AWAE_TimingPrefix = 'US:AWAE:UpdateStates'
+#endif
    ! If last time step, don't populate high-resolution grid
    if (n == (p%NumDT - 1)) then
       n_high_low = 0
@@ -1741,6 +1863,11 @@ subroutine AWAE_UpdateStates(n, u, p, x, xd, z, OtherState, m, errStat, errMsg)
    !----------------------------------------------------------------------------
    ! Populate low resolution grids based on ambient wind source
    !----------------------------------------------------------------------------
+
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = AWAE_WallTime()
+#endif
 
    select case (p%Mod_AmbWind)
 
@@ -1772,9 +1899,18 @@ subroutine AWAE_UpdateStates(n, u, p, x, xd, z, OtherState, m, errStat, errMsg)
 
    end select
 
+#ifdef FF_TIMING_PRINTS
+   call AWAE_AddStageTiming('PopulateLowRes', tmSer0, tmPar0)
+#endif
+
    !----------------------------------------------------------------------------
    ! Populate high-resolution grid based on ambient wind source
    !----------------------------------------------------------------------------
+
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = AWAE_WallTime()
+#endif
 
    select case (p%Mod_AmbWind)
 
@@ -1897,11 +2033,20 @@ subroutine AWAE_UpdateStates(n, u, p, x, xd, z, OtherState, m, errStat, errMsg)
 
    end select
 
+#ifdef FF_TIMING_PRINTS
+   call AWAE_AddStageTiming('PopulateHighRes', tmSer0, tmPar0)
+#endif
+
    !----------------------------------------------------------------------------
    ! Propagate WAT tracer
    !----------------------------------------------------------------------------
 
    if (p%WAT_Enabled) then
+
+   #ifdef FF_TIMING_PRINTS
+      call cpu_time(tmSer0)
+      tmPar0 = AWAE_WallTime()
+   #endif
 
       ! Find mean velocity of all turbine disks
       xd%Ufarm = 0.0_ReKi
@@ -1912,6 +2057,10 @@ subroutine AWAE_UpdateStates(n, u, p, x, xd, z, OtherState, m, errStat, errMsg)
 
       ! add mean velocity * dt to the tracer for the position of the WAT box
       xd%WAT_B_Box = xd%WAT_B_Box + xd%Ufarm*real(p%dt_low,ReKi)
+
+   #ifdef FF_TIMING_PRINTS
+      call AWAE_AddStageTiming('PropagateWAT', tmSer0, tmPar0)
+   #endif
    endif
 
 contains
@@ -1957,6 +2106,10 @@ subroutine AWAE_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, errStat, errMsg
    CHARACTER(1024)                                :: FileName
    INTEGER(IntKi)                                 :: Un          ! unit number of opened file
    logical                                        :: WriteWindVTK
+#ifdef FF_TIMING_PRINTS
+   real(DbKi)                                     :: tmSer0, tmPar0
+#endif
+   logical                                        :: WriteWindVTK
 
    errStat = ErrID_None
    errMsg  = ""
@@ -1964,7 +2117,14 @@ subroutine AWAE_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, errStat, errMsg
    ! some variables and indexing
    n = nint(t / p%dt_low)
    n_high =  n*p%n_high_low
-   call ComputeLocals(n, u, p, y, m, ErrStat2, ErrMsg2); if (Failed()) return;
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = AWAE_WallTime()
+#endif
+   call ComputeLocals(n, u, p, y, m, errStat2, errMsg2);                if (Failed()) return;
+#ifdef FF_TIMING_PRINTS
+   call AWAE_AddStageTiming('ComputeLocals', tmSer0, tmPar0)
+#endif
 
    ! Set flag to write wind VTK files if it's the correct step
    WriteWindVTK = mod(n, p%WrDisSkp1) == 0
@@ -1977,16 +2137,33 @@ subroutine AWAE_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, errStat, errMsg
 
    call CalcWakePointTurbineGridInteractions(p, m, u)
 
-   ! High-resolution grid output
-   call HighResGridCalcOutput(n_high, u, p, xd, y, m, ErrStat2, ErrMsg2)
-   if (Failed()) return
+   ! high-res
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = AWAE_WallTime()
+#endif
+   call HighResGridCalcOutput(n_high, u, p, xd, y, m, errStat2, errMsg2);   if (Failed()) return;
+#ifdef FF_TIMING_PRINTS
+   call AWAE_AddStageTiming('HighResGridCalcOutput', tmSer0, tmPar0)
+#endif
 
    ! Low-resolution grid output
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = AWAE_WallTime()
+#endif
    call LowResGridCalcOutput(n, u, p, xd, y, m, ErrStat2, ErrMsg2)
    if (Failed()) return
+#ifdef FF_TIMING_PRINTS
+   call AWAE_AddStageTiming('LowResGridCalcOutput', tmSer0, tmPar0)
+#endif
 
    ! If it's time to write wind VTK files
    if (WriteWindVTK) then
+   #ifdef FF_TIMING_PRINTS
+      call cpu_time(tmSer0)
+      tmPar0 = AWAE_WallTime()
+   #endif
 
       if (p%WrDisWind) then
          call WriteDisWindFiles(n, p%WrDisSkp1, p, y, m, ErrStat2, ErrMsg2)
@@ -2046,6 +2223,10 @@ subroutine AWAE_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, errStat, errMsg
                                  p%LowRes%dXYZ, m%outVizXZPlane, ErrStat2, ErrMsg2)
          if (Failed()) return
       end do
+
+      #ifdef FF_TIMING_PRINTS
+         call AWAE_AddStageTiming('WriteDisWind', tmSer0, tmPar0)
+      #endif
    end if
 
 contains

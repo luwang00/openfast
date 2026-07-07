@@ -42,8 +42,254 @@ MODULE FAST_Farm_Subs
    IMPLICIT NONE
 
    integer(IntKi), private, parameter  :: iED = 1
+#ifdef FF_TIMING_PRINTS
+   integer(IntKi), parameter :: FFTiming_MaxEntries = 256
+   integer(IntKi), save      :: FFTiming_Count = 0
+   character(128), save      :: FFTiming_Label(FFTiming_MaxEntries)
+   real(DbKi), save          :: FFTiming_Serial(FFTiming_MaxEntries) = 0.0_DbKi
+   real(DbKi), save          :: FFTiming_Par(FFTiming_MaxEntries) = 0.0_DbKi
+#endif
    
 CONTAINS
+
+subroutine FarmTiming_Reset()
+#ifdef FF_TIMING_PRINTS
+   call AWAE_ResetTiming()
+   FFTiming_Count = 0
+   FFTiming_Label = ''
+   FFTiming_Serial = 0.0_DbKi
+   FFTiming_Par = 0.0_DbKi
+#endif
+end subroutine FarmTiming_Reset
+
+#ifdef FF_TIMING_PRINTS
+real(DbKi) function FarmTiming_WallTime()
+#ifdef _OPENMP
+   FarmTiming_WallTime = omp_get_wtime()
+#else
+   call cpu_time(FarmTiming_WallTime)
+#endif
+end function FarmTiming_WallTime
+
+subroutine FarmTiming_Add(label, serialDt, parDt)
+   character(*), intent(in) :: label
+   real(DbKi),   intent(in) :: serialDt
+   real(DbKi),   intent(in) :: parDt
+   integer(IntKi)           :: i
+
+   do i = 1, FFTiming_Count
+      if (trim(FFTiming_Label(i)) == trim(label)) then
+         FFTiming_Serial(i) = FFTiming_Serial(i) + serialDt
+         FFTiming_Par(i) = FFTiming_Par(i) + parDt
+         return
+      end if
+   end do
+
+   if (FFTiming_Count < FFTiming_MaxEntries) then
+      FFTiming_Count = FFTiming_Count + 1
+      FFTiming_Label(FFTiming_Count) = label
+      FFTiming_Serial(FFTiming_Count) = serialDt
+      FFTiming_Par(FFTiming_Count) = parDt
+   end if
+end subroutine FarmTiming_Add
+
+subroutine FarmTiming_AddElapsed(label, serialStart, parStart)
+   character(*), intent(in) :: label
+   real(DbKi),   intent(in) :: serialStart
+   real(DbKi),   intent(in) :: parStart
+   real(DbKi)               :: serialEnd, parEnd
+
+   call cpu_time(serialEnd)
+   parEnd = FarmTiming_WallTime()
+   call FarmTiming_Add(label, serialEnd-serialStart, parEnd-parStart)
+end subroutine FarmTiming_AddElapsed
+
+subroutine FarmTiming_DrainAWAEDetails()
+   integer(IntKi)                                 :: n, i
+   character(128)                                 :: labels(AWAE_MaxTimingEntries)
+   real(DbKi)                                     :: serial(AWAE_MaxTimingEntries)
+   real(DbKi)                                     :: par(AWAE_MaxTimingEntries)
+
+   call AWAE_DrainTimingData(n, labels, serial, par)
+   do i = 1, n
+      call FarmTiming_Add(trim(labels(i)), serial(i), par(i))
+   end do
+end subroutine FarmTiming_DrainAWAEDetails
+
+logical function FarmTiming_IsStageChild(label, stage)
+   character(*), intent(in) :: label
+   character(*), intent(in) :: stage
+   character(24)            :: prefix
+   integer(IntKi)           :: nColons
+
+   prefix = trim(stage)//':'
+   if (index(trim(label), trim(prefix)) /= 1) then
+      FarmTiming_IsStageChild = .false.
+      return
+   end if
+
+   nColons = FarmTiming_CountColons(label)
+   FarmTiming_IsStageChild = (nColons == 2)
+end function FarmTiming_IsStageChild
+
+integer(IntKi) function FarmTiming_CountColons(label)
+   character(*), intent(in) :: label
+   integer(IntKi)           :: i
+
+   FarmTiming_CountColons = 0
+   do i = 1, len_trim(label)
+      if (label(i:i) == ':') FarmTiming_CountColons = FarmTiming_CountColons + 1
+   end do
+end function FarmTiming_CountColons
+
+logical function FarmTiming_IsParentChild(label, parent)
+   character(*), intent(in) :: label
+   character(*), intent(in) :: parent
+   character(128)           :: prefix
+   integer(IntKi)           :: parentColons, labelColons
+
+   prefix = trim(parent)//':'
+   if (index(trim(label), trim(prefix)) /= 1) then
+      FarmTiming_IsParentChild = .false.
+      return
+   end if
+
+   parentColons = FarmTiming_CountColons(parent)
+   labelColons = FarmTiming_CountColons(label)
+   FarmTiming_IsParentChild = (labelColons == parentColons + 1)
+end function FarmTiming_IsParentChild
+
+subroutine FarmTiming_AddParentOthers(parent)
+   character(*), intent(in) :: parent
+   integer(IntKi)           :: i, iParent
+   real(DbKi)               :: serialChildren, parChildren
+   real(DbKi)               :: serialOthers, parOthers
+   character(128)           :: othersLabel
+
+   iParent = 0
+   do i = 1, FFTiming_Count
+      if (trim(FFTiming_Label(i)) == trim(parent)) then
+         iParent = i
+         exit
+      end if
+   end do
+   if (iParent == 0) return
+
+   serialChildren = 0.0_DbKi
+   parChildren = 0.0_DbKi
+   do i = 1, FFTiming_Count
+      if (FarmTiming_IsParentChild(FFTiming_Label(i), parent)) then
+         serialChildren = serialChildren + FFTiming_Serial(i)
+         parChildren = parChildren + FFTiming_Par(i)
+      end if
+   end do
+
+   serialOthers = FFTiming_Serial(iParent) - serialChildren
+   parOthers = FFTiming_Par(iParent) - parChildren
+   if (abs(serialOthers) < 1.0e-9_DbKi) serialOthers = 0.0_DbKi
+   if (abs(parOthers) < 1.0e-9_DbKi) parOthers = 0.0_DbKi
+
+   othersLabel = trim(parent)//':Others'
+   call FarmTiming_Add(trim(othersLabel), serialOthers, parOthers)
+end subroutine FarmTiming_AddParentOthers
+
+subroutine FarmTiming_AddStageOthers(stage)
+   character(*), intent(in) :: stage
+   integer(IntKi)           :: i
+   integer(IntKi)           :: iStage
+   real(DbKi)               :: serialChildren, parChildren
+   real(DbKi)               :: serialOthers, parOthers
+   character(32)            :: othersLabel
+
+   iStage = 0
+   do i = 1, FFTiming_Count
+      if (trim(FFTiming_Label(i)) == trim(stage)) then
+         iStage = i
+         exit
+      end if
+   end do
+   if (iStage == 0) return
+
+   serialChildren = 0.0_DbKi
+   parChildren = 0.0_DbKi
+   do i = 1, FFTiming_Count
+      if (FarmTiming_IsStageChild(FFTiming_Label(i), stage)) then
+         serialChildren = serialChildren + FFTiming_Serial(i)
+         parChildren = parChildren + FFTiming_Par(i)
+      end if
+   end do
+
+   serialOthers = FFTiming_Serial(iStage) - serialChildren
+   parOthers = FFTiming_Par(iStage) - parChildren
+   if (abs(serialOthers) < 1.0e-9_DbKi) serialOthers = 0.0_DbKi
+   if (abs(parOthers) < 1.0e-9_DbKi) parOthers = 0.0_DbKi
+
+   othersLabel = trim(stage)//':Others'
+   call FarmTiming_Add(trim(othersLabel), serialOthers, parOthers)
+end subroutine FarmTiming_AddStageOthers
+
+subroutine FarmTiming_PrintLiveStart(stage, label, mode)
+   character(*), intent(in) :: stage
+   character(*), intent(in) :: label
+   character(*), intent(in) :: mode
+   character(384)           :: line
+
+   line = 'FFTiming|LIVE|Event=Start|Stage='//trim(stage)//'|Label='//trim(label)//'|Mode='//trim(mode)
+   call WrScr(trim(line))
+end subroutine FarmTiming_PrintLiveStart
+
+subroutine FarmTiming_PrintLiveDone(stage, label, mode, dt)
+   character(*), intent(in) :: stage
+   character(*), intent(in) :: label
+   character(*), intent(in) :: mode
+   real(DbKi),   intent(in) :: dt
+   character(384)           :: line
+
+   line = 'FFTiming|LIVE|Event=Done|Stage='//trim(stage)//'|Label='//trim(label)//'|Mode='//trim(mode)//'|Seconds='//trim(num2lstr(dt))
+   call WrScr(trim(line))
+end subroutine FarmTiming_PrintLiveDone
+
+subroutine FarmTiming_PrintLiveThread(stage, label, itemId, threadId, dt)
+   character(*), intent(in) :: stage
+   character(*), intent(in) :: label
+   integer(IntKi), intent(in) :: itemId
+   integer(IntKi), intent(in) :: threadId
+   real(DbKi),   intent(in) :: dt
+   character(384)           :: line
+
+   line = 'FFTiming|LIVE|Event=ThreadDone|Stage='//trim(stage)//'|Label='//trim(label)//'|Item='//trim(num2lstr(itemId))// &
+          '|Thread='//trim(num2lstr(threadId))//'|Seconds='//trim(num2lstr(dt))
+   call WrScr(trim(line))
+end subroutine FarmTiming_PrintLiveThread
+#endif
+
+subroutine FarmTiming_PrintSummary()
+#ifdef FF_TIMING_PRINTS
+   integer(IntKi)   :: i
+   character(384)   :: line
+
+   call FarmTiming_DrainAWAEDetails()
+   call FarmTiming_AddParentOthers('ICO:AWAE:CalcOutput1')
+   call FarmTiming_AddParentOthers('ICO:AWAE:CalcOutput2')
+   call FarmTiming_AddParentOthers('US:AWAE:UpdateStates')
+   call FarmTiming_AddParentOthers('CO:AWAE:CalcOutput')
+   call FarmTiming_AddStageOthers('INIT')
+   call FarmTiming_AddStageOthers('ICO')
+   call FarmTiming_AddStageOthers('US')
+   call FarmTiming_AddStageOthers('CO')
+   call FarmTiming_AddStageOthers('END')
+
+   call WrScr('')
+   call WrScr('FFTiming|SUMMARY|Begin')
+   call WrScr('FFTiming|SUMMARY|Columns=Label|CPU|Wall')
+   do i = 1, FFTiming_Count
+      line = 'FFTiming|SUMMARY|Label='//trim(FFTiming_Label(i))//'|CPU='//trim(num2lstr(FFTiming_Serial(i)))//'|Wall='//trim(num2lstr(FFTiming_Par(i)))
+      call WrScr(trim(line))
+   end do
+   call WrScr('FFTiming|SUMMARY|End')
+   call WrScr('')
+#endif
+end subroutine FarmTiming_PrintSummary
 
    subroutine TrilinearInterpRegGrid(V, pt, dims, val)
    
@@ -153,10 +399,18 @@ SUBROUTINE Farm_Initialize( farm, InputFile, ErrStat, ErrMsg )
    CHARACTER(*), PARAMETER                 :: RoutineName = 'Farm_Initialize'       
    CHARACTER(ChanLen)                      :: OutList(Farm_MaxOutPts) ! list of user-requested output channels
    INTEGER(IntKi)                          :: i
+#ifdef FF_TIMING_PRINTS
+   real(DbKi)                              :: tmSer0, tmPar0, tmPar1, tmPar2
+#endif
    !..........
    ErrStat = ErrID_None
    ErrMsg  = ""         
    AbortErrLev  = ErrID_Fatal                                 ! Until we read otherwise from the FAST input file, we abort only on FATAL errors
+
+#ifdef FF_TIMING_PRINTS
+   tmPar1 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('INIT', 'Stage', 'Par')
+#endif
       
    
       ! ... Open and read input files, initialize global parameters. ...
@@ -242,9 +496,20 @@ SUBROUTINE Farm_Initialize( farm, InputFile, ErrStat, ErrMsg )
    if (farm%p%WAT /= Mod_WAT_None .and. associated(farm%WAT_IfW%p%FlowField)) then
       AWAE_InitInput%WAT_FlowField => farm%WAT_IfW%p%FlowField
    endif
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('INIT', 'AWAE_Init', 'Par')
+   call AWAE_SetTimingStage('INIT')
+#endif
    call AWAE_Init( AWAE_InitInput, farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, farm%AWAE%OtherSt, farm%AWAE%y, &
                    farm%AWAE%m, farm%p%DT_low, AWAE_InitOutput, ErrStat2, ErrMsg2 )
    if(Failed()) return;
+#ifdef FF_TIMING_PRINTS
+   tmPar2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('INIT:AWAE:Init', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('INIT', 'AWAE_Init', 'Par', tmPar2-tmPar0)
+#endif
       
    farm%AWAE%IsInitialized = .true.
 
@@ -262,21 +527,51 @@ SUBROUTINE Farm_Initialize( farm, InputFile, ErrStat, ErrMsg )
       !-------------------
       ! c. initialize WD (one instance per turbine, each can be done in parallel, too)
       
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('INIT', 'WD_Init', 'Par')
+#endif
    call Farm_InitWD( farm, WD_InitInput, ErrStat2, ErrMsg2 );  if(Failed()) return;
+#ifdef FF_TIMING_PRINTS
+   tmPar2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('INIT:WD:Init', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('INIT', 'WD_Init', 'Par', tmPar2-tmPar0)
+#endif
       
       
    !...............................................................................................................................  
    ! step 4: initialize FAST (each instance of FAST can also be done in parallel)
    !...............................................................................................................................  
 
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('INIT', 'FWrap_Init', 'Par')
+#endif
    CALL Farm_InitFAST( farm, WD_InitInput%InputFileData, AWAE_InitOutput, ErrStat2, ErrMsg2);  if(Failed()) return;
+#ifdef FF_TIMING_PRINTS
+   tmPar2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('INIT:FWrap:Init', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('INIT', 'FWrap_Init', 'Par', tmPar2-tmPar0)
+#endif
       
    !...............................................................................................................................  
    ! step 4.5: initialize farm-level MoorDyn if applicable
    !...............................................................................................................................  
    
    if (farm%p%MooringMod == 3) then
+#ifdef FF_TIMING_PRINTS
+      call cpu_time(tmSer0)
+      tmPar0 = FarmTiming_WallTime()
+      call FarmTiming_PrintLiveStart('INIT', 'MD_Init', 'Serial')
+#endif
       CALL Farm_InitMD( farm, ErrStat2, ErrMsg2);  if(Failed()) return;  ! FAST instances must be initialized first so that turbine initial positions are known
+#ifdef FF_TIMING_PRINTS
+      tmPar2 = FarmTiming_WallTime()
+      call FarmTiming_AddElapsed('INIT:MD:Init', tmSer0, tmPar0)
+      call FarmTiming_PrintLiveDone('INIT', 'MD_Init', 'Serial', tmPar2-tmPar0)
+#endif
    end if
 
    !...............................................................................................................................  
@@ -284,19 +579,45 @@ SUBROUTINE Farm_Initialize( farm, InputFile, ErrStat, ErrMsg )
    !...............................................................................................................................  
    
       ! Set parameters for output channels:
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    CALL Farm_SetOutParam(OutList, farm, ErrStat2, ErrMsg2 );  if(Failed()) return; ! requires: p%NumOuts, sets: p%OutParam.
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('INIT:IO:SetOutParam', tmSer0, tmPar0)
+#endif
       
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    call Farm_InitOutput( farm, ErrStat2, ErrMsg2 );  if(Failed()) return;
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('INIT:IO:InitOutput', tmSer0, tmPar0)
+#endif
 
       ! Print the summary file if requested:
    IF (farm%p%SumPrint) THEN
+#ifdef FF_TIMING_PRINTS
+      call cpu_time(tmSer0)
+      tmPar0 = FarmTiming_WallTime()
+#endif
       CALL Farm_PrintSum( farm, WD_InitInput%InputFileData, ErrStat2, ErrMsg2 );  if(Failed()) return;
+#ifdef FF_TIMING_PRINTS
+      call FarmTiming_AddElapsed('INIT:IO:PrintSummary', tmSer0, tmPar0)
+#endif
    END IF
    
    !...............................................................................................................................
    ! Destroy initializion data
    !...............................................................................................................................      
    CALL Cleanup()
+
+#ifdef FF_TIMING_PRINTS
+   tmPar2 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveDone('INIT', 'Stage', 'Par', tmPar2-tmPar1)
+#endif
    
 CONTAINS
    SUBROUTINE Cleanup()
@@ -1042,10 +1363,18 @@ subroutine FARM_InitialCO(farm, ErrStat, ErrMsg)
    INTEGER(IntKi)                          :: ErrStat2                        ! Temporary Error status
    CHARACTER(ErrMsgLen)                    :: ErrMsg2                         ! Temporary Error message
    CHARACTER(*),   PARAMETER               :: RoutineName = 'FARM_InitialCO'
+#ifdef FF_TIMING_PRINTS
+   real(DbKi)                              :: tmSer0, tmPar0, tmPar1, tmPar2
+#endif
    
    
    ErrStat = ErrID_None
    ErrMsg = ""
+
+#ifdef FF_TIMING_PRINTS
+   tmPar1 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('ICO', 'Stage', 'Par')
+#endif
    
    
 
@@ -1065,10 +1394,22 @@ subroutine FARM_InitialCO(farm, ErrStat, ErrMsg)
 
       !--------------------
       ! 1b. CALL AWAE_CO      
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('ICO', 'AWAE_CalcOutput1', 'Par')
+   call AWAE_SetTimingStage('ICO:AWAE:CalcOutput1')
+#endif
    call AWAE_CalcOutput( 0.0_DbKi, farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, &
                      farm%AWAE%OtherSt, farm%AWAE%y, farm%AWAE%m, ErrStat2, ErrMsg2 )         
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
          if (ErrStat >= AbortErrLev) return
+#ifdef FF_TIMING_PRINTS
+   tmPar2 = FarmTiming_WallTime()
+   call FarmTiming_DrainAWAEDetails()
+   call FarmTiming_AddElapsed('ICO:AWAE:CalcOutput1', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('ICO', 'AWAE_CalcOutput1', 'Par', tmPar2-tmPar0)
+#endif
       !--------------------
       ! 1c. transfer y_AWAE to u_F and u_WD         
    
@@ -1078,6 +1419,11 @@ subroutine FARM_InitialCO(farm, ErrStat, ErrMsg)
    ! CALL F_t0 (can be done in parallel)
    !.......................................................................................
          
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('ICO', 'FWrap_t0', 'Par')
+#endif
    DO nt = 1,farm%p%NumTurbines
       
       call FWrap_t0( farm%FWrap(nt)%u, farm%FWrap(nt)%p, farm%FWrap(nt)%x, farm%FWrap(nt)%xd, farm%FWrap(nt)%z, &
@@ -1086,6 +1432,11 @@ subroutine FARM_InitialCO(farm, ErrStat, ErrMsg)
                
    END DO
    if (ErrStat >= AbortErrLev) return
+#ifdef FF_TIMING_PRINTS
+   tmPar2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('ICO:FWrap:t0', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('ICO', 'FWrap_t0', 'Par', tmPar2-tmPar0)
+#endif
    
    !.......................................................................................
    ! Transfer y_F to u_WD
@@ -1100,6 +1451,11 @@ subroutine FARM_InitialCO(farm, ErrStat, ErrMsg)
    ! CALL WD_CO (can be done in parallel)
    !.......................................................................................
    
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('ICO', 'WD_CalcOutput', 'Par')
+#endif
    DO nt = 1,farm%p%NumTurbines
       
       call WD_CalcOutput( 0.0_DbKi, farm%WD(nt)%u, farm%WD(nt)%p, farm%WD(nt)%x, farm%WD(nt)%xd, farm%WD(nt)%z, &
@@ -1108,6 +1464,11 @@ subroutine FARM_InitialCO(farm, ErrStat, ErrMsg)
                
    END DO
    if (ErrStat >= AbortErrLev) return
+#ifdef FF_TIMING_PRINTS
+   tmPar2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('ICO:WD:CalcOutput', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('ICO', 'WD_CalcOutput', 'Par', tmPar2-tmPar0)
+#endif
    
    !.......................................................................................
    ! Transfer y_WD to u_AWAE
@@ -1118,11 +1479,22 @@ subroutine FARM_InitialCO(farm, ErrStat, ErrMsg)
    !.......................................................................................
    ! CALL AWAE_CO
    !.......................................................................................
-
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('ICO', 'AWAE_CalcOutput2', 'Par')
+   call AWAE_SetTimingStage('ICO:AWAE:CalcOutput2')
+#endif
    call AWAE_CalcOutput( 0.0_DbKi, farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, &
                      farm%AWAE%OtherSt, farm%AWAE%y, farm%AWAE%m, ErrStat2, ErrMsg2 )         
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
+#ifdef FF_TIMING_PRINTS
+   tmPar2 = FarmTiming_WallTime()
+   call FarmTiming_DrainAWAEDetails()
+   call FarmTiming_AddElapsed('ICO:AWAE:CalcOutput2', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('ICO', 'AWAE_CalcOutput2', 'Par', tmPar2-tmPar0)
+#endif
    
    !.......................................................................................
    ! Transfer y_AWAE to u_F and u_WD
@@ -1134,8 +1506,18 @@ subroutine FARM_InitialCO(farm, ErrStat, ErrMsg)
    ! Write Output to File
    !.......................................................................................
    
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    call Farm_WriteOutput(0, 0.0_DbKi, farm, ErrStat2, ErrMsg2)
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('ICO:IO:WriteOutput', tmSer0, tmPar0)
+   tmPar2 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveDone('ICO', 'Stage', 'Par', tmPar2-tmPar1)
+#endif
    
 end subroutine FARM_InitialCO
 !---------------------------------------------------------------------------------------------------------------------------------- 
@@ -1165,7 +1547,12 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    INTEGER(IntKi), ALLOCATABLE             :: ErrStatF(:)                     ! Temporary Error status for FAST
    CHARACTER(ErrMsgLen), ALLOCATABLE       :: ErrMsgF (:)                     ! Temporary Error message for FAST
    CHARACTER(*),   PARAMETER               :: RoutineName = 'FARM_UpdateStates'
-   REAL(DbKi)                              :: tm1,tm2,tm3, tm01, tm02, tm03, tmSF, tmSM  ! timer variables
+   REAL(DbKi)                              :: tm1, tm2
+#ifdef FF_TIMING_PRINTS
+   REAL(DbKi)                              :: tmSer0, tmPar0, tmPar1
+   REAL(DbKi), ALLOCATABLE                 :: fwrapThreadDt(:)
+   INTEGER(IntKi), ALLOCATABLE             :: fwrapThreadId(:)
+#endif
    
    ErrStat = ErrID_None
    ErrMsg = ""
@@ -1175,6 +1562,11 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    allocate ( ErrMsgF ( farm%p%NumTurbines ), STAT=errStat2 )
        if (errStat2 /= 0) call SetErrStat ( ErrID_Fatal, 'Could not allocate memory for ErrMsgF.', errStat, errMsg, RoutineName )
    if (ErrStat >= AbortErrLev) return
+
+#ifdef FF_TIMING_PRINTS
+   tmPar1 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('US', 'Stage', 'Par')
+#endif
    
    
 
@@ -1186,7 +1578,13 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    
       !--------------------
       ! 1. CALL WD_US         
-  
+
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('US', 'WD_UpdateStates', 'Par')
+#endif
+
    !$OMP PARALLEL default(shared)
    !$OMP do private(nt, ErrStat2, ErrMsg2) schedule(runtime)
    DO nt = 1,farm%p%NumTurbines
@@ -1205,6 +1603,12 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    END DO
    !$OMP END DO 
    !$OMP END PARALLEL
+
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('US:WD:UpdateStates', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('US', 'WD_UpdateStates', 'Par', tm2-tmPar0)
+#endif
    
    if (ErrStat >= AbortErrLev) return
    
@@ -1213,9 +1617,16 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
       
       
    ! set the inputs needed for FAST (these are slow-varying so can just be done once per farm time step)
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    do nt = 1,farm%p%NumTurbines
       call FWrap_SetWindTStart(farm%FWrap(nt)%u, farm%FWrap(nt)%m, t)
    end do
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('US:FWrap:SetWindTStart', tmSer0, tmPar0)
+#endif
    
    
    !#ifdef printthreads
@@ -1226,12 +1637,52 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    ! Original case: no shared moorings 
    if (farm%p%MooringMod == 0) then     
 
+#ifdef FF_TIMING_PRINTS
+      call cpu_time(tmSer0)
+      tmPar0 = FarmTiming_WallTime()
+      call FarmTiming_PrintLiveStart('US', 'FWrap_Increment_NoMD', 'Par')
+
+   allocate(fwrapThreadDt(farm%p%NumTurbines), fwrapThreadId(farm%p%NumTurbines), stat=ErrStat2)
+   if (ErrStat2 /= 0) then
+      call SetErrStat(ErrID_Fatal, 'Could not allocate memory for buffered FWrap thread timing output.', ErrStat, ErrMsg, RoutineName)
+      return
+   end if
+   fwrapThreadDt = -1.0_DbKi
+   fwrapThreadId = -1_IntKi
+#endif
+
       !$OMP PARALLEL DO DEFAULT(Shared) Private(nt)
       DO nt = 1,farm%p%NumTurbines
+#ifdef FF_TIMING_PRINTS
+      fwrapThreadDt(nt) = FarmTiming_WallTime()
+#endif
          call FWrap_Increment( t, n, farm%FWrap(nt)%u, farm%FWrap(nt)%p, farm%FWrap(nt)%x, farm%FWrap(nt)%xd, farm%FWrap(nt)%z, &
                      farm%FWrap(nt)%OtherSt, farm%FWrap(nt)%y, farm%FWrap(nt)%m, ErrStatF(nt), ErrMsgF(nt) )         
+#ifdef FF_TIMING_PRINTS
+      fwrapThreadDt(nt) = FarmTiming_WallTime() - fwrapThreadDt(nt)
+#ifdef _OPENMP
+      fwrapThreadId(nt) = omp_get_thread_num()
+#else
+      fwrapThreadId(nt) = 0_IntKi
+#endif
+#endif
       END DO
       !$OMP END PARALLEL DO  
+
+#ifdef FF_TIMING_PRINTS
+   do nt = 1, farm%p%NumTurbines
+      if (fwrapThreadDt(nt) >= 0.0_DbKi) then
+      call FarmTiming_PrintLiveThread('US', 'FWrap_Increment_NoMD', nt, fwrapThreadId(nt), fwrapThreadDt(nt))
+      end if
+   end do
+   deallocate(fwrapThreadDt, fwrapThreadId)
+#endif
+
+#ifdef FF_TIMING_PRINTS
+      tm2 = FarmTiming_WallTime()
+      call FarmTiming_AddElapsed('US:FWrap:Increment', tmSer0, tmPar0)
+      call FarmTiming_PrintLiveDone('US', 'FWrap_Increment_NoMD', 'Par', tm2-tmPar0)
+#endif
    
    ! Farm-level moorings case using MoorDyn
    else if (farm%p%MooringMod == 3) then
@@ -1247,6 +1698,10 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
          !   tm01 = omp_get_wtime()  
          !#endif
          
+#ifdef FF_TIMING_PRINTS
+         call cpu_time(tmSer0)
+         tmPar0 = FarmTiming_WallTime()
+#endif
          ! A nested parallel for loop to call each instance of OpenFAST in parallel
          !$OMP PARALLEL DO DEFAULT(Shared) Private(nt)
          DO nt = 1,farm%p%NumTurbines
@@ -1254,14 +1709,26 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
                         farm%FWrap(nt)%OtherSt, farm%FWrap(nt)%y, farm%FWrap(nt)%m, ErrStatF(nt), ErrMsgF(nt) )         
          END DO              
          !$OMP END PARALLEL DO
+
+#ifdef FF_TIMING_PRINTS
+         call FarmTiming_AddElapsed('US:FWrap:Increment', tmSer0, tmPar0)
+#endif
          
          !#ifdef printthreads
          !   tm02 = omp_get_wtime()  
          !#endif  
       
+#ifdef FF_TIMING_PRINTS
+         call cpu_time(tmSer0)
+         tmPar0 = FarmTiming_WallTime()
+#endif
          ! call farm-level MoorDyn time step here (can't multithread this with FAST since it needs inputs from all FAST instances)
          call Farm_MD_Increment( t2, n_FMD, farm, ErrStatMD, ErrMsgMD)
          call SetErrStat(ErrStatMD, ErrMsgMD, ErrStat, ErrMsg, 'FARM_UpdateStates')  ! MD error status <<<<<
+
+#ifdef FF_TIMING_PRINTS
+         call FarmTiming_AddElapsed('US:MD:Increment', tmSer0, tmPar0)
+#endif
          
          !#ifdef printthreads
          !   tm03 = omp_get_wtime()
@@ -1285,6 +1752,27 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    !  write(*,*) 'Total FAST and Moordyn for FF_US took '//trim(num2lstr(tm2-tm1))//' seconds.'
    !#endif 
 
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('US', 'AWAE_UpdateStates', 'Par')
+   call AWAE_SetTimingStage('US:AWAE:UpdateStates')
+#endif
+   call AWAE_UpdateStates( t, n, farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, &
+                     farm%AWAE%OtherSt, farm%AWAE%m, ErrStatAWAE, ErrMsgAWAE )       
+
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_DrainAWAEDetails()
+   call FarmTiming_AddElapsed('US:AWAE:UpdateStates', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('US', 'AWAE_UpdateStates', 'Par', tm2-tmPar0)
+#endif
+
+   !#ifdef printthreads   
+   !  tm3 = omp_get_wtime()
+   !  write(*,*) 'AWAE_US took '//trim(num2lstr(tm3-tm2))//' seconds.'
+   !  write(*,*) 'Total Farm_US took '//trim(num2lstr(tm3-tm1))//' seconds.'
+   !#endif 
    
    ! update error messages from FAST's and AWAE's time steps
    DO nt = 1,farm%p%NumTurbines 
@@ -1292,13 +1780,29 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    END DO
    
    ! calculate outputs from FAST as needed by FAST.Farm
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('US', 'FWrap_CalcOutput', 'Serial')
+#endif
    do nt = 1,farm%p%NumTurbines
       call FWrap_CalcOutput(farm%FWrap(nt)%p, farm%FWrap(nt)%u, farm%FWrap(nt)%y, farm%FWrap(nt)%m, ErrStat2, ErrMsg2)  
          call setErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,RoutineName)
    end do
 
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('US:FWrap:CalcOutput', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('US', 'FWrap_CalcOutput', 'Serial', tm2-tmPar0)
+#endif
+
    
    if (ErrStat >= AbortErrLev) return
+
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveDone('US', 'Stage', 'Par', tm2-tmPar1)
+#endif
 
    
 end subroutine FARM_UpdateStates
@@ -1587,7 +2091,10 @@ subroutine FARM_CalcOutput(t, farm, ErrStat, ErrMsg)
    CHARACTER(ErrMsgLen)                    :: ErrMsg2                         ! Temporary Error message
    CHARACTER(*),   PARAMETER               :: RoutineName = 'FARM_CalcOutput'
    INTEGER(IntKi)                          :: n                               ! time step increment number
-!   REAL(DbKi)                              :: tm1
+   REAL(DbKi)                              :: tm1, tm2
+#ifdef FF_TIMING_PRINTS
+   REAL(DbKi)                              :: tmSer0, tmPar0
+#endif
    ErrStat = ErrID_None
    ErrMsg = ""
    
@@ -1602,7 +2109,15 @@ subroutine FARM_CalcOutput(t, farm, ErrStat, ErrMsg)
    !.......................................................................................
    
       !--------------------
-      ! 1. call WD_CO and transfer y_WD to u_AWAE        
+      ! 1. call WD_CO and transfer y_WD to u_AWAE
+
+#ifdef FF_TIMING_PRINTS
+      tm1 = FarmTiming_WallTime()
+      call FarmTiming_PrintLiveStart('CO', 'Stage', 'Serial')
+      call cpu_time(tmSer0)
+      tmPar0 = FarmTiming_WallTime()
+      call FarmTiming_PrintLiveStart('CO', 'WD_CalcOutput', 'Par')
+#endif
    
    !$OMP PARALLEL DO DEFAULT (shared) PRIVATE(nt, ErrStat2, ErrMsg2) schedule(runtime)
    DO nt = 1,farm%p%NumTurbines
@@ -1618,7 +2133,17 @@ subroutine FARM_CalcOutput(t, farm, ErrStat, ErrMsg)
    !$OMP END PARALLEL DO  
    if (ErrStat >= AbortErrLev) return
 
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('CO:WD:CalcOutput', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('CO', 'WD_CalcOutput', 'Par', tm2-tmPar0)
+#endif
+
    ! IO operation, not done using OpenMP
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    DO nt = 1,farm%p%NumTurbines
       call WD_WritePlaneOutputs( t, farm%WD(nt)%u, farm%WD(nt)%p, farm%WD(nt)%x, farm%WD(nt)%xd, farm%WD(nt)%z, &
                      farm%WD(nt)%OtherSt, farm%WD(nt)%y, farm%WD(nt)%m, ErrStat2, ErrMsg2 )         
@@ -1628,13 +2153,31 @@ subroutine FARM_CalcOutput(t, farm, ErrStat, ErrMsg)
    END DO
    if (ErrStat >= AbortErrLev) return
 
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('CO:WD:WritePlaneOutputs', tmSer0, tmPar0)
+#endif
 
+
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    call Transfer_WD_to_AWAE(farm)
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('CO:Transfer:WD_to_AWAE', tmSer0, tmPar0)
+#endif
    
       !--------------------
       ! 2. Transfer y_F to u_WD         
-         
+
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    call Transfer_FAST_to_WD(farm)
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('CO:Transfer:FAST_to_WD', tmSer0, tmPar0)
+#endif
          
    !.......................................................................................
    ! calculate AWAE outputs and perform rest of input-output solves
@@ -1648,21 +2191,51 @@ subroutine FARM_CalcOutput(t, farm, ErrStat, ErrMsg)
 
       !--------------------
       ! 1. call AWAE_CO 
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('CO', 'AWAE_CalcOutput', 'Par')
+   call AWAE_SetTimingStage('CO:AWAE:CalcOutput')
+#endif
    call AWAE_CalcOutput( t, farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, &
                      farm%AWAE%OtherSt, farm%AWAE%y, farm%AWAE%m, ErrStat2, ErrMsg2 )         
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
 
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_DrainAWAEDetails()
+   call FarmTiming_AddElapsed('CO:AWAE:CalcOutput', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('CO', 'AWAE_CalcOutput', 'Par', tm2-tmPar0)
+#endif
+
       !--------------------
       ! 2. Transfer y_AWAE to u_F  and u_WD   
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    call Transfer_AWAE_to_WD(farm)   
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('CO:Transfer:AWAE_to_WD', tmSer0, tmPar0)
+#endif
    
    
    !.......................................................................................
    ! Write Output to File
    !.......................................................................................
       ! NOTE: Visualization data is output via the AWAE module
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
+   n = nint(t/farm%p%DT_low)
    call Farm_WriteOutput(n, t, farm, ErrStat2, ErrMsg2)
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('CO:IO:WriteOutput', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('CO', 'WriteOutput', 'Serial', tm2-tmPar0)
+#endif
    
    !.......................................................................................
    ! Write shared moorings visualization
@@ -1689,6 +2262,12 @@ subroutine FARM_CalcOutput(t, farm, ErrStat, ErrMsg)
       endif
    endif
 
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_Add('CO:IO:WriteMooringVis', 0.0_DbKi, 0.0_DbKi)
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveDone('CO', 'Stage', 'Serial', tm2-tm1)
+#endif
+
  !  write(*,*) 'Total Farm_CO-serial took '//trim(num2lstr(omp_get_wtime()-tm1))//' seconds.' 
    
 end subroutine FARM_CalcOutput
@@ -1710,11 +2289,18 @@ subroutine FARM_End(farm, ErrStat, ErrMsg)
    INTEGER(IntKi)                          :: ErrStat2                        ! Temporary Error status
    CHARACTER(ErrMsgLen)                    :: ErrMsg2                         ! Temporary Error message
    CHARACTER(*),   PARAMETER               :: RoutineName = 'FARM_End'
-   
-   
+#ifdef FF_TIMING_PRINTS
+   REAL(DbKi)                              :: tm1, tm2
+   REAL(DbKi)                              :: tmSer0, tmPar0
+#endif
    
    ErrStat = ErrID_None
    ErrMsg = ""
+
+#ifdef FF_TIMING_PRINTS
+   tm1 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('END', 'Stage', 'Serial')
+#endif
    
    !.......................................................................................
    ! end all modules (1-4 can be done in parallel) 
@@ -1722,24 +2308,47 @@ subroutine FARM_End(farm, ErrStat, ErrMsg)
    
       !--------------
       ! 1. end AWAE
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    if (farm%WAT_IfW%IsInitialized) then
       call InflowWind_End(farm%WAT_IfW%u, farm%WAT_IfW%p, farm%WAT_IfW%x, farm%WAT_IfW%xd, farm%WAT_IfW%z, &
                      farm%WAT_IfW%OtherSt, farm%WAT_IfW%y, farm%WAT_IfW%m, ErrStat2, ErrMsg2 )
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
          farm%WAT_IfW%IsInitialized = .false.
    endif
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('END:WAT:End', tmSer0, tmPar0)
+#endif
 
       !--------------
       ! 2. end AWAE
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('END', 'AWAE_End', 'Par')
+   call AWAE_SetTimingStage('END')
+#endif
    if (farm%AWAE%IsInitialized) then      
       call AWAE_End( farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, &
                      farm%AWAE%OtherSt, farm%AWAE%y, farm%AWAE%m, ErrStat2, ErrMsg2 )
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
          farm%AWAE%IsInitialized = .false.
    end if      
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_DrainAWAEDetails()
+   call FarmTiming_AddElapsed('END:AWAE:End', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('END', 'AWAE_End', 'Par', tm2-tmPar0)
+#endif
       
       !--------------
       ! 3. end WakeDynamics
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    if (allocated(farm%WD)) then
       DO nt = 1,farm%p%NumTurbines
          if (farm%WD(nt)%IsInitialized) then      
@@ -1750,9 +2359,16 @@ subroutine FARM_End(farm, ErrStat, ErrMsg)
          end if      
       END DO
    end if
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('END:WD:End', tmSer0, tmPar0)
+#endif
    
       !--------------
       ! 5. End each instance of FAST (each instance of FAST can be done in parallel, too)   
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    if (allocated(farm%FWrap)) then
       DO nt = 1,farm%p%NumTurbines
          if (farm%FWrap(nt)%IsInitialized) then
@@ -1763,28 +2379,54 @@ subroutine FARM_End(farm, ErrStat, ErrMsg)
          end if
       END DO
    end if   
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('END:FWrap:End', tmSer0, tmPar0)
+#endif
    
       !--------------
       ! 6. End farm-level MoorDyn
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    if (farm%p%MooringMod == 3 .and. allocated(farm%MD%Input)) then
       call MD_End(farm%MD%Input(1), farm%MD%p, farm%MD%x, farm%MD%xd, farm%MD%z, farm%MD%OtherSt, farm%MD%y, farm%MD%m, ErrStat2, ErrMsg2)
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
       !TODO: any related items need to be cleared?
    end if
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('END:MD:End', tmSer0, tmPar0)
+#endif
    
    
    !.......................................................................................
    ! close output file
    !.......................................................................................
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    call Farm_EndOutput( farm, ErrStat2, ErrMsg2 )
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg,RoutineName)
+#ifdef FF_TIMING_PRINTS
+   call FarmTiming_AddElapsed('END:IO:EndOutput', tmSer0, tmPar0)
+#endif
       
       
    !.......................................................................................
    ! clear all data from 'farm' structure
    !.......................................................................................
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    call Farm_DestroyAll_FastFarm_Data( farm, ErrStat2, ErrMsg2 )
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('END:Farm:DestroyData', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('END', 'Stage', 'Serial', tm2-tm1)
+#endif
    
 end subroutine FARM_End
 !----------------------------------------------------------------------------------------------------------------------------------
