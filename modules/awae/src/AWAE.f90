@@ -2109,7 +2109,6 @@ subroutine AWAE_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, errStat, errMsg
 #ifdef FF_TIMING_PRINTS
    real(DbKi)                                     :: tmSer0, tmPar0
 #endif
-   logical                                        :: WriteWindVTK
 
    errStat = ErrID_None
    errMsg  = ""

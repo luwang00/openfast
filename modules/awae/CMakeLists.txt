@@ -35,6 +35,8 @@ if (AMREX_READER)
   target_sources(awaelib_c PRIVATE src/amrex_utils.cpp)
   target_link_libraries(awaelib_c amrex_3d)
   target_compile_definitions(awaelib PRIVATE ENABLE_AMREX_LIB)
+endif()
+
 if (FASTFARM_TIMING_PRINTS)
   target_compile_definitions(awaelib PRIVATE FF_TIMING_PRINTS)
 endif()
