@@ -2208,6 +2208,7 @@ SUBROUTINE FAST_InitOutput( p_FAST, y_FAST, Init, ErrStat, ErrMsg )
    INTEGER(IntKi)                                :: iRot       ! Rotor index for DO loops.
    INTEGER(IntKi)                                :: indxNext   ! The index of the next value to be written to an array
    INTEGER(IntKi)                                :: NumOuts    ! number of channels to be written to the output file(s)
+   INTEGER(B8Ki)                                 :: AllOutData_bytes ! total bytes required for AllOutData array
    character(10)                                 :: Prefix     ! Output header prefix
 
    !......................................................
@@ -2658,6 +2659,18 @@ SUBROUTINE FAST_InitOutput( p_FAST, y_FAST, Init, ErrStat, ErrMsg )
          ! calculate the size of the array of outputs we need to store
       !IF (p_FAST%CompAeroMaps) y_FAST%NOutSteps = p_FAST%NumTSR * p_FAST%NumPitch
       y_FAST%NOutSteps = CEILING ( (p_FAST%TMax - p_FAST%TStart) / p_FAST%DT_OUT ) + 1
+
+         ! Check that the AllOutData array size will not exceed memory limits
+      AllOutData_bytes = int(NumOuts-1, B8Ki) * int(y_FAST%NOutSteps, B8Ki) * int(BYTES_IN_REAL, B8Ki)
+      IF ( AllOutData_bytes > 2147483647_B8Ki ) THEN  ! 2 GB limit
+         ErrStat = ErrID_Fatal
+         ErrMsg = 'The AllOutData array would require '//TRIM(Num2LStr(AllOutData_bytes))// &
+                  ' bytes of memory ('//TRIM(Num2LStr(AllOutData_bytes/(1024_B8Ki*1024_B8Ki)))//' MB).'// &
+                  ' This exceeds the 2 GB limit for binary output stored in memory.'// &
+                  ' Reduce TMax, increase DT_Out, reduce output channels, or switch to text output (OutFileFmt=1).'// &
+                  ' (NumOutChans='//TRIM(Num2LStr(NumOuts-1))//', NOutSteps='//TRIM(Num2LStr(y_FAST%NOutSteps))//')'
+         RETURN
+      END IF
 
       CALL AllocAry( y_FAST%AllOutData, NumOuts-1, y_FAST%NOutSteps, 'AllOutData', ErrStat, ErrMsg ) ! this does not include the time channel (or case number for steady-state solve)
       IF ( ErrStat >= AbortErrLev ) RETURN
