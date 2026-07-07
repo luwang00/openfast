@@ -272,6 +272,7 @@ subroutine FarmTiming_PrintSummary()
    call FarmTiming_AddParentOthers('ICO:AWAE:CalcOutput1')
    call FarmTiming_AddParentOthers('ICO:AWAE:CalcOutput2')
    call FarmTiming_AddParentOthers('US:AWAE:UpdateStates')
+   call FarmTiming_AddParentOthers('CO:AWAE:UpdateStates')
    call FarmTiming_AddParentOthers('CO:AWAE:CalcOutput')
    call FarmTiming_AddStageOthers('INIT')
    call FarmTiming_AddStageOthers('ICO')
@@ -1540,7 +1541,7 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    INTEGER(IntKi)                          :: n_ss                      
    INTEGER(IntKi)                          :: n_FMD   
    REAL(DbKi)                              :: t2                              ! time within the FAST-MoorDyn substepping loop for shared moorings
-   INTEGER(IntKi)                          :: ErrStatMD, ErrStat2
+   INTEGER(IntKi)                          :: ErrStatMD, ErrStatAWAE, ErrStat2
    CHARACTER(ErrMsgLen)                    :: ErrMsg2
    CHARACTER(ErrMsgLen)                    :: ErrMsgAWAE
    CHARACTER(ErrMsgLen)                    :: ErrMsgMD
@@ -1758,8 +1759,9 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    call FarmTiming_PrintLiveStart('US', 'AWAE_UpdateStates', 'Par')
    call AWAE_SetTimingStage('US:AWAE:UpdateStates')
 #endif
-   call AWAE_UpdateStates( t, n, farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, &
+   call AWAE_UpdateStates( n, farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, &
                      farm%AWAE%OtherSt, farm%AWAE%m, ErrStatAWAE, ErrMsgAWAE )       
+   call SetErrStat(ErrStatAWAE, ErrMsgAWAE, ErrStat, ErrMsg, 'FARM_UpdateStates')  ! AWAE error status
 
 #ifdef FF_TIMING_PRINTS
    tm2 = FarmTiming_WallTime()
@@ -2185,9 +2187,21 @@ subroutine FARM_CalcOutput(t, farm, ErrStat, ErrMsg)
    
       !--------------------
       ! 0. call AWAE_UpdateStates to get the ambient wind and calculate wake-grid interactions
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+   call FarmTiming_PrintLiveStart('CO', 'AWAE_UpdateStates', 'Par')
+   call AWAE_SetTimingStage('CO:AWAE:UpdateStates')
+#endif
    call AWAE_UpdateStates( n, farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, &
                      farm%AWAE%OtherSt, farm%AWAE%m, ErrStat2, ErrMsg2 )    
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+#ifdef FF_TIMING_PRINTS
+   tm2 = FarmTiming_WallTime()
+   call FarmTiming_DrainAWAEDetails()
+   call FarmTiming_AddElapsed('CO:AWAE:UpdateStates', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('CO', 'AWAE_UpdateStates', 'Par', tm2-tmPar0)
+#endif
 
       !--------------------
       ! 1. call AWAE_CO 

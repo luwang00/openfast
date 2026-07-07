@@ -2043,10 +2043,10 @@ subroutine AWAE_UpdateStates(n, u, p, x, xd, z, OtherState, m, errStat, errMsg)
 
    if (p%WAT_Enabled) then
 
-   #ifdef FF_TIMING_PRINTS
+#ifdef FF_TIMING_PRINTS
       call cpu_time(tmSer0)
       tmPar0 = AWAE_WallTime()
-   #endif
+#endif
 
       ! Find mean velocity of all turbine disks
       xd%Ufarm = 0.0_ReKi
@@ -2058,9 +2058,9 @@ subroutine AWAE_UpdateStates(n, u, p, x, xd, z, OtherState, m, errStat, errMsg)
       ! add mean velocity * dt to the tracer for the position of the WAT box
       xd%WAT_B_Box = xd%WAT_B_Box + xd%Ufarm*real(p%dt_low,ReKi)
 
-   #ifdef FF_TIMING_PRINTS
+#ifdef FF_TIMING_PRINTS
       call AWAE_AddStageTiming('PropagateWAT', tmSer0, tmPar0)
-   #endif
+#endif
    endif
 
 contains
@@ -2134,7 +2134,14 @@ subroutine AWAE_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, errStat, errMsg
    !  m%iPlaneTurbTurb(2,p%NumTurbines,p%NumTurbines) (High-res grid)
    !----------------------------------------------------------------------------
 
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = AWAE_WallTime()
+#endif
    call CalcWakePointTurbineGridInteractions(p, m, u)
+#ifdef FF_TIMING_PRINTS
+   call AWAE_AddStageTiming('CalcWakePointTurbineGridInteractions', tmSer0, tmPar0)
+#endif
 
    ! high-res
 #ifdef FF_TIMING_PRINTS
@@ -2159,10 +2166,10 @@ subroutine AWAE_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, errStat, errMsg
 
    ! If it's time to write wind VTK files
    if (WriteWindVTK) then
-   #ifdef FF_TIMING_PRINTS
+#ifdef FF_TIMING_PRINTS
       call cpu_time(tmSer0)
       tmPar0 = AWAE_WallTime()
-   #endif
+#endif
 
       if (p%WrDisWind) then
          call WriteDisWindFiles(n, p%WrDisSkp1, p, y, m, ErrStat2, ErrMsg2)
@@ -2223,9 +2230,9 @@ subroutine AWAE_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, errStat, errMsg
          if (Failed()) return
       end do
 
-      #ifdef FF_TIMING_PRINTS
-         call AWAE_AddStageTiming('WriteDisWind', tmSer0, tmPar0)
-      #endif
+#ifdef FF_TIMING_PRINTS
+      call AWAE_AddStageTiming('WriteDisWind', tmSer0, tmPar0)
+#endif
    end if
 
 contains

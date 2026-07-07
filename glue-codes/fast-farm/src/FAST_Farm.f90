@@ -95,7 +95,15 @@ type(All_FastFarm_Data)               :: farm
    endif
 
    ! Initialize AMReX library
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    call amrex_init(arg_parmparse=.false.)
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmPar1)
+   call FarmTiming_Add('AMREX:Init', tmPar1-tmSer0, FarmTiming_WallTime()-tmPar0)
+#endif
 
    CALL FAST_ProgStart( Farm_Ver ) ! put this after CheckArgs because CheckArgs assumes we haven't called this routine, yet.
    
@@ -213,7 +221,15 @@ type(All_FastFarm_Data)               :: farm
 #endif
 
    ! Finalize AMReX library
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
    call amrex_finalize()
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmPar1)
+   call FarmTiming_Add('AMREX:Finalize', tmPar1-tmSer0, FarmTiming_WallTime()-tmPar0)
+#endif
    
    CALL RunTimes( ProgStrtTime, ProgStrtCPU, SimStrtTime, SimStrtCPU, t )   
 
