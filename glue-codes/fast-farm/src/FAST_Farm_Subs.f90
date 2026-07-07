@@ -2254,6 +2254,10 @@ subroutine FARM_CalcOutput(t, farm, ErrStat, ErrMsg)
    !.......................................................................................
    ! Write shared moorings visualization
    !.......................................................................................
+#ifdef FF_TIMING_PRINTS
+   call cpu_time(tmSer0)
+   tmPar0 = FarmTiming_WallTime()
+#endif
 
    ! Write visualization meshes
    if (farm%p%MooringMod == 3) then
@@ -2277,8 +2281,9 @@ subroutine FARM_CalcOutput(t, farm, ErrStat, ErrMsg)
    endif
 
 #ifdef FF_TIMING_PRINTS
-   call FarmTiming_Add('CO:IO:WriteMooringVis', 0.0_DbKi, 0.0_DbKi)
    tm2 = FarmTiming_WallTime()
+   call FarmTiming_AddElapsed('CO:IO:WriteMooringVis', tmSer0, tmPar0)
+   call FarmTiming_PrintLiveDone('CO', 'WriteMooringVis', 'Serial', tm2-tmPar0)
    call FarmTiming_PrintLiveDone('CO', 'Stage', 'Serial', tm2-tm1)
 #endif
 
