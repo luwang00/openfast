@@ -30,6 +30,7 @@ add_executable(FAST.Farm
 ) 
 target_link_libraries(FAST.Farm openfastlib_static wdlib awaelib)
 if (FASTFARM_TIMING_PRINTS)
+  target_sources(FAST.Farm PRIVATE src/FAST_Farm_timings.f90)
   target_compile_definitions(FAST.Farm PRIVATE FF_TIMING_PRINTS)
 endif()
 set_property(TARGET FAST.Farm PROPERTY LINKER_LANGUAGE Fortran)
