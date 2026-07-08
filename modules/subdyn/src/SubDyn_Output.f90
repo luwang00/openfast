@@ -319,7 +319,7 @@ SUBROUTINE SDOut_MapOutputs(u,p,x, y, m, AllOuts, ErrStat, ErrMsg )
    integer(IntKi)                 :: maxOutModes  ! maximum modes to output, the minimum of 99 or p%nDOFM
    real(ReKi), dimension (6)      :: FK_elm, FK_elm2   ! output elastic forces and moments
    real(ReKi), dimension (6)      :: Fext      ! external forces and moments
-   real(FEKi), dimension (3,3)    :: DIRCOS    ! direction cosice matrix (global to local) (3x3)
+  real(FEKi), dimension (3,3)    :: DIRCOS    ! direction cosine matrix (global to local) (3x3)
    real(ReKi), allocatable        :: ReactNs(:)    ! 6*Nreact reactions
    integer(IntKi)                 :: sgn ! +1/-1 for node force calculations
    type(MeshAuxDataType), pointer :: pLst       !< Info for a given member-output (Alias to shorten notation)
