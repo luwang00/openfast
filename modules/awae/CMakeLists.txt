@@ -38,6 +38,7 @@ if (AMREX_READER)
 endif()
 
 if (FASTFARM_TIMING_PRINTS)
+  target_sources(awaelib PRIVATE src/AWAE_timings.f90)
   target_compile_definitions(awaelib PRIVATE FF_TIMING_PRINTS)
 endif()
 

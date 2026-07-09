@@ -34,6 +34,9 @@ module AWAE
 #ifdef _OPENMP
    use OMP_LIB
 #endif
+#ifdef FF_TIMING_PRINTS
+   use AWAE_Timings
+#endif
 
    implicit none
 
@@ -48,19 +51,16 @@ module AWAE
                                                !   continuous states, and updating discrete states
    public :: AWAE_CalcOutput                     ! Routine for computing outputs
    public :: AWAE_CalcConstrStateResidual        ! Tight coupling routine for returning the constraint state residual
+#ifdef FF_TIMING_PRINTS
+   ! exposing the AWAE_timings module public subroutines for use in FAST.Farm
    public :: AWAE_ResetTiming                    ! Reset compile-time timing accumulators
    public :: AWAE_GetTimingData                  ! Retrieve compile-time timing accumulators
    public :: AWAE_DrainTimingData                ! Retrieve and reset compile-time timing accumulators
    public :: AWAE_SetTimingStage                 ! Set timing label prefix used by AWAE_CalcOutput timing
-
-   integer(IntKi), parameter, public :: AWAE_MaxTimingEntries = 32
-
-#ifdef FF_TIMING_PRINTS
-   integer(IntKi), save              :: AWAE_TimingCount = 0
-   character(128), save              :: AWAE_TimingLabel(AWAE_MaxTimingEntries)
-   real(DbKi), save                  :: AWAE_TimingSerial(AWAE_MaxTimingEntries) = 0.0_DbKi
-   real(DbKi), save                  :: AWAE_TimingPar(AWAE_MaxTimingEntries) = 0.0_DbKi
-   character(64), save               :: AWAE_TimingPrefix = ''
+   public :: AWAE_MaxTimingEntries
+   public :: AWAE_WallTime
+   public :: AWAE_AddTiming
+   public :: AWAE_AddStageTiming
 #endif
 
 
@@ -71,108 +71,6 @@ module AWAE
    public :: AWAE_TEST_Interp2D
 
    contains
-
-subroutine AWAE_SetTimingStage(stage)
-   character(*), intent(in) :: stage
-#ifdef FF_TIMING_PRINTS
-   AWAE_TimingPrefix = stage
-#endif
-end subroutine AWAE_SetTimingStage
-
-subroutine AWAE_ResetTiming()
-#ifdef FF_TIMING_PRINTS
-   AWAE_TimingCount   = 0
-   AWAE_TimingLabel   = ''
-   AWAE_TimingSerial  = 0.0_DbKi
-   AWAE_TimingPar     = 0.0_DbKi
-   AWAE_TimingPrefix  = ''
-#endif
-end subroutine AWAE_ResetTiming
-
-subroutine AWAE_GetTimingData(numEntries, labels, serialTimes, parTimes)
-   integer(IntKi), intent(out) :: numEntries
-   character(*), intent(out)   :: labels(:)
-   real(DbKi), intent(out)     :: serialTimes(:)
-   real(DbKi), intent(out)     :: parTimes(:)
-   integer(IntKi)              :: n, i
-
-   numEntries = 0
-   labels = ''
-   serialTimes = 0.0_DbKi
-   parTimes = 0.0_DbKi
-
-#ifdef FF_TIMING_PRINTS
-   n = min(AWAE_TimingCount, min(size(labels), min(size(serialTimes), size(parTimes))))
-   numEntries = n
-   do i = 1, n
-      labels(i) = AWAE_TimingLabel(i)
-      serialTimes(i) = AWAE_TimingSerial(i)
-      parTimes(i) = AWAE_TimingPar(i)
-   end do
-#endif
-end subroutine AWAE_GetTimingData
-
-subroutine AWAE_DrainTimingData(numEntries, labels, serialTimes, parTimes)
-   integer(IntKi), intent(out) :: numEntries
-   character(*), intent(out)   :: labels(:)
-   real(DbKi), intent(out)     :: serialTimes(:)
-   real(DbKi), intent(out)     :: parTimes(:)
-
-   call AWAE_GetTimingData(numEntries, labels, serialTimes, parTimes)
-#ifdef FF_TIMING_PRINTS
-   AWAE_TimingCount = 0
-   AWAE_TimingLabel = ''
-   AWAE_TimingSerial = 0.0_DbKi
-   AWAE_TimingPar = 0.0_DbKi
-#endif
-end subroutine AWAE_DrainTimingData
-
-#ifdef FF_TIMING_PRINTS
-real(DbKi) function AWAE_WallTime()
-#ifdef _OPENMP
-   AWAE_WallTime = omp_get_wtime()
-#else
-   call cpu_time(AWAE_WallTime)
-#endif
-end function AWAE_WallTime
-
-subroutine AWAE_AddTiming(label, serialDt, parDt)
-   character(*), intent(in) :: label
-   real(DbKi),   intent(in) :: serialDt
-   real(DbKi),   intent(in) :: parDt
-   integer(IntKi)           :: i
-
-   do i = 1, AWAE_TimingCount
-      if (trim(AWAE_TimingLabel(i)) == trim(label)) then
-         AWAE_TimingSerial(i) = AWAE_TimingSerial(i) + serialDt
-         AWAE_TimingPar(i) = AWAE_TimingPar(i) + parDt
-         return
-      end if
-   end do
-
-   if (AWAE_TimingCount < AWAE_MaxTimingEntries) then
-      AWAE_TimingCount = AWAE_TimingCount + 1
-      AWAE_TimingLabel(AWAE_TimingCount) = label
-      AWAE_TimingSerial(AWAE_TimingCount) = serialDt
-      AWAE_TimingPar(AWAE_TimingCount) = parDt
-   end if
-end subroutine AWAE_AddTiming
-
-subroutine AWAE_AddStageTiming(action, serialStart, parStart)
-   character(*), intent(in) :: action
-   real(DbKi),   intent(in) :: serialStart
-   real(DbKi),   intent(in) :: parStart
-   real(DbKi)               :: serialEnd, parEnd
-   character(128)           :: label
-
-   if (len_trim(AWAE_TimingPrefix) == 0) return
-
-   call cpu_time(serialEnd)
-   parEnd = AWAE_WallTime()
-   label = trim(AWAE_TimingPrefix)//':'//trim(action)
-   call AWAE_AddTiming(label, serialEnd-serialStart, parEnd-parStart)
-end subroutine AWAE_AddStageTiming
-#endif
 
 
 subroutine ExtractSlice( sliceType, s, s0, szs, sz1, sz2, ds,  V, slice)
