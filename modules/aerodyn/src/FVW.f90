@@ -1537,8 +1537,8 @@ subroutine FVW_CalcOutput(t, u, p, x, xd, z, OtherState, y, m, ErrStat, ErrMsg)
    end if
 
    ! --- Export to VTK
-   if (m%VTKstep==-1) then 
-       ! Has never been called, special handling for init
+   if (m%FirstCall) then 
+      ! First call ever (t=0), special handling for init
       call WriteVTKOutputs(t, .False., 0        , u, p, x, z, m, ErrStat2, ErrMsg2)
    else
       call WriteVTKOutputs(t, .False., m%iStep+1, u, p, x, z, m, ErrStat2, ErrMsg2)
