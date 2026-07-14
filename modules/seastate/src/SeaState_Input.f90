@@ -1042,10 +1042,6 @@ subroutine SeaStateInput_ProcessInitData( InitInp, p, InputFileData, ErrStat, Er
       InputFileData%Current%CurrDIDir = 0.0
       InputFileData%Current%CurrFile  = ''
 
-      if (allocated(InputFileData%Current%UsrCurrProfileDepth)) deallocate(InputFileData%Current%UsrCurrProfileDepth)
-      if (allocated(InputFileData%Current%UsrCurrProfileVxi  )) deallocate(InputFileData%Current%UsrCurrProfileVxi)
-      if (allocated(InputFileData%Current%UsrCurrProfileVyi  )) deallocate(InputFileData%Current%UsrCurrProfileVyi)
-
    end if
 
    if ( InputFileData%Current%CurrMod == 0 .and. .not. InitInp%hasCurrField ) then  ! No current

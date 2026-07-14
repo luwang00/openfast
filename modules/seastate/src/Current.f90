@@ -105,7 +105,7 @@ SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
 
       NRows = 0
       LineNum = 0
-   DataStarted = .false.
+      DataStarted = .false.
       do
          read( UnIn, '(A)', IOSTAT=IOS ) Line
          LineNum = LineNum + 1
@@ -240,9 +240,6 @@ SUBROUTINE CurrentProfileAtDepth( QueryDepth, UsrCurrProfileDepth, UsrCurrProfil
          end if
       end do
 
-      CurrVxi = UsrCurrProfileVxi(NProfileRows)
-      CurrVyi = UsrCurrProfileVyi(NProfileRows)
-
 END SUBROUTINE CurrentProfileAtDepth
       
       
@@ -277,8 +274,6 @@ SUBROUTINE Calc_Current( InitInp, z, h , DirRoot, CurrVxi, CurrVyi )
 
       REAL(ReKi)                           :: CurrSSV         ! Magnitude of sub -surface current velocity at elevation z (m/s)
       REAL(ReKi)                           :: CurrNSV         ! Magnitude of near-surface current velocity at elevation z (m/s)
-      REAL(SiKi)                           :: CurrVxi3        ! x-velocity of user-defined current at depth z (m/s)
-      REAL(SiKi)                           :: CurrVyi3        ! y-velocity of user-defined current at depth z (m/s)
 
 
 
@@ -324,9 +319,7 @@ SUBROUTINE Calc_Current( InitInp, z, h , DirRoot, CurrVxi, CurrVyi )
          CASE ( 3 )              ! User-defined current profile from ASCII file.
 
             CALL CurrentProfileAtDepth( -z, InitInp%UsrCurrProfileDepth, InitInp%UsrCurrProfileVxi, InitInp%UsrCurrProfileVyi, &
-                                        CurrVxi3, CurrVyi3 )
-            CurrVxi = CurrVxi3
-            CurrVyi = CurrVyi3
+                                        CurrVxi, CurrVyi )
 
          ENDSELECT
 
