@@ -2509,6 +2509,7 @@ class InputReader_OpenFAST(object):
         self.fst_vt['SeaState']['CurrNSDir']     = float_read(f.readline().split()[0])
         self.fst_vt['SeaState']['CurrDIV']       = float_read(f.readline().split()[0])
         self.fst_vt['SeaState']['CurrDIDir']     = float_read(f.readline().split()[0])
+        self.fst_vt['SeaState']['CurrFile']      = quoted_read(f.readline().split()[0])
 
         # MacCamy-Fuchs Diffraction Model
         f.readline()
