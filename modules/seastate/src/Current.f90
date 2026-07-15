@@ -72,11 +72,12 @@ END SUBROUTINE UserCurrent
 !> Read and validate user-defined current profile data from an ASCII file.
 SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
 
+      IMPLICIT NONE
+
       CHARACTER(*),                  INTENT(IN   ) :: CurrFile
       TYPE(Current_InitInputType),   INTENT(INOUT) :: CurrentData
       INTEGER(IntKi),                INTENT(  OUT) :: ErrStat
       CHARACTER(*),                  INTENT(  OUT) :: ErrMsg
-
       INTEGER(IntKi)                               :: UnIn
       INTEGER(IntKi)                               :: IOS
       INTEGER(IntKi)                               :: NRows
