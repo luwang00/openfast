@@ -558,11 +558,11 @@ This current has a heading direction **CurrDIDir**, following the same
 convention as **WaveDir**.
 
 For **CurrMod** = 3, SeaState reads an ASCII file with three columns:
-depth in meters positive downward from SWL, x-velocity in m/s, and
-y-velocity in m/s. Depth values must be strictly increasing. SeaState
-linearly interpolates the x- and y-velocity components separately by depth,
-and uses the nearest endpoint value when the query depth lies outside the
-range covered by the table.
+depth in meters negative downward from SWL, x-velocity in m/s, and
+y-velocity in m/s. Depth values less than or equal to zero must be strictly
+decreasing. SeaState linearly interpolates the x- and y-velocity components
+separately by depth, and uses the nearest endpoint value when the query
+depth lies outside the range covered by the table.
 
 MacCamy-Fuchs diffraction model
 -------------------------------

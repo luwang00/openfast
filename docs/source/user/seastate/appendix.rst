@@ -62,7 +62,7 @@ structure::
                    0   CurrNSDir      - Near-surface current heading direction         (degrees) [used only when CurrMod=1]
                    0   CurrDIV        - Depth-independent current velocity                 (m/s) [used only when CurrMod=1]
                    0   CurrDIDir      - Depth-independent current heading direction    (degrees) [used only when CurrMod=1]
-            "unused"   CurrFile       - User-defined current profile file (ASCII depth below SWL, x-velocity, y-velocity table) [used only when CurrMod=3]
+            "unused"   CurrFile       - User-defined current profile file (ASCII depth below SWL (<=0), x-velocity, y-velocity table) [used only when CurrMod=3]
       ---------------------- MacCamy-Fuchs diffraction model -------------------------
                    0   MCFD           - MacCamy-Fuchs member radius (ignored if radius <= 0) [must be 0 when WaveMod 0 or 6] 
       ---------------------- OUTPUT --------------------------------------------------
