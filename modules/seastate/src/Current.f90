@@ -99,9 +99,8 @@ SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
       if (allocated(CurrentData%UsrCurrProfileVxi  )) deallocate(CurrentData%UsrCurrProfileVxi)
       if (allocated(CurrentData%UsrCurrProfileVyi  )) deallocate(CurrentData%UsrCurrProfileVyi)
 
-      call OpenFInpFile( UnIn, TRIM(CurrFile), ErrStat2, ErrMsg2 )
-      call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
-      if ( ErrStat >= AbortErrLev ) return
+      call GetNewUnit( UnIn )
+      call OpenFInpFile( UnIn, TRIM(CurrFile), ErrStat2, ErrMsg2 ); if (Failed()) return
 
       NRows = 0
       LineNum = 0
@@ -112,6 +111,7 @@ SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
          if ( IOS < 0 ) exit
          if ( IOS /= 0 ) then
             call SetErrStat( ErrID_Fatal, 'Error reading current profile file '//TRIM(CurrFile)//' at line '//TRIM(Num2LStr(LineNum))//'.', ErrStat, ErrMsg, RoutineName )
+            call CleanUp()
             return
          end if
 
@@ -122,6 +122,7 @@ SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
          if ( ErrStat2 >= AbortErrLev .or. LEN_TRIM(ErrMsg2) > 0 ) then
             if ( .not. DataStarted ) cycle
             call SetErrStat( ErrID_Fatal, 'Invalid current profile data at line '//TRIM(Num2LStr(LineNum))//' in file '//TRIM(CurrFile)//'. '//TRIM(ErrMsg2), ErrStat, ErrMsg, RoutineName )
+            call CleanUp()
             return
          end if
 
@@ -131,26 +132,20 @@ SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
 
       if ( NRows <= 0 ) then
          call SetErrStat( ErrID_Fatal, 'Current profile file '//TRIM(CurrFile)//' contains no data rows.', ErrStat, ErrMsg, RoutineName )
+         call CleanUp()
          return
       end if
 
       rewind( UnIn, IOSTAT=IOS )
       if ( IOS /= 0 ) then
          call SetErrStat( ErrID_Fatal, 'Error rewinding current profile file '//TRIM(CurrFile)//'.', ErrStat, ErrMsg, RoutineName )
+         call CleanUp()
          return
       end if
 
-      call AllocAry( CurrentData%UsrCurrProfileDepth, NRows, 'UsrCurrProfileDepth', ErrStat2, ErrMsg2 )
-      call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
-      if ( ErrStat >= AbortErrLev ) return
-
-      call AllocAry( CurrentData%UsrCurrProfileVxi, NRows, 'UsrCurrProfileVxi', ErrStat2, ErrMsg2 )
-      call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
-      if ( ErrStat >= AbortErrLev ) return
-
-      call AllocAry( CurrentData%UsrCurrProfileVyi, NRows, 'UsrCurrProfileVyi', ErrStat2, ErrMsg2 )
-      call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
-      if ( ErrStat >= AbortErrLev ) return
+      call AllocAry( CurrentData%UsrCurrProfileDepth, NRows, 'UsrCurrProfileDepth', ErrStat2, ErrMsg2 ); if (Failed()) return
+      call AllocAry( CurrentData%UsrCurrProfileVxi, NRows, 'UsrCurrProfileVxi', ErrStat2, ErrMsg2 ); if (Failed()) return
+      call AllocAry( CurrentData%UsrCurrProfileVyi, NRows, 'UsrCurrProfileVyi', ErrStat2, ErrMsg2 ); if (Failed()) return
 
       RowIdx = 0
       LineNum = 0
@@ -162,6 +157,7 @@ SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
          if ( IOS < 0 ) exit
          if ( IOS /= 0 ) then
             call SetErrStat( ErrID_Fatal, 'Error reading current profile file '//TRIM(CurrFile)//' at line '//TRIM(Num2LStr(LineNum))//'.', ErrStat, ErrMsg, RoutineName )
+            call CleanUp()
             return
          end if
 
@@ -172,6 +168,7 @@ SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
          if ( ErrStat2 >= AbortErrLev .or. LEN_TRIM(ErrMsg2) > 0 ) then
             if ( .not. DataStarted ) cycle
             call SetErrStat( ErrID_Fatal, 'Invalid current profile data at line '//TRIM(Num2LStr(LineNum))//' in file '//TRIM(CurrFile)//'. '//TRIM(ErrMsg2), ErrStat, ErrMsg, RoutineName )
+            call CleanUp()
             return
          end if
 
@@ -181,12 +178,14 @@ SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
 
          if ( Depth < 0.0_SiKi ) then
             call SetErrStat( ErrID_Fatal, 'Current profile depth must be non-negative at line '//TRIM(Num2LStr(LineNum))//' in file '//TRIM(CurrFile)//'.', ErrStat, ErrMsg, RoutineName )
+            call CleanUp()
             return
          end if
 
          if ( RowIdx > 1 ) then
             if ( Depth <= PrevDepth ) then
                call SetErrStat( ErrID_Fatal, 'Current profile depths must be strictly increasing at line '//TRIM(Num2LStr(LineNum))//' in file '//TRIM(CurrFile)//'.', ErrStat, ErrMsg, RoutineName )
+               call CleanUp()
                return
             end if
          end if
@@ -196,6 +195,23 @@ SUBROUTINE ReadUsrCurrentProfile( CurrFile, CurrentData, ErrStat, ErrMsg )
          CurrentData%UsrCurrProfileVyi(RowIdx)   = TmpRow(3)
          PrevDepth = Depth
       end do
+
+      close( UnIn )
+
+contains
+
+   logical function Failed()
+      call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+      Failed = ErrStat >= AbortErrLev
+      if (Failed) call CleanUp()
+   end function
+
+   subroutine CleanUp
+      close( UnIn )
+      if (allocated(CurrentData%UsrCurrProfileDepth)) deallocate(CurrentData%UsrCurrProfileDepth)
+      if (allocated(CurrentData%UsrCurrProfileVxi  )) deallocate(CurrentData%UsrCurrProfileVxi)
+      if (allocated(CurrentData%UsrCurrProfileVyi  )) deallocate(CurrentData%UsrCurrProfileVyi)
+   end subroutine CleanUp
 
 END SUBROUTINE ReadUsrCurrentProfile
 
