@@ -519,6 +519,11 @@ SUBROUTINE FAST_InitializeAll( t_initial, m_Glue, p_FAST, y_FAST, m_FAST, ED, SE
          Init%InData_IfW%RadAvg = Init%InData_IfW%RadAvg / p_FAST%NumBD
       end select
 
+      ! MHK: shift hub position from MSL frame to seabed frame for InflowWind
+      if (p_FAST%MHK /= MHK_None) then
+         Init%InData_IfW%HubPosition(3) = Init%InData_IfW%HubPosition(3) + p_FAST%WtrDpth
+      end if
+
       IF (PRESENT(ExternInitData)) THEN
          Init%InData_IfW%Use4Dext = ExternInitData%FarmIntegration
 
