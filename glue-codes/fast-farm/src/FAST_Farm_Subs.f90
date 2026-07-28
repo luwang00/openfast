@@ -1297,7 +1297,7 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    INTEGER(IntKi)                          :: n_ss                      
    INTEGER(IntKi)                          :: n_FMD   
    REAL(DbKi)                              :: t2                              ! time within the FAST-MoorDyn substepping loop for shared moorings
-   INTEGER(IntKi)                          :: ErrStatMD, ErrStatAWAE, ErrStat2
+   INTEGER(IntKi)                          :: ErrStatMD, ErrStat2
    CHARACTER(ErrMsgLen)                    :: ErrMsg2
    CHARACTER(ErrMsgLen)                    :: ErrMsgAWAE
    CHARACTER(ErrMsgLen)                    :: ErrMsgMD
@@ -1507,29 +1507,6 @@ subroutine FARM_UpdateStates(t, n, farm, ErrStat, ErrMsg)
    !#ifdef printthreads   
    !  tm2 = omp_get_wtime()
    !  write(*,*) 'Total FAST and Moordyn for FF_US took '//trim(num2lstr(tm2-tm1))//' seconds.'
-   !#endif 
-
-#ifdef FF_TIMING_PRINTS
-   call cpu_time(tmSer0)
-   tmPar0 = FarmTiming_WallTime()
-   call FarmTiming_PrintLiveStart('US', 'AWAE_UpdateStates', 'Par')
-   call AWAE_SetTimingStage('US:AWAE:UpdateStates')
-#endif
-   call AWAE_UpdateStates( n, farm%AWAE%u, farm%AWAE%p, farm%AWAE%x, farm%AWAE%xd, farm%AWAE%z, &
-                     farm%AWAE%OtherSt, farm%AWAE%m, ErrStatAWAE, ErrMsgAWAE )       
-   call SetErrStat(ErrStatAWAE, ErrMsgAWAE, ErrStat, ErrMsg, 'FARM_UpdateStates')  ! AWAE error status
-
-#ifdef FF_TIMING_PRINTS
-   tm2 = FarmTiming_WallTime()
-   call FarmTiming_DrainAWAEDetails()
-   call FarmTiming_AddElapsed('US:AWAE:UpdateStates', tmSer0, tmPar0)
-   call FarmTiming_PrintLiveDone('US', 'AWAE_UpdateStates', 'Par', tm2-tmPar0)
-#endif
-
-   !#ifdef printthreads   
-   !  tm3 = omp_get_wtime()
-   !  write(*,*) 'AWAE_US took '//trim(num2lstr(tm3-tm2))//' seconds.'
-   !  write(*,*) 'Total Farm_US took '//trim(num2lstr(tm3-tm1))//' seconds.'
    !#endif 
    
    ! update error messages from FAST's and AWAE's time steps
