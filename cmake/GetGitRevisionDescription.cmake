@@ -137,7 +137,8 @@ function(git_describe _var)
 				WORKING_DIRECTORY
 				"${CMAKE_CURRENT_SOURCE_DIR}"
 				RESULT_VARIABLE
-				res_dirty)
+				res_dirty
+				ERROR_QUIET)
 			if(res_dirty EQUAL 0)
 				set(out "${out_hash}")
 			else()
