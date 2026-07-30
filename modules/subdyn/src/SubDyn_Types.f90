@@ -46,9 +46,9 @@ IMPLICIT NONE
     INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: NodeIDs      !< Node IDs associated with ordinal numbers for the output member [-]
     INTEGER(IntKi) , DIMENSION(:,:), ALLOCATABLE  :: ElmIDs      !< Element IDs connected to each NodeIDs; max 10 elements [-]
     INTEGER(IntKi) , DIMENSION(:,:), ALLOCATABLE  :: ElmNds      !< Flag to indicate 1st or 2nd node of element for each ElmIDs [-]
-    REAL(R8Ki) , DIMENSION(:,:,:,:), ALLOCATABLE  :: Me      !< Mass matrix connected to each joint element for outAll output [-]
     REAL(R8Ki) , DIMENSION(:,:,:,:), ALLOCATABLE  :: Ke      !< Mass matrix connected to each joint element for outAll output [-]
     REAL(R8Ki) , DIMENSION(:,:,:), ALLOCATABLE  :: Fg      !< Gravity load vector connected to each joint element for requested member output [-]
+    LOGICAL , DIMENSION(:), ALLOCATABLE  :: extrap      !< Whether to extrapolate force; true for member end nodes if member has more than 1 element [-]
   END TYPE MeshAuxDataType
 ! =======================
 ! =========  CB_MatArrays  =======
@@ -546,18 +546,6 @@ subroutine SD_CopyMeshAuxDataType(SrcMeshAuxDataTypeData, DstMeshAuxDataTypeData
       end if
       DstMeshAuxDataTypeData%ElmNds = SrcMeshAuxDataTypeData%ElmNds
    end if
-   if (allocated(SrcMeshAuxDataTypeData%Me)) then
-      LB(1:4) = lbound(SrcMeshAuxDataTypeData%Me)
-      UB(1:4) = ubound(SrcMeshAuxDataTypeData%Me)
-      if (.not. allocated(DstMeshAuxDataTypeData%Me)) then
-         allocate(DstMeshAuxDataTypeData%Me(LB(1):UB(1),LB(2):UB(2),LB(3):UB(3),LB(4):UB(4)), stat=ErrStat2)
-         if (ErrStat2 /= 0) then
-            call SetErrStat(ErrID_Fatal, 'Error allocating DstMeshAuxDataTypeData%Me.', ErrStat, ErrMsg, RoutineName)
-            return
-         end if
-      end if
-      DstMeshAuxDataTypeData%Me = SrcMeshAuxDataTypeData%Me
-   end if
    if (allocated(SrcMeshAuxDataTypeData%Ke)) then
       LB(1:4) = lbound(SrcMeshAuxDataTypeData%Ke)
       UB(1:4) = ubound(SrcMeshAuxDataTypeData%Ke)
@@ -582,6 +570,18 @@ subroutine SD_CopyMeshAuxDataType(SrcMeshAuxDataTypeData, DstMeshAuxDataTypeData
       end if
       DstMeshAuxDataTypeData%Fg = SrcMeshAuxDataTypeData%Fg
    end if
+   if (allocated(SrcMeshAuxDataTypeData%extrap)) then
+      LB(1:1) = lbound(SrcMeshAuxDataTypeData%extrap)
+      UB(1:1) = ubound(SrcMeshAuxDataTypeData%extrap)
+      if (.not. allocated(DstMeshAuxDataTypeData%extrap)) then
+         allocate(DstMeshAuxDataTypeData%extrap(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstMeshAuxDataTypeData%extrap.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstMeshAuxDataTypeData%extrap = SrcMeshAuxDataTypeData%extrap
+   end if
 end subroutine
 
 subroutine SD_DestroyMeshAuxDataType(MeshAuxDataTypeData, ErrStat, ErrMsg)
@@ -603,14 +603,14 @@ subroutine SD_DestroyMeshAuxDataType(MeshAuxDataTypeData, ErrStat, ErrMsg)
    if (allocated(MeshAuxDataTypeData%ElmNds)) then
       deallocate(MeshAuxDataTypeData%ElmNds)
    end if
-   if (allocated(MeshAuxDataTypeData%Me)) then
-      deallocate(MeshAuxDataTypeData%Me)
-   end if
    if (allocated(MeshAuxDataTypeData%Ke)) then
       deallocate(MeshAuxDataTypeData%Ke)
    end if
    if (allocated(MeshAuxDataTypeData%Fg)) then
       deallocate(MeshAuxDataTypeData%Fg)
+   end if
+   if (allocated(MeshAuxDataTypeData%extrap)) then
+      deallocate(MeshAuxDataTypeData%extrap)
    end if
 end subroutine
 
@@ -625,9 +625,9 @@ subroutine SD_PackMeshAuxDataType(RF, Indata)
    call RegPackAlloc(RF, InData%NodeIDs)
    call RegPackAlloc(RF, InData%ElmIDs)
    call RegPackAlloc(RF, InData%ElmNds)
-   call RegPackAlloc(RF, InData%Me)
    call RegPackAlloc(RF, InData%Ke)
    call RegPackAlloc(RF, InData%Fg)
+   call RegPackAlloc(RF, InData%extrap)
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -645,9 +645,9 @@ subroutine SD_UnPackMeshAuxDataType(RF, OutData)
    call RegUnpackAlloc(RF, OutData%NodeIDs); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%ElmIDs); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%ElmNds); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpackAlloc(RF, OutData%Me); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%Ke); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%Fg); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%extrap); if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
 subroutine SD_CopyCB_MatArrays(SrcCB_MatArraysData, DstCB_MatArraysData, CtrlCode, ErrStat, ErrMsg)
