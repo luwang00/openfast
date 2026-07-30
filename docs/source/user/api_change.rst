@@ -9,6 +9,22 @@ The changes are tabulated according to the module input file, line number, and f
 The line number corresponds to the resulting line number after all changes are implemented.
 Thus, be sure to implement each in order so that subsequent line numbers are correct.
 
+OpenFAST v5.0.x to OpenFAST  v5.1.0
+-----------------------------------
+
+Under-relaxation is introduced for the tight-coupling iterative solver to improve numerical stability, requiring two new inputs in the main OpenFAST input file.
+
+============================================= ======== ==================== ==========================================================================================================================================================================================================================================================================================================
+Added in OpenFAST `5.1.0`
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Module                                        Line     Flag Name            Example Value
+============================================= ======== ==================== ==========================================================================================================================================================================================================================================================================================================
+OpenFAST                                      14       AutoRelax            default  AutoRelax   - Adaptive under-relaxation for the tight-coupling iterative solver (flag) [default=true]
+OpenFAST                                      15       RelaxFactor          default  RelaxFactor - Constant or initial (if AutoRelax) under-relaxation factor for the tight-coupling iterative solver (-) [>0 and <=1; default=0.7 if AutoRelax=false; default=0.3 if AutoRelax=true]
+HydroDyn                                      28       FKMod                      0  FKMod       - Nonlinear Froude-Krylov and hydrostatic load model {0: none, 1: nonlinear F-K and hydrostatics} (switch) [1 to NBody if NBodyMod>1; only used when PotMod=1; must provide GeoFile if FKMod=1]
+HydroDyn                                      29       GeoFile              "unused" GeoFile     - Full name(s) of geometry file (ASCII STL format) for nonlinear Froude-Krylov and hydrostatic load integration [1 to NBody; only used when PotMod=1 and when the corresponding FKMod=1]
+============================================= ======== ==================== ==========================================================================================================================================================================================================================================================================================================
+
 OpenFAST v4.2.x to OpenFAST  v5.0.0
 -----------------------------------
 
