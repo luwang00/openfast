@@ -4790,24 +4790,6 @@ end function Rad2M180to180Deg
    
    
    END FUNCTION Quaternion_Product   
-!=======================================================================  
-!> This function converts a direction cosine matrix to an equivalent quaternion.
-   FUNCTION DCM_to_Quaternion(DCM)
-
-      ! "'Interpolation' of DCMs", M.A. Sprague, 11 March 2014, Eq. 18-21
-   
-   REAL(ReKi)      , INTENT(IN)    :: DCM (3,3)          !< direction cosine matrix
-   TYPE(Quaternion)                :: DCM_to_Quaternion  !< equivalent quaternion      
-   
-         
-   DCM_to_Quaternion%q0   =      0.5_ReKi * sqrt( 1.0_ReKi + DCM(1,1) + DCM(2,2) + DCM(3,3) )                         ! Eq. 18
-   DCM_to_Quaternion%v(1) = sign(0.5_ReKi * sqrt( 1.0_ReKi + DCM(1,1) - DCM(2,2) - DCM(3,3) ) , DCM(2,3) - DCM(3,2) ) ! Eq. 19
-   DCM_to_Quaternion%v(2) = sign(0.5_ReKi * sqrt( 1.0_ReKi - DCM(1,1) + DCM(2,2) - DCM(3,3) ) , DCM(3,1) - DCM(1,3) ) ! Eq. 20
-   DCM_to_Quaternion%v(3) = sign(0.5_ReKi * sqrt( 1.0_ReKi - DCM(1,1) - DCM(2,2) + DCM(3,3) ) , DCM(1,2) - DCM(2,1) ) ! Eq. 21
-
-   
-   
-   END FUNCTION DCM_to_Quaternion
 !=======================================================================         
 !> This function computes the interpolated quaternion at time
 !! t1 + s*(t2-t1) and s is in [0,1]
