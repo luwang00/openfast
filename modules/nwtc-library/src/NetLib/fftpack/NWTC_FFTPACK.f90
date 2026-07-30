@@ -89,6 +89,8 @@ MODULE NWTC_FFTPACK
    INTEGER, PARAMETER, PRIVATE         :: COS_trans     = 1             ! COSINE transformation
    INTEGER, PARAMETER, PRIVATE         :: Fourier_trans = 2             ! FAST FOURIER transformation
    INTEGER, PARAMETER, PRIVATE         :: SIN_trans     = 3             ! SINE transformation
+   INTEGER, PARAMETER, PRIVATE         :: Fourier2D_trans = 4           ! 2D FAST FOURIER transformation
+   INTEGER, PARAMETER, PRIVATE         :: CFourier2D_trans = 5          ! 2D complex FAST FOURIER transformation
 
    TYPE, PUBLIC :: FFT_DataType
       PRIVATE
@@ -99,6 +101,17 @@ MODULE NWTC_FFTPACK
       LOGICAL                          :: Normalize     = .FALSE.       ! Whether or not to normalize
       INTEGER                          :: TransformType = Undef_trans   ! the type of transfer function this is for
    END TYPE FFT_DataType      
+
+   TYPE, PUBLIC :: FFT2D_DataType
+      PRIVATE
+      REAL(SiKi)                       :: InvN          = 0.0_SiKi      ! Normalization constant = 1/(L*M)
+      REAL(SiKi), ALLOCATABLE          :: wSave(:)                      ! Trig/factor table for FFTPACK 5.1
+      INTEGER                          :: L             = -1            ! Number of rows
+      INTEGER                          :: M             = -1            ! Number of columns
+      INTEGER                          :: LenWork       = 0             ! Required scratch workspace size
+      LOGICAL                          :: Normalize     = .FALSE.       ! Whether or not to normalize
+      INTEGER                          :: TransformType = Undef_trans   ! the type of transfer function this is for
+   END TYPE FFT2D_DataType
 
 
 !------------------------------------------------------------------------
@@ -885,6 +898,319 @@ CONTAINS
       
 
    END SUBROUTINE InitSINT
+  !------------------------------------------------------------------------
+  !------------------------------------------------------------------------
+  ! 2D FFT ROUTINES
+  !------------------------------------------------------------------------
+  !------------------------------------------------------------------------
+  ! DESCRIPTION OF THE 2D REAL FOURIER TRANSFORM:
+  !
+  ! Given a real L x M array R, RFFT2F computes the normalized 2D DFT.
+  ! The output is stored in a packed format in the same L x M array.
+  ! RFFT2B computes the inverse, recovering the original signal exactly.
+  !
+  ! Forward * Backward = Identity (FFTPACK 5.1 normalizes internally)
+  ! With NormalizeIn=.TRUE., each call additionally divides by L*M.
+  !------------------------------------------------------------------------
+  ! DESCRIPTION OF THE 2D COMPLEX FOURIER TRANSFORM:
+  !
+  ! Given a complex L x M array C, CFFT2F computes the normalized 2D DFT.
+  ! CFFT2B computes the inverse, recovering the original signal exactly.
+  !
+  ! Forward * Backward = Identity (FFTPACK 5.1 normalizes internally)
+  ! With NormalizeIn=.TRUE., each call additionally divides by L*M.
+  !------------------------------------------------------------------------
+
+   SUBROUTINE InitFFT2D( L, M, FFT_Data, NormalizeIn, ErrStat )
+
+      IMPLICIT                         NONE
+
+      INTEGER, INTENT(IN)           :: L              ! Number of rows
+      INTEGER, INTENT(IN)           :: M              ! Number of columns
+      INTEGER                       :: Sttus
+      INTEGER                       :: IER
+      INTEGER                       :: LenSav
+      INTEGER                       :: LenWrk
+
+      TYPE(FFT2D_DataType),INTENT(OUT) :: FFT_Data
+      LOGICAL, INTENT(IN), OPTIONAL :: NormalizeIn
+      INTEGER, INTENT(OUT),OPTIONAL :: ErrStat
+
+
+      IF ( PRESENT(ErrStat) ) ErrStat = ErrID_None
+
+      FFT_Data%L = L
+      FFT_Data%M = M
+
+      IF ( PRESENT( NormalizeIn ) ) THEN
+          FFT_Data%Normalize = NormalizeIn
+          FFT_Data%InvN      = 1.0_SiKi / REAL(L*M, SiKi)
+      ELSE
+          FFT_Data%Normalize = .FALSE.
+      ENDIF
+
+      ! RFFT2I requires: L+log2(L)+4 + 2*M+log2(M)+4 + M+log2(M)+4
+      LenSav = L + INT(LOG(REAL(L, SiKi))/LOG(2.0_SiKi)) + 4 &
+             + 2*M + INT(LOG(REAL(M, SiKi))/LOG(2.0_SiKi)) + 4 &
+             + M + INT(LOG(REAL(M, SiKi))/LOG(2.0_SiKi)) + 4
+      LenWrk = (L+1)*M
+
+      ALLOCATE ( FFT_Data%wSave(LenSav), STAT=Sttus )
+
+      IF ( Sttus /= 0 ) THEN
+         CALL ProgAbort ( 'Error allocating memory for the 2D FFT working array.', PRESENT(ErrStat) )
+         IF ( PRESENT(ErrStat) ) ErrStat = ErrID_Fatal
+         RETURN
+      ENDIF
+
+      FFT_Data%LenWork = LenWrk
+
+      CALL RFFT2I(L, M, FFT_Data%wSave, LenSav, IER)
+
+      FFT_Data%TransformType = Fourier2D_trans
+
+   END SUBROUTINE InitFFT2D
+  !------------------------------------------------------------------------
+   SUBROUTINE ApplyFFT2D( R, FFT_Data, ErrStat )
+         ! Perform backward 2D real FFT: spectral -> spatial.
+         ! Recovers original signal exactly (internally normalized).
+
+      IMPLICIT                         NONE
+
+      REAL(SiKi), INTENT(INOUT)     :: R(:,:)
+      TYPE(FFT2D_DataType), INTENT(IN) :: FFT_Data
+      INTEGER, INTENT(OUT), OPTIONAL:: ErrStat
+
+      REAL(SiKi)                    :: wWork(FFT_Data%LenWork)
+      INTEGER                       :: IER
+      LOGICAL                       :: TrapErrors
+
+
+      IF ( PRESENT(ErrStat) ) THEN
+         TrapErrors = .TRUE.
+         ErrStat = ErrID_None
+      ELSE
+         TrapErrors = .FALSE.
+      END IF
+
+      IF ( SIZE(R,1) < FFT_Data%L .OR. SIZE(R,2) < FFT_Data%M ) THEN
+          CALL ProgAbort( 'Error in call to 2D FFT. Array size is not large enough.', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
+
+      IF ( FFT_Data%TransformType /= Fourier2D_trans ) THEN
+          CALL ProgAbort( 'Error in call to 2D FFT. FFT_Data not initialized for 2D Fourier transform.', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
+
+      CALL RFFT2B(SIZE(R,1), FFT_Data%L, FFT_Data%M, R, FFT_Data%wSave, SIZE(FFT_Data%wSave), &
+                  wWork, FFT_Data%LenWork, IER)
+
+      IF (FFT_Data%Normalize) THEN
+          R(1:FFT_Data%L, 1:FFT_Data%M) = FFT_Data%InvN * R(1:FFT_Data%L, 1:FFT_Data%M)
+      ENDIF
+
+   END SUBROUTINE ApplyFFT2D
+  !------------------------------------------------------------------------
+   SUBROUTINE ApplyFFT2D_f( R, FFT_Data, ErrStat )
+         ! Perform forward 2D real FFT: spatial -> spectral.
+
+      IMPLICIT                         NONE
+
+      REAL(SiKi), INTENT(INOUT)     :: R(:,:)
+      TYPE(FFT2D_DataType), INTENT(IN) :: FFT_Data
+      INTEGER, INTENT(OUT), OPTIONAL:: ErrStat
+
+      REAL(SiKi)                    :: wWork(FFT_Data%LenWork)
+      INTEGER                       :: IER
+      LOGICAL                       :: TrapErrors
+
+
+      IF ( PRESENT(ErrStat) ) THEN
+         TrapErrors = .TRUE.
+         ErrStat = ErrID_None
+      ELSE
+         TrapErrors = .FALSE.
+      END IF
+
+      IF ( SIZE(R,1) < FFT_Data%L .OR. SIZE(R,2) < FFT_Data%M ) THEN
+          CALL ProgAbort( 'Error in call to 2D FFT. Array size is not large enough.', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
+
+      IF ( FFT_Data%TransformType /= Fourier2D_trans ) THEN
+          CALL ProgAbort( 'Error in call to 2D FFT. FFT_Data not initialized for 2D Fourier transform.', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
+
+      CALL RFFT2F(SIZE(R,1), FFT_Data%L, FFT_Data%M, R, FFT_Data%wSave, SIZE(FFT_Data%wSave), &
+                  wWork, FFT_Data%LenWork, IER)
+
+      IF (FFT_Data%Normalize) THEN
+          R(1:FFT_Data%L, 1:FFT_Data%M) = FFT_Data%InvN * R(1:FFT_Data%L, 1:FFT_Data%M)
+      ENDIF
+
+   END SUBROUTINE ApplyFFT2D_f
+  !------------------------------------------------------------------------
+   SUBROUTINE ExitFFT2D(FFT_Data, ErrStat)
+
+      TYPE(FFT2D_DataType), INTENT(INOUT) :: FFT_Data
+      INTEGER, INTENT(OUT), OPTIONAL :: ErrStat
+
+      IF ( PRESENT(ErrStat) ) ErrStat = ErrID_None
+
+      IF ( ALLOCATED(FFT_Data%wSave) ) DEALLOCATE( FFT_Data%wSave )
+
+   END SUBROUTINE ExitFFT2D
+  !------------------------------------------------------------------------
+   SUBROUTINE InitCFFT2D( L, M, FFT_Data, NormalizeIn, ErrStat )
+
+      IMPLICIT                         NONE
+
+      INTEGER, INTENT(IN)           :: L              ! Number of rows
+      INTEGER, INTENT(IN)           :: M              ! Number of columns
+      INTEGER                       :: Sttus
+      INTEGER                       :: IER
+      INTEGER                       :: LenSav
+      INTEGER                       :: LenWrk
+
+      TYPE(FFT2D_DataType),INTENT(OUT) :: FFT_Data
+      LOGICAL, INTENT(IN), OPTIONAL :: NormalizeIn
+      INTEGER, INTENT(OUT),OPTIONAL :: ErrStat
+
+
+      IF ( PRESENT(ErrStat) ) ErrStat = ErrID_None
+
+      FFT_Data%L = L
+      FFT_Data%M = M
+
+      IF ( PRESENT( NormalizeIn ) ) THEN
+          FFT_Data%Normalize = NormalizeIn
+          FFT_Data%InvN      = 1.0_SiKi / REAL(L*M, SiKi)
+      ELSE
+          FFT_Data%Normalize = .FALSE.
+      ENDIF
+
+      ! CFFT2I requires: 2*L+log2(L)+2*M+log2(M)+8
+      LenSav = 2*L + INT(LOG(REAL(L, SiKi))/LOG(2.0_SiKi)) &
+             + 2*M + INT(LOG(REAL(M, SiKi))/LOG(2.0_SiKi)) + 8
+      LenWrk = 2*L*M
+
+      ALLOCATE ( FFT_Data%wSave(LenSav), STAT=Sttus )
+
+      IF ( Sttus /= 0 ) THEN
+         CALL ProgAbort ( 'Error allocating memory for the 2D complex FFT working array.', PRESENT(ErrStat) )
+         IF ( PRESENT(ErrStat) ) ErrStat = ErrID_Fatal
+         RETURN
+      ENDIF
+
+      FFT_Data%LenWork = LenWrk
+
+      CALL CFFT2I(L, M, FFT_Data%wSave, LenSav, IER)
+
+      FFT_Data%TransformType = CFourier2D_trans
+
+   END SUBROUTINE InitCFFT2D
+  !------------------------------------------------------------------------
+   SUBROUTINE ApplyCFFT2D( C, FFT_Data, ErrStat )
+         ! Perform backward 2D complex FFT: spectral -> spatial.
+         ! Recovers original signal exactly (internally normalized).
+
+      IMPLICIT                         NONE
+
+      COMPLEX(SiKi), INTENT(INOUT)  :: C(:,:)
+      TYPE(FFT2D_DataType), INTENT(IN) :: FFT_Data
+      INTEGER, INTENT(OUT), OPTIONAL:: ErrStat
+
+      REAL(SiKi)                    :: wWork(FFT_Data%LenWork)
+      INTEGER                       :: IER
+      LOGICAL                       :: TrapErrors
+
+
+      IF ( PRESENT(ErrStat) ) THEN
+         TrapErrors = .TRUE.
+         ErrStat = ErrID_None
+      ELSE
+         TrapErrors = .FALSE.
+      END IF
+
+      IF ( SIZE(C,1) < FFT_Data%L .OR. SIZE(C,2) < FFT_Data%M ) THEN
+          CALL ProgAbort( 'Error in call to 2D complex FFT. Array size is not large enough.', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
+
+      IF ( FFT_Data%TransformType /= CFourier2D_trans ) THEN
+          CALL ProgAbort( 'Error in call to 2D complex FFT. FFT_Data not initialized for 2D complex transform.', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
+
+      CALL CFFT2B(SIZE(C,1), FFT_Data%L, FFT_Data%M, C, FFT_Data%wSave, SIZE(FFT_Data%wSave), &
+                  wWork, FFT_Data%LenWork, IER)
+
+      IF (FFT_Data%Normalize) THEN
+          C(1:FFT_Data%L, 1:FFT_Data%M) = FFT_Data%InvN * C(1:FFT_Data%L, 1:FFT_Data%M)
+      ENDIF
+
+   END SUBROUTINE ApplyCFFT2D
+  !------------------------------------------------------------------------
+   SUBROUTINE ApplyCFFT2D_f( C, FFT_Data, ErrStat )
+         ! Perform forward 2D complex FFT: spatial -> spectral.
+
+      IMPLICIT                         NONE
+
+      COMPLEX(SiKi), INTENT(INOUT)  :: C(:,:)
+      TYPE(FFT2D_DataType), INTENT(IN) :: FFT_Data
+      INTEGER, INTENT(OUT), OPTIONAL:: ErrStat
+
+      REAL(SiKi)                    :: wWork(FFT_Data%LenWork)
+      INTEGER                       :: IER
+      LOGICAL                       :: TrapErrors
+
+
+      IF ( PRESENT(ErrStat) ) THEN
+         TrapErrors = .TRUE.
+         ErrStat = ErrID_None
+      ELSE
+         TrapErrors = .FALSE.
+      END IF
+
+      IF ( SIZE(C,1) < FFT_Data%L .OR. SIZE(C,2) < FFT_Data%M ) THEN
+          CALL ProgAbort( 'Error in call to 2D complex FFT. Array size is not large enough.', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
+
+      IF ( FFT_Data%TransformType /= CFourier2D_trans ) THEN
+          CALL ProgAbort( 'Error in call to 2D complex FFT. FFT_Data not initialized for 2D complex transform.', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
+
+      CALL CFFT2F(SIZE(C,1), FFT_Data%L, FFT_Data%M, C, FFT_Data%wSave, SIZE(FFT_Data%wSave), &
+                  wWork, FFT_Data%LenWork, IER)
+
+      IF (FFT_Data%Normalize) THEN
+          C(1:FFT_Data%L, 1:FFT_Data%M) = FFT_Data%InvN * C(1:FFT_Data%L, 1:FFT_Data%M)
+      ENDIF
+
+   END SUBROUTINE ApplyCFFT2D_f
+  !------------------------------------------------------------------------
+   SUBROUTINE ExitCFFT2D(FFT_Data, ErrStat)
+
+      TYPE(FFT2D_DataType), INTENT(INOUT) :: FFT_Data
+      INTEGER, INTENT(OUT), OPTIONAL :: ErrStat
+
+      IF ( PRESENT(ErrStat) ) ErrStat = ErrID_None
+
+      IF ( ALLOCATED(FFT_Data%wSave) ) DEALLOCATE( FFT_Data%wSave )
+
+   END SUBROUTINE ExitCFFT2D
   !------------------------------------------------------------------------
 
 

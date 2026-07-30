@@ -23,7 +23,9 @@ subroutine test_NWTC_FFTPACK_suite(testsuite)
       new_unittest("CFFT_forward_known", test_cfft_forward_known), &
       new_unittest("COST_known_values", test_cost_known_values), &
       new_unittest("SINT_known_values", test_sint_known_values), &
-      new_unittest("FFT_normalize", test_fft_normalize) &
+      new_unittest("FFT_normalize", test_fft_normalize), &
+      new_unittest("FFT2D_roundtrip", test_fft2d_roundtrip), &
+      new_unittest("CFFT2D_roundtrip", test_cfft2d_roundtrip) &
    ]
 end subroutine
 
@@ -300,6 +302,89 @@ subroutine test_fft_normalize(error)
    end do
 
    call ExitFFT(fft, ErrStat)
+end subroutine
+
+! 2D real FFT forward then backward (no normalization) recovers original
+subroutine test_fft2d_roundtrip(error)
+   type(error_type), allocatable, intent(out) :: error
+   integer, parameter :: L = 8, M = 6
+   real(SiKi) :: R(L, M), R_orig(L, M)
+   type(FFT2D_DataType) :: fft
+   integer :: ErrStat, i, j
+
+   do j = 1, M
+      do i = 1, L
+         R(i,j) = cos(2.0_SiKi * Pi_D * real(i-1, SiKi) / real(L, SiKi)) &
+                + sin(2.0_SiKi * Pi_D * real(j-1, SiKi) / real(M, SiKi))
+      end do
+   end do
+   R_orig = R
+
+   call InitFFT2D(L, M, fft, ErrStat=ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   call ApplyFFT2D_f(R, fft, ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   call ApplyFFT2D(R, fft, ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   ! Forward * Backward = Identity (internally normalized)
+   do j = 1, M
+      do i = 1, L
+         call check(error, real(R(i,j), kind=8), &
+                    real(R_orig(i,j), kind=8), thr=real(tol, kind=8))
+         if (allocated(error)) return
+      end do
+   end do
+
+   call ExitFFT2D(fft, ErrStat)
+end subroutine
+
+! 2D complex FFT forward then backward (no normalization) recovers original
+subroutine test_cfft2d_roundtrip(error)
+   type(error_type), allocatable, intent(out) :: error
+   integer, parameter :: L = 8, M = 6
+   complex(SiKi) :: C(L, M), C_orig(L, M)
+   type(FFT2D_DataType) :: fft
+   integer :: ErrStat, i, j
+
+   do j = 1, M
+      do i = 1, L
+         C(i,j) = CMPLX( cos(2.0_SiKi * Pi_D * real(i-1, SiKi) / real(L, SiKi)), &
+                         sin(4.0_SiKi * Pi_D * real(j-1, SiKi) / real(M, SiKi)), SiKi)
+      end do
+   end do
+   C_orig = C
+
+   call InitCFFT2D(L, M, fft, ErrStat=ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   call ApplyCFFT2D_f(C, fft, ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   call ApplyCFFT2D(C, fft, ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   ! Forward * Backward = Identity (internally normalized)
+   do j = 1, M
+      do i = 1, L
+         call check(error, real(real(C(i,j)), kind=8), &
+                    real(real(C_orig(i,j)), kind=8), thr=real(tol, kind=8))
+         if (allocated(error)) return
+         call check(error, real(aimag(C(i,j)), kind=8), &
+                    real(aimag(C_orig(i,j)), kind=8), thr=real(tol, kind=8))
+         if (allocated(error)) return
+      end do
+   end do
+
+   call ExitCFFT2D(fft, ErrStat)
 end subroutine
 
 end module
