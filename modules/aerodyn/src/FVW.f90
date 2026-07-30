@@ -156,7 +156,7 @@ subroutine FVW_Init(AFInfo, InitInp, u, p, x, xd, z, OtherState, y, m, Interval,
 
    ! --- Other States
    OtherState%Initialized = .true.
-   OtherState%ShedScale = 1.0_ReKi ! Will be overriden
+   OtherState%ShedScale = 1.0_ReKi ! Will be overridden
    ! TODO: should be otherstate
    !m%FirstCall = .True.
    !m%nNW       = p%iNWStart-1  ! Number of active nearwake panels
