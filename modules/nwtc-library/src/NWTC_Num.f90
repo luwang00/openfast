@@ -4791,52 +4791,6 @@ end function Rad2M180to180Deg
    
    END FUNCTION Quaternion_Product   
 !=======================================================================  
-!> This function converts a quaternion to an equivalent direction cosine matrix.
-   FUNCTION Quaternion_to_DCM(q)
-
-      ! "'Interpolation' of DCMs", M.A. Sprague, 11 March 2014, Eq. 9-17
-   
-   TYPE(Quaternion), INTENT(IN)    :: q                        !< quaternion    
-   
-   REAL(ReKi)                      :: Quaternion_to_DCM (3,3)  ! equivalent direction cosine matrix
-   
-      ! local variables (products of quaternion terms)
-   REAL(ReKi)                      :: q0q0, q0q1, q0q2, q0q3
-   REAL(ReKi)                      :: q1q1, q1q2, q1q3 
-   REAL(ReKi)                      :: q2q2, q2q3
-   REAL(ReKi)                      :: q3q3
-   
-   q0q0 = q%q0**2
-   q0q1 = q%q0      * q%v(1)
-   q0q2 = q%q0      * q%v(2)
-   q0q3 = q%q0      * q%v(3)
-   
-   q1q1 = q%v(1)**2
-   q1q2 = q%v(1)    * q%v(2)
-   q1q3 = q%v(1)    * q%v(3)
-
-   q2q2 = q%v(2)**2
-   q2q3 = q%v(2)    * q%v(3)
-   
-   q3q3 = q%v(3)**2
-   
-   
-   Quaternion_to_DCM(1,1) =          q0q0 +          q1q1 - q2q2 - q3q3  ! Eq.  9
-   Quaternion_to_DCM(1,2) = 2.0_ReKi*q1q2 + 2.0_ReKi*q0q3                ! Eq. 10
-   Quaternion_to_DCM(1,3) = 2.0_ReKi*q1q3 + 2.0_ReKi*q0q2                ! Eq. 11
-
-   Quaternion_to_DCM(2,1) = 2.0_ReKi*q1q2 - 2.0_ReKi*q0q3                ! Eq. 12
-   Quaternion_to_DCM(2,2) =          q0q0 -          q1q1 + q2q2 - q3q3  ! Eq. 13
-   Quaternion_to_DCM(2,3) = 2.0_ReKi*q2q3 +          q0q1                ! Eq. 14
-   
-   
-   Quaternion_to_DCM(3,1) = 2.0_ReKi*q1q3 +          q0q2                ! Eq. 15
-   Quaternion_to_DCM(3,2) = 2.0_ReKi*q2q3 -          q0q1                ! Eq. 16 
-   Quaternion_to_DCM(3,3) =          q0q0 -          q1q1 - q2q2 + q3q3  ! Eq. 17
-   
-   
-   END FUNCTION Quaternion_to_DCM   
-!=======================================================================  
 !> This function converts a direction cosine matrix to an equivalent quaternion.
    FUNCTION DCM_to_Quaternion(DCM)
 
