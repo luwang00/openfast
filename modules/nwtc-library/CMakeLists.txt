@@ -98,7 +98,7 @@ set(NWTCLIBS_SOURCES
   src/Polynomial/quartic.f90
   
   # NetLib sources
-  src/NetLib/fftpack/fftpack4.1.f
+  src/NetLib/fftpack/fftpack5.1.f
   src/NetLib/scalapack/dlasrt2.f
   src/NetLib/scalapack/slasrt2.f
   src/NetLib/fftpack/NWTC_FFTPACK.f90
