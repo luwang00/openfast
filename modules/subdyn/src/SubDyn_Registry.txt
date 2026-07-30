@@ -15,9 +15,9 @@ typedef  ^  MeshAuxDataType  INTEGER  NodeCnt   {:}           -  -  "Node ordina
 typedef  ^  MeshAuxDataType  INTEGER  NodeIDs   {:}           -  -  "Node IDs associated with ordinal numbers for the output member"
 typedef  ^  MeshAuxDataType  INTEGER  ElmIDs    {:}{:}        -  -  "Element IDs connected to each NodeIDs; max 10 elements"
 typedef  ^  MeshAuxDataType  INTEGER  ElmNds    {:}{:}        -  -  "Flag to indicate 1st or 2nd node of element for each ElmIDs"
-typedef  ^  MeshAuxDataType  R8Ki     Me        {:}{:}{:}{:}  -  -  "Mass matrix connected to each joint element for outAll output"
 typedef  ^  MeshAuxDataType  R8Ki     Ke        {:}{:}{:}{:}  -  -  "Mass matrix connected to each joint element for outAll output"
 typedef  ^  MeshAuxDataType  R8Ki     Fg        {:}{:}{:}     -  -  "Gravity load vector connected to each joint element for requested member output"
+typedef  ^  MeshAuxDataType  LOGICAL  extrap    {:}           -  -  "Whether to extrapolate force; true for member end nodes if member has more than 1 element"
 
 # CB_MatArrays: Matrices and arrays for CB summary
 typedef  ^  CB_MatArrays  R8Ki     MBB     {:}{:}  -  -  "FULL MBB ( no constraints applied)"
