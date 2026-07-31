@@ -302,7 +302,7 @@ Subroutine GridInterpSetup3D( position, p, m, ErrStat, ErrMsg )
    character(*),                        intent(  out)  :: ErrMsg            !< Error message if ErrStat /= ErrID_None
 
    character(*), parameter              :: RoutineName = 'GridInterpSetup3D'
-   integer(IntKi)                       :: dim,i,j,k
+   integer(IntKi)                       :: dim,j,k
    integer(IntKi)                       :: support
    real(ReKi)                           :: N1D(4,3)
    real(ReKi)                           :: isopc       ! isoparametric coordinates
@@ -341,7 +341,7 @@ Subroutine GridInterpSetup4D( position, p, m, ErrStat, ErrMsg )
    character(*),                        intent(  out)  :: ErrMsg            !< Error message if ErrStat /= ErrID_None
 
    character(*), parameter              :: RoutineName = 'GridInterpSetup4D'
-   integer(IntKi)                       :: dim,i,j,k,l
+   integer(IntKi)                       :: dim,j,k,l
    integer(IntKi)                       :: support
    real(ReKi)                           :: N1D(4,4)
    real(ReKi)                           :: Nkl
@@ -384,7 +384,7 @@ Subroutine GridInterpSetupN( position, p, m, ErrStat, ErrMsg )
    character(*),                        intent(  out)  :: ErrMsg            !< Error message if ErrStat /= ErrID_None
 
    character(*), parameter              :: RoutineName = 'GridInterpSetupN'
-   integer(IntKi)                       :: dim,i,j,k
+   integer(IntKi)                       :: dim,j,k
    integer(IntKi)                       :: support
    real(ReKi)                           :: N1D(4,3)
    real(ReKi)                           :: N1Ddx(4,2:3)
