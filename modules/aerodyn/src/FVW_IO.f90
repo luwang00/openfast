@@ -600,6 +600,7 @@ subroutine WrVTK_FVW_Grid(p, m, iGrid, FileRootName, VTKcount, Twidth, HubOrient
    character(255)    :: Label
    character(Twidth) :: Tstr     ! string for current VTK write-out step (padded with zeros)
    real(ReKi), dimension(3) :: dx
+   logical           :: bListBased
    type(GridOutType), pointer :: g
    type(VTK_Misc)   :: mvtk
 
@@ -613,19 +614,29 @@ subroutine WrVTK_FVW_Grid(p, m, iGrid, FileRootName, VTKcount, Twidth, HubOrient
    g => m%GridOutputs(iGrid)
    Label=trim(g%name)
    Filename = TRIM(FileRootName)//'.'//trim(Label)//'.'//Tstr//'.vtk'
+   bListBased = len_trim(g%xListFile)>0 .or. len_trim(g%yListFile)>0 .or. len_trim(g%zListFile)>0
    if ( vtk_new_ascii_file(trim(filename),Label,mvtk) ) then
-      dx(1) = (g%xEnd- g%xStart)/max(g%nx-1,1)
-      dx(2) = (g%yEnd- g%yStart)/max(g%ny-1,1)
-      dx(3) = (g%zEnd- g%zStart)/max(g%nz-1,1)
-      call vtk_dataset_structured_points((/g%xStart, g%yStart, g%zStart/),dx,(/g%nx,g%ny,g%nz/),mvtk)
-      call vtk_point_data_init(mvtk)
-      call vtk_point_data_vector(g%uGrid(1:3,:,:,:),'Velocity',mvtk) 
-      ! Compute vorticity on the fly
-      if (g%type==idGridVelVorticity) then
-         call curl_regular_grid(g%uGrid, g%omgrid, 1,1,1, g%nx,g%ny,g%nz, dx(1),dx(2),dx(3))
-         call vtk_point_data_vector(g%omGrid(1:3,:,:,:),'Vorticity',mvtk) 
+      if (bListBased) then
+         ! List-based grid
+         ! At least one axis is non-equidistant: RectilinearGrid (explicit coordinates)
+         ! NOTE: vorticity is blocked for this case at read time. GridType = 1 (velocity only).
+         call vtk_dataset_rectilinear(g%xPts, g%yPts, g%zPts, mvtk)
+         call vtk_point_data_init(mvtk)
+         call vtk_point_data_vector(g%uGrid(1:3,:,:,:),'Velocity',mvtk)
+      else
+         ! Equidistant grid: StructuredPoints (implicit coordinates)
+         dx(1) = (g%xEnd- g%xStart)/max(g%nx-1,1)
+         dx(2) = (g%yEnd- g%yStart)/max(g%ny-1,1)
+         dx(3) = (g%zEnd- g%zStart)/max(g%nz-1,1)
+         call vtk_dataset_structured_points((/g%xStart, g%yStart, g%zStart/),dx,(/g%nx,g%ny,g%nz/),mvtk)
+         call vtk_point_data_init(mvtk)
+         call vtk_point_data_vector(g%uGrid(1:3,:,:,:),'Velocity',mvtk)
+         ! Compute vorticity on the fly
+         if (g%type==idGridVelVorticity) then
+            call curl_regular_grid(g%uGrid, g%omgrid, 1,1,1, g%nx,g%ny,g%nz, dx(1),dx(2),dx(3))
+            call vtk_point_data_vector(g%omGrid(1:3,:,:,:),'Vorticity',mvtk)
+         endif
       endif
-      !
       call vtk_close_file(mvtk)
    endif
 
