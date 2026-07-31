@@ -120,7 +120,7 @@ SUBROUTINE FVW_ReadInputFile( FileName, p, m, Inp, ErrStat, ErrMsg )
             if (Check( len_trim(m%GridOutputs(i)%xListFile)>0 .or. &
                        len_trim(m%GridOutputs(i)%yListFile)>0 .or. &
                        len_trim(m%GridOutputs(i)%zListFile)>0, &
-                       'Grid "'//trim(m%GridOutputs(i)%name)//'": vorticity requires equidistant spacing. nGridOut must be 1 when using list files.')) return
+                       'Grid "'//trim(m%GridOutputs(i)%name)//'": vorticity requires equidistant spacing. GridType must be 1 when using list files.')) return
          endif
       enddo
    endif
@@ -382,6 +382,71 @@ CONTAINS
       ErrStat2=ErrID_None
       ErrMsg2=''
    end subroutine ReadGridOut
+
+   ! Resolve one grid axis to an explicit, strictly increasing coordinate array,
+   ! either read from ListFile (if given) or built from an equidistant Start/End/n range.
+   subroutine ResolveGridAxis(AStart, AEnd, n, ListFile, Pts)
+      real(ReKi),               intent(in)    :: AStart, AEnd
+      integer(IntKi),           intent(inout) :: n
+      character(*),             intent(in)    :: ListFile
+      real(ReKi), allocatable,  intent(out)   :: Pts(:)
+      character(1024) :: FullFile
+      integer(IntKi)  :: UnList, j, IOS
+      real(ReKi)      :: val
+
+      if (len_trim(ListFile) == 0) then
+         ! Equidistant points, expressed as an explicit array
+         allocate(Pts(max(n,1)))
+         do j = 1, n
+            Pts(j) = AStart + (AEnd - AStart) * real(j-1,ReKi) / real(max(n-1,1),ReKi)
+         enddo
+         ErrStat2 = ErrID_None; ErrMsg2 = ''
+         return
+      endif
+
+      ! Explicit list from file
+      FullFile = ListFile
+      if (PathIsRelative(FullFile)) FullFile = trim(PriPath)//trim(FullFile)
+      call GetNewUnit(UnList)
+      call OpenFInpFile(UnList, trim(FullFile), ErrStat2, ErrMsg2)
+      if (ErrStat2 /= ErrID_None) return
+
+      ! Count valid lines
+      n = 0
+      do
+         read(UnList, *, iostat=IOS) val
+         if (IOS /= 0) exit
+         n = n + 1
+      enddo
+      if (n < 1) then
+         ErrStat2 = ErrID_Fatal
+         ErrMsg2  = 'Grid point list file "'//trim(FullFile)//'" contains no valid values.'
+         close(UnList)
+         return
+      endif
+
+      ! Read values
+      rewind(UnList)
+      allocate(Pts(n))
+      do j = 1, n
+         read(UnList, *) Pts(j)
+      enddo
+      close(UnList)
+
+      ! Validate strictly increasing, no duplicates
+      do j = 2, n
+         if (Pts(j) <= Pts(j-1)) then
+            ErrStat2 = ErrID_Fatal
+            ErrMsg2  = 'Grid point list file "'//trim(FullFile)//'" must be strictly increasing (no duplicates); '// &
+                    'value at line '//trim(Num2LStr(j))//' ('//trim(Num2LStr(Pts(j)))//') is not greater than '// &
+                    'the previous value ('//trim(Num2LStr(Pts(j-1)))//').'
+            return
+         endif
+      enddo
+
+      ErrStat2 = ErrID_None
+      ErrMsg2  = ''
+   end subroutine ResolveGridAxis
 
 END SUBROUTINE FVW_ReadInputFile
 
