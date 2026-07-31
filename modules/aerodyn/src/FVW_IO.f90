@@ -18,7 +18,7 @@ SUBROUTINE FVW_ReadInputFile( FileName, p, m, Inp, ErrStat, ErrMsg )
    character(*),                 intent(  out) :: ErrMsg   !< Error message if ErrStat /= ErrID_None
    ! Local variables
    character(1024)      :: PriPath                         ! the path to the primary input file
-   character(1024)      :: sDummy, sLine                   ! string to temporarially hold value of read line 
+   character(1024)      :: sDummy, sLine                   ! string to temporarially hold value of read line
    integer(IntKi)       :: UnIn, i
    integer(IntKi)       :: ErrStat2
    character(ErrMsgLen) :: ErrMsg2
@@ -26,7 +26,7 @@ SUBROUTINE FVW_ReadInputFile( FileName, p, m, Inp, ErrStat, ErrMsg )
    ErrMsg  = ""
    Inp%SrcPnlFile = '' ! TODO registry init for empty strings
    ! Open file
-   CALL GetNewUnit( UnIn )   
+   CALL GetNewUnit( UnIn )
    CALL OpenFInpfile(UnIn, TRIM(FileName), ErrStat2, ErrMsg2)
    if (Check( ErrStat2 /= ErrID_None , 'Could not open input file')) return
    CALL GetPath( FileName, PriPath )    ! Input files will be relative to the path where the primary input file is located.
@@ -128,7 +128,7 @@ SUBROUTINE FVW_ReadInputFile( FileName, p, m, Inp, ErrStat, ErrMsg )
    ! --- Advanced Options
    ! NOTE: no error handling since this is for debug
    ! Default options are typically "true"
-   CALL ReadCom(UnIn,FileName,                  '=== Separator'                      ,ErrStat2,ErrMsg2); 
+   CALL ReadCom(UnIn,FileName,                  '=== Separator'                      ,ErrStat2,ErrMsg2);
    CALL ReadCom(UnIn,FileName,                  '--- Advanced options header'        ,ErrStat2,ErrMsg2);
    if(ErrStat2==ErrID_None) then
       call WrScr(' - Reading advanced options for OLAF:')
@@ -218,7 +218,7 @@ SUBROUTINE FVW_ReadInputFile( FileName, p, m, Inp, ErrStat, ErrMsg )
    if (Check(Inp%WingRegParam<0             , 'Wing regularization parameter (WakeRegParam) should be positive')) return
    if (Check(Inp%CoreSpreadEddyVisc<0       , 'Core spreading eddy viscosity (CoreSpreadEddyVisc) should be positive')) return
 
-   ! Removing the shed vorticity is a dangerous option if this is done too close to the blades. 
+   ! Removing the shed vorticity is a dangerous option if this is done too close to the blades.
    ! To be safe, we will no matter what ensure that the last segments of NW are 0 if FWShedVorticity is False (see PackPanelsToSegments)
    ! Still we force the user to be responsible.
    if (Check((.not.(Inp%FWShedVorticity)) .and. Inp%nNWPanels<30, '`FWShedVorticity` should be true if `nNWPanels`<30. Alternatively, use a larger number of NWPanels  ')) return
@@ -231,7 +231,7 @@ SUBROUTINE FVW_ReadInputFile( FileName, p, m, Inp, ErrStat, ErrMsg )
 
 CONTAINS
    logical function Failed()
-      call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, 'FVW_ReadInputFile') 
+      call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, 'FVW_ReadInputFile')
       Failed =  ErrStat >= AbortErrLev
       if (Failed) call CleanUp()
    end function Failed
@@ -304,7 +304,7 @@ CONTAINS
       ErrStat2=ErrID_Fatal
       ErrMsg2='Error reading OLAF grid outputs line: '//trim(sLine)
       ! Name
-      GridOut%name =StrArray(1) 
+      GridOut%name =StrArray(1)
       ! Type
       if (.not. is_integer(StrArray(2), GridOut%type  ) ) then
          ErrMsg2=trim(ErrMsg2)//NewLine//'GridType needs to be an integer.'
@@ -315,7 +315,7 @@ CONTAINS
       if ( index(StrArray(3), "DEFAULT" ) == 1 ) then
          GridOut%tStart  = 0.0_ReKi
       else
-         if (.not. is_numeric(StrArray(3), GridOut%tStart) ) then 
+         if (.not. is_numeric(StrArray(3), GridOut%tStart) ) then
             ErrMsg2=trim(ErrMsg2)//NewLine//'TStart needs to be numeric or "default".'
             return
          endif
@@ -490,7 +490,7 @@ subroutine WrVTK_FVW(p, x, z, m, FileRootName, VTKcount, Twidth, bladeFrame, Hub
          Call ProgAbort('Programming error in WrVTK_FVW call: Cannot use the WrVTK_FVW with bladeFrame==TRUE without the optional arguments of HubOrientation and HubPosition')
       endif
    endif
- 
+
    if (DEV_VERSION) then
       print*,'------------------------------------------------------------------------------'
       print'(A,L1,A,I0,A,I0,A,I0)','VTK Output  -      First call ',m%FirstCall, '                                nNW:',m%nNW,' nFW:',m%nFW,'  i:',VTKCount
@@ -502,7 +502,7 @@ subroutine WrVTK_FVW(p, x, z, m, FileRootName, VTKcount, Twidth, bladeFrame, Hub
    write(Tstr, '(i' // trim(Num2LStr(Twidth)) //'.'// trim(Num2LStr(Twidth)) // ')') VTKcount
 
    ! --------------------------------------------------------------------------------}
-   ! --- Blade 
+   ! --- Blade
    ! --------------------------------------------------------------------------------{
    ! --- Blade Quarter chord points (AC)
    do iW=1,p%VTKBlades
@@ -530,7 +530,7 @@ subroutine WrVTK_FVW(p, x, z, m, FileRootName, VTKcount, Twidth, bladeFrame, Hub
    !    call WrVTK_Lattice(FileName, mvtk, m%W(iW)%r_LL(1:3,:,:), m%W(iW)%Gamma_LL(:), bladeFrame=bladeFrame)
    ! enddo
    ! --------------------------------------------------------------------------------}
-   ! --- Near wake 
+   ! --- Near wake
    ! --------------------------------------------------------------------------------{
    ! --- Near wake panels
    do iW=1,p%VTKBlades
@@ -548,7 +548,7 @@ subroutine WrVTK_FVW(p, x, z, m, FileRootName, VTKcount, Twidth, bladeFrame, Hub
       endif
    enddo
    ! --------------------------------------------------------------------------------}
-   ! --- Far wake 
+   ! --- Far wake
    ! --------------------------------------------------------------------------------{
    ! --- Far wake panels
    do iW=1,p%VTKBlades
@@ -572,7 +572,7 @@ subroutine WrVTK_FVW(p, x, z, m, FileRootName, VTKcount, Twidth, bladeFrame, Hub
    endif
    if (nSeg>0) then
       Filename = TRIM(FileRootName)//'.AllSeg.'//Tstr//'.vtk'
-      CALL WrVTK_Segments(Filename, mvtk, m%Sgmt%Points(:,1:nSegP), m%Sgmt%Connct(:,1:nSeg), m%Sgmt%Gamma(1:nSeg), m%Sgmt%Epsilon(1:nSeg), bladeFrame) 
+      CALL WrVTK_Segments(Filename, mvtk, m%Sgmt%Points(:,1:nSegP), m%Sgmt%Connct(:,1:nSeg), m%Sgmt%Gamma(1:nSeg), m%Sgmt%Epsilon(1:nSeg), bladeFrame)
    endif
 
    if (p%SrcPnl%n>0) then
@@ -683,14 +683,14 @@ subroutine WrVTK_Panels(filename, mvtk, p, m, z)
 endsubroutine WrVTK_Panels
 
 
-subroutine WrVTK_Segments(filename, mvtk, SegPoints, SegConnct, SegGamma, SegEpsilon, bladeFrame) 
+subroutine WrVTK_Segments(filename, mvtk, SegPoints, SegConnct, SegGamma, SegEpsilon, bladeFrame)
    use VTK
    character(len=*),intent(in)                 :: filename
    type(VTK_Misc),           intent(inout) :: mvtk       !< miscvars for VTK output
-   real(ReKi), dimension(:,:),      intent(in) :: SegPoints  !< 
-   integer(IntKi), dimension(:,:),  intent(in) :: SegConnct  !< 
-   real(ReKi),     dimension(:)  ,  intent(in) :: SegGamma   !< 
-   real(ReKi),     dimension(:)  ,  intent(in) :: SegEpsilon !< 
+   real(ReKi), dimension(:,:),      intent(in) :: SegPoints  !<
+   integer(IntKi), dimension(:,:),  intent(in) :: SegConnct  !<
+   real(ReKi),     dimension(:)  ,  intent(in) :: SegGamma   !<
+   real(ReKi),     dimension(:)  ,  intent(in) :: SegEpsilon !<
    logical,                      intent(in   ) :: bladeFrame !< Output in blade coordinate frame
    if ( vtk_new_ascii_file(filename,'Sgmt',mvtk) ) then
       call vtk_dataset_polydata(SegPoints(1:3,:),mvtk,bladeFrame)
