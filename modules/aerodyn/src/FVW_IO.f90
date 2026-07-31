@@ -327,19 +327,42 @@ CONTAINS
             return
          endif
       endif
-      ! x,y,z
+      ! x
       ErrMsg2='Error reading OLAF "x" inputs for grid outputs line: '//trim(sLine)
-      if (.not. is_numeric(StrArray( 6), GridOut%xStart) ) return
-      if (.not. is_numeric(StrArray( 7), GridOut%xEnd  ) ) return
-      if (.not. is_integer(StrArray( 8), GridOut%nx    ) ) return
+      GridOut%xListFile = ''
+      if ( is_numeric(StrArray(6), GridOut%xStart) ) then
+         if (.not. is_numeric(StrArray(7), GridOut%xEnd) ) return
+         if (.not. is_integer(StrArray(8), GridOut%nx  ) ) return
+      else
+         GridOut%xListFile = StrArray(6)
+         GridOut%xStart = 0.0_ReKi
+         GridOut%xEnd   = 0.0_ReKi
+         GridOut%nx     = -1
+      endif
+      ! y
       ErrMsg2='Error reading OLAF "y" inputs for grid outputs line: '//trim(sLine)
-      if (.not. is_numeric(StrArray( 9), GridOut%yStart) ) return
-      if (.not. is_numeric(StrArray(10), GridOut%yEnd  ) ) return
-      if (.not. is_integer(StrArray(11), GridOut%ny    ) ) return
+      GridOut%yListFile = ''
+      if ( is_numeric(StrArray(9), GridOut%yStart) ) then
+         if (.not. is_numeric(StrArray(10), GridOut%yEnd) ) return
+         if (.not. is_integer(StrArray(11), GridOut%ny  ) ) return
+      else
+         GridOut%yListFile = StrArray(9)
+         GridOut%yStart = 0.0_ReKi
+         GridOut%yEnd   = 0.0_ReKi
+         GridOut%ny     = -1
+      endif
+      ! z
       ErrMsg2='Error reading OLAF "z" inputs for grid outputs line: '//trim(sLine)
-      if (.not. is_numeric(StrArray(12), GridOut%zStart) ) return
-      if (.not. is_numeric(StrArray(13), GridOut%zEnd  ) ) return
-      if (.not. is_integer(StrArray(14), GridOut%nz    ) ) return
+      GridOut%zListFile = ''
+      if ( is_numeric(StrArray(12), GridOut%zStart) ) then
+         if (.not. is_numeric(StrArray(13), GridOut%zEnd) ) return
+         if (.not. is_integer(StrArray(14), GridOut%nz  ) ) return
+      else
+         GridOut%zListFile = StrArray(12)
+         GridOut%zStart = 0.0_ReKi
+         GridOut%zEnd   = 0.0_ReKi
+         GridOut%nz     = -1
+      endif
       ! Success
       ErrStat2=ErrID_None
       ErrMsg2=''
