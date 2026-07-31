@@ -106,11 +106,11 @@ SUBROUTINE FVW_ReadInputFile( FileName, p, m, Inp, ErrStat, ErrMsg )
          call ReadGridOut(sLine, m%GridOutputs(i)); if(Failed()) return
          ! Resolve each axis to an explicit coordinate array (regardless of whether it is a list file or a range)
          call ResolveGridAxis(m%GridOutputs(i)%xStart, m%GridOutputs(i)%xEnd, m%GridOutputs(i)%nx, &
-                               m%GridOutputs(i)%xListFile, PriPath, m%GridOutputs(i)%xPts, ErrStat2, ErrMsg2); if(Failed()) return
+                               m%GridOutputs(i)%xListFile, m%GridOutputs(i)%xPts); if(Failed()) return
          call ResolveGridAxis(m%GridOutputs(i)%yStart, m%GridOutputs(i)%yEnd, m%GridOutputs(i)%ny, &
-                               m%GridOutputs(i)%yListFile, PriPath, m%GridOutputs(i)%yPts, ErrStat2, ErrMsg2); if(Failed()) return
+                               m%GridOutputs(i)%yListFile, m%GridOutputs(i)%yPts); if(Failed()) return
          call ResolveGridAxis(m%GridOutputs(i)%zStart, m%GridOutputs(i)%zEnd, m%GridOutputs(i)%nz, &
-                               m%GridOutputs(i)%zListFile, PriPath, m%GridOutputs(i)%zPts, ErrStat2, ErrMsg2); if(Failed()) return
+                               m%GridOutputs(i)%zListFile, m%GridOutputs(i)%zPts); if(Failed()) return
          ! Error checking
          if (Check(m%GridOutputs(i)%nx<1, 'Grid output nx needs to be >=1')) return
          if (Check(m%GridOutputs(i)%ny<1, 'Grid output ny needs to be >=1')) return
