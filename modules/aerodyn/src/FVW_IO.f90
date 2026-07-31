@@ -100,13 +100,28 @@ SUBROUTINE FVW_ReadInputFile( FileName, p, m, Inp, ErrStat, ErrMsg )
       allocate(m%GridOutputs(p%nGridOut), stat=ErrStat2);
       CALL ReadCom (UnIn,FileName,  'GridOutHeaders', ErrStat2,ErrMsg2); if(Failed()) return
       CALL ReadCom (UnIn,FileName,  'GridOutUnits', ErrStat2,ErrMsg2); if(Failed()) return
-      do i =1, p%nGridOut 
+      do i =1, p%nGridOut
          ErrMsg2='Error reading OLAF grid outputs line '//trim(num2lstr(i))
          read(UnIn, fmt='(A)', iostat=ErrStat2) sLine  ; if(Failed()) return
          call ReadGridOut(sLine, m%GridOutputs(i)); if(Failed()) return
+         ! Resolve each axis to an explicit coordinate array (regardless of whether it is a list file or a range)
+         call ResolveGridAxis(m%GridOutputs(i)%xStart, m%GridOutputs(i)%xEnd, m%GridOutputs(i)%nx, &
+                               m%GridOutputs(i)%xListFile, PriPath, m%GridOutputs(i)%xPts, ErrStat2, ErrMsg2); if(Failed()) return
+         call ResolveGridAxis(m%GridOutputs(i)%yStart, m%GridOutputs(i)%yEnd, m%GridOutputs(i)%ny, &
+                               m%GridOutputs(i)%yListFile, PriPath, m%GridOutputs(i)%yPts, ErrStat2, ErrMsg2); if(Failed()) return
+         call ResolveGridAxis(m%GridOutputs(i)%zStart, m%GridOutputs(i)%zEnd, m%GridOutputs(i)%nz, &
+                               m%GridOutputs(i)%zListFile, PriPath, m%GridOutputs(i)%zPts, ErrStat2, ErrMsg2); if(Failed()) return
+         ! Error checking
          if (Check(m%GridOutputs(i)%nx<1, 'Grid output nx needs to be >=1')) return
          if (Check(m%GridOutputs(i)%ny<1, 'Grid output ny needs to be >=1')) return
          if (Check(m%GridOutputs(i)%nz<1, 'Grid output nz needs to be >=1')) return
+         ! Vorticity requires equidistant spacing. GridType must be 1 when using list files.
+         if (m%GridOutputs(i)%type==idGridVelVorticity) then
+            if (Check( len_trim(m%GridOutputs(i)%xListFile)>0 .or. &
+                       len_trim(m%GridOutputs(i)%yListFile)>0 .or. &
+                       len_trim(m%GridOutputs(i)%zListFile)>0, &
+                       'Grid "'//trim(m%GridOutputs(i)%name)//'": vorticity requires equidistant spacing. nGridOut must be 1 when using list files.')) return
+         endif
       enddo
    endif
 
