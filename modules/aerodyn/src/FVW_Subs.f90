@@ -572,7 +572,7 @@ subroutine SetRequestedWindPoints(r_wind, x, p, m)
    type(FVW_MiscVarType),           intent(in   ), target      :: m       !< Initial misc/optimization variables
    integer(IntKi) :: iP_start,iP_end   ! Current index of point, start and end of range
    integer(IntKi) :: iGrid,i,j,k,iW
-   real(ReKi) :: xP,yP,zP,dx,dy,dz
+   real(ReKi) :: xP,yP,zP
    type(GridOutType), pointer :: g
 
    ! Using array reshaping to ensure a given near or far wake point is always at the same location in the array.
@@ -608,15 +608,12 @@ subroutine SetRequestedWindPoints(r_wind, x, p, m)
    iP_start=iP_end+1
    do iGrid=1,p%nGridOut
       g => m%GridOutputs(iGrid)
-      dx = (g%xEnd- g%xStart)/max(g%nx-1,1)
-      dy = (g%yEnd- g%yStart)/max(g%ny-1,1)
-      dz = (g%zEnd- g%zStart)/max(g%nz-1,1)
       do k=1,g%nz
-         zP = g%zStart  + (k-1)*dz
+         zP = g%zPts(k)
          do j=1,g%ny
-            yP = g%yStart  + (j-1)*dy
+            yP = g%yPts(j)
             do i=1,g%nx
-               xP = g%xStart  + (i-1)*dx
+               xP = g%xPts(i)
                r_wind(1:3,iP_start) = (/xP,yP,zP/)
                iP_start=iP_start+1
             enddo
