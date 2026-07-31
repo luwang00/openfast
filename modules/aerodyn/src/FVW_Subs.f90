@@ -1135,7 +1135,7 @@ subroutine InducedVelocitiesAll_OnGrid(g, p, x, m, ErrStat, ErrMsg)
    ! Local variables
    integer(IntKi) :: nCPs, iHeadP
    integer(IntKi) :: i,j,k
-   real(ReKi) :: xP,yP,zP,dx,dy,dz
+   real(ReKi) :: xP,yP,zP
    ! TODO new options
    type(T_Tree)   :: Tree
    type(T_Panl)   :: Panl
@@ -1149,15 +1149,12 @@ subroutine InducedVelocitiesAll_OnGrid(g, p, x, m, ErrStat, ErrMsg)
    nCPs = g%nx * g%ny * g%nz
    allocate(CPs(3, nCPs), stat=ErrStat)
    iHeadP=1
-   dx = (g%xEnd- g%xStart)/max(g%nx-1,1)
-   dy = (g%yEnd- g%yStart)/max(g%ny-1,1)
-   dz = (g%zEnd- g%zStart)/max(g%nz-1,1)
    do k=1,g%nz
-      zP = g%zStart  + (k-1)*dz
+      zP = g%zPts(k)
       do j=1,g%ny
-         yP = g%yStart  + (j-1)*dy
+         yP = g%yPts(j)
          do i=1,g%nx
-            xP = g%xStart  + (i-1)*dx
+            xP = g%xPts(i)
             CPs(1:3,iHeadP) = (/xP,yP,zP/)
             iHeadP=iHeadP+1
          enddo
