@@ -106,16 +106,16 @@ SUBROUTINE FVW_ReadInputFile( FileName, p, m, Inp, ErrStat, ErrMsg )
          call ReadGridOut(sLine, m%GridOutputs(i)); if(Failed()) return
          ! Resolve each axis to an explicit coordinate array (regardless of whether it is a list file or a range)
          call ResolveGridAxis(m%GridOutputs(i)%xStart, m%GridOutputs(i)%xEnd, m%GridOutputs(i)%nx, &
-                               m%GridOutputs(i)%xListFile, m%GridOutputs(i)%xPts); if(Failed()) return
+                               m%GridOutputs(i)%xListFile, m%GridOutputs(i)%xPts, ErrStat2, ErrMsg2); if(Failed()) return
          call ResolveGridAxis(m%GridOutputs(i)%yStart, m%GridOutputs(i)%yEnd, m%GridOutputs(i)%ny, &
-                               m%GridOutputs(i)%yListFile, m%GridOutputs(i)%yPts); if(Failed()) return
+                               m%GridOutputs(i)%yListFile, m%GridOutputs(i)%yPts, ErrStat2, ErrMsg2); if(Failed()) return
          call ResolveGridAxis(m%GridOutputs(i)%zStart, m%GridOutputs(i)%zEnd, m%GridOutputs(i)%nz, &
-                               m%GridOutputs(i)%zListFile, m%GridOutputs(i)%zPts); if(Failed()) return
+                               m%GridOutputs(i)%zListFile, m%GridOutputs(i)%zPts, ErrStat2, ErrMsg2); if(Failed()) return
          ! Error checking
          if (Check(m%GridOutputs(i)%nx<1, 'Grid output nx needs to be >=1')) return
          if (Check(m%GridOutputs(i)%ny<1, 'Grid output ny needs to be >=1')) return
          if (Check(m%GridOutputs(i)%nz<1, 'Grid output nz needs to be >=1')) return
-         ! Vorticity requires equidistant spacing. GridType must be 1 when using list files.
+         ! Vorticity (GridType=2) requires equidistant spacing. GridType must be 1 when using list files.
          if (m%GridOutputs(i)%type==idGridVelVorticity) then
             if (Check( len_trim(m%GridOutputs(i)%xListFile)>0 .or. &
                        len_trim(m%GridOutputs(i)%yListFile)>0 .or. &
@@ -385,31 +385,53 @@ CONTAINS
 
    ! Resolve one grid axis to an explicit, strictly increasing coordinate array,
    ! either read from ListFile (if given) or built from an equidistant Start/End/n range.
-   subroutine ResolveGridAxis(AStart, AEnd, n, ListFile, Pts)
+   subroutine ResolveGridAxis(AStart, AEnd, n, ListFile, Pts, ErrStat, ErrMsg)
       real(ReKi),               intent(in)    :: AStart, AEnd
       integer(IntKi),           intent(inout) :: n
       character(*),             intent(in)    :: ListFile
       real(ReKi), allocatable,  intent(out)   :: Pts(:)
-      character(1024) :: FullFile
-      integer(IntKi)  :: UnList, j, IOS
-      real(ReKi)      :: val
+      integer(IntKi),           intent(out)   :: ErrStat
+      character(*),             intent(out)   :: ErrMsg
+      ! Locals
+      character(1024)       :: FullFile
+      integer(IntKi)        :: UnList, j, IOS
+      integer(IntKi)        :: ErrStat2
+      character(ErrMsgLen)  :: ErrMsg2
+      real(ReKi)            :: val
+
+      ErrStat = ErrID_None
+      ErrMsg  = ''
 
       if (len_trim(ListFile) == 0) then
          ! Equidistant points, expressed as an explicit array
-         allocate(Pts(max(n,1)))
+         if (n < 1) then
+            call SetErrStat(ErrID_Fatal, 'ResolveGridAxis: grid axis definition requires n >= 1 (got '//trim(Num2LStr(n))//').', &
+                             ErrStat, ErrMsg, 'ResolveGridAxis')
+            return
+         endif
+         allocate(Pts(n), stat=IOS)
+         if (IOS /= 0) then
+            call SetErrStat(ErrID_Fatal, 'ResolveGridAxis: error allocating grid axis points array (n='//trim(Num2LStr(n))//').', &
+                          ErrStat, ErrMsg, 'ResolveGridAxis')
+            return
+         endif
          do j = 1, n
             Pts(j) = AStart + (AEnd - AStart) * real(j-1,ReKi) / real(max(n-1,1),ReKi)
          enddo
-         ErrStat2 = ErrID_None; ErrMsg2 = ''
          return
       endif
 
       ! Explicit list from file
       FullFile = ListFile
       if (PathIsRelative(FullFile)) FullFile = trim(PriPath)//trim(FullFile)
+
       call GetNewUnit(UnList)
       call OpenFInpFile(UnList, trim(FullFile), ErrStat2, ErrMsg2)
-      if (ErrStat2 /= ErrID_None) return
+      if (ErrStat2 /= ErrID_None) then
+         call SetErrStat(ErrID_Fatal, 'ResolveGridAxis: could not open grid point list file "'//trim(FullFile)//'": '//trim(ErrMsg2), &
+                          ErrStat, ErrMsg, 'ResolveGridAxis')
+         return
+      endif
 
       ! Count valid lines
       n = 0
@@ -418,16 +440,23 @@ CONTAINS
          if (IOS /= 0) exit
          n = n + 1
       enddo
+
       if (n < 1) then
-         ErrStat2 = ErrID_Fatal
-         ErrMsg2  = 'Grid point list file "'//trim(FullFile)//'" contains no valid values.'
+         call SetErrStat(ErrID_Fatal, 'ResolveGridAxis: grid point list file "'//trim(FullFile)//'" contains no valid values.', &
+                          ErrStat, ErrMsg, 'ResolveGridAxis')
          close(UnList)
          return
       endif
 
       ! Read values
       rewind(UnList)
-      allocate(Pts(n))
+      allocate(Pts(n), stat=IOS)
+      if (IOS /= 0) then
+         call SetErrStat(ErrID_Fatal, 'ResolveGridAxis: error allocating grid axis points array (n='//trim(Num2LStr(n))//').', &
+                          ErrStat, ErrMsg, 'ResolveGridAxis')
+         close(UnList)
+         return
+      endif
       do j = 1, n
          read(UnList, *) Pts(j)
       enddo
@@ -436,16 +465,15 @@ CONTAINS
       ! Validate strictly increasing, no duplicates
       do j = 2, n
          if (Pts(j) <= Pts(j-1)) then
-            ErrStat2 = ErrID_Fatal
-            ErrMsg2  = 'Grid point list file "'//trim(FullFile)//'" must be strictly increasing (no duplicates); '// &
-                    'value at line '//trim(Num2LStr(j))//' ('//trim(Num2LStr(Pts(j)))//') is not greater than '// &
-                    'the previous value ('//trim(Num2LStr(Pts(j-1)))//').'
+            call SetErrStat(ErrID_Fatal, &
+               'ResolveGridAxis: grid point list file "'//trim(FullFile)//'" must be strictly increasing (no duplicates); '// &
+               'value at line '//trim(Num2LStr(j))//' ('//trim(Num2LStr(Pts(j)))//') is not greater than '// &
+               'the previous value ('//trim(Num2LStr(Pts(j-1)))//').', &
+               ErrStat, ErrMsg, 'ResolveGridAxis')
             return
          endif
       enddo
 
-      ErrStat2 = ErrID_None
-      ErrMsg2  = ''
    end subroutine ResolveGridAxis
 
 END SUBROUTINE FVW_ReadInputFile
