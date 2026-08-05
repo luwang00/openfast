@@ -118,6 +118,8 @@ subroutine test_fft_cx_vs_real(error)
    ! Get spectral coefficients
    x_real = x
    call ApplyFFT_f(x_real, fft, ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
 
    ! Build complex array from real interleaved format
    H(1) = CMPLX(x_real(1), 0.0_SiKi, SiKi)
@@ -291,6 +293,9 @@ subroutine test_fft_normalize(error)
    if (allocated(error)) return
 
    call ApplyFFT_f(x, fft, ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
    call ApplyFFT(x, fft, ErrStat)
    call check(error, ErrStat, ErrID_None)
    if (allocated(error)) return

@@ -163,6 +163,11 @@ CONTAINS
 
       CALL COST1F(FFT_Data%N, 1, TRH, SIZE(TRH), FFT_Data%wSave, SIZE(FFT_Data%wSave), &
                   wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in cosine transform (COST1F).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
       TRH(1) = 2.0_SiKi * REAL(FFT_Data%N - 1, SiKi) * TRH(1)
       TRH(2:FFT_Data%N-1) = REAL(FFT_Data%N - 1, SiKi) * TRH(2:FFT_Data%N-1)
@@ -245,6 +250,11 @@ CONTAINS
         ! FFTPACK 5.1 CFFT1B takes COMPLEX arrays directly
       CALL CFFT1B(FFT_Data%N, 1, TRH_complex_return, SIZE(TRH_complex_return), &
                   FFT_Data%wSave, SIZE(FFT_Data%wSave), wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in complex FFT (CFFT1B).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
          ! Apply normalization, if any
 
@@ -297,7 +307,12 @@ CONTAINS
 
       CALL CFFT1F(FFT_Data%N, 1, TRH_complex, SIZE(TRH_complex), &
                   FFT_Data%wSave, SIZE(FFT_Data%wSave), wWork, FFT_Data%LenWork, IER)
-      
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in complex FFT (CFFT1F).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
+
       IF (FFT_Data%Normalize) THEN
           TRH_complex(1:FFT_Data%N) = FFT_Data%InvN * TRH_complex(1:FFT_Data%N)
       ENDIF
@@ -352,6 +367,11 @@ CONTAINS
 
       CALL RFFT1B(FFT_Data%N, 1, TRH, SIZE(TRH), FFT_Data%wSave, SIZE(FFT_Data%wSave), &
                   wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in FFT (RFFT1B).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
       IF (FFT_Data%Normalize) THEN
           TRH(1:FFT_Data%N) = FFT_Data%InvN * TRH(1:FFT_Data%N)
@@ -403,6 +423,11 @@ CONTAINS
 
       CALL RFFT1F(FFT_Data%N, 1, TRH, SIZE(TRH), FFT_Data%wSave, SIZE(FFT_Data%wSave), &
                   wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in FFT (RFFT1F).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
       TRH(1) = REAL(FFT_Data%N, SiKi) * TRH(1)
       TRH(2:FFT_Data%N-1:2) = REAL(FFT_Data%N, SiKi) / 2.0_SiKi * TRH(2:FFT_Data%N-1:2)
@@ -495,6 +520,11 @@ CONTAINS
 
       CALL RFFT1B(FFT_Data%N, 1, TRH, SIZE(TRH), FFT_Data%wSave, SIZE(FFT_Data%wSave), &
                   wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in FFT (RFFT1B).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
       IF (FFT_Data%Normalize) THEN
           TRH(1:FFT_Data%N) = FFT_Data%InvN * TRH(1:FFT_Data%N)
@@ -557,6 +587,11 @@ CONTAINS
 
       CALL SINT1B(FFT_Data%N-2, 1, TRH(2:), FFT_Data%N-1, FFT_Data%wSave, SIZE(FFT_Data%wSave), &
                   wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in sine transform (SINT1B).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
       TRH(2:FFT_Data%N-1) = 2.0_SiKi * TRH(2:FFT_Data%N-1)
 
@@ -698,6 +733,11 @@ CONTAINS
         ! Initialize the FFTPACK 5.1 working space
 
       CALL COST1I(FFT_Data%N, FFT_Data%wSave, LenSav, IER)
+      IF (IER /= 0) THEN
+         CALL ProgAbort ( 'Error initializing cosine transform (COST1I).', PRESENT(ErrStat) )
+         IF ( PRESENT(ErrStat) ) ErrStat = ErrID_Fatal
+         RETURN
+      ENDIF
 
       FFT_Data%TransformType = COS_trans
 
@@ -762,6 +802,11 @@ CONTAINS
         ! Initialize the FFTPACK 5.1 working space
 
       CALL CFFT1I(FFT_Data%N, FFT_Data%wSave, LenSav, IER)
+      IF (IER /= 0) THEN
+         CALL ProgAbort ( 'Error initializing complex FFT (CFFT1I).', PRESENT(ErrStat) )
+         IF ( PRESENT(ErrStat) ) ErrStat = ErrID_Fatal
+         RETURN
+      ENDIF
 
 
       FFT_Data%TransformType = Fourier_trans
@@ -827,6 +872,11 @@ CONTAINS
         ! Initialize the FFTPACK 5.1 working space
 
       CALL RFFT1I(FFT_Data%N, FFT_Data%wSave, LenSav, IER)
+      IF (IER /= 0) THEN
+         CALL ProgAbort ( 'Error initializing FFT (RFFT1I).', PRESENT(ErrStat) )
+         IF ( PRESENT(ErrStat) ) ErrStat = ErrID_Fatal
+         RETURN
+      ENDIF
 
       FFT_Data%TransformType = Fourier_trans
  
@@ -892,6 +942,11 @@ CONTAINS
         ! Initialize the FFTPACK 5.1 working space
 
       CALL SINT1I(N_sint, FFT_Data%wSave, LenSav, IER)
+      IF (IER /= 0) THEN
+         CALL ProgAbort ( 'Error initializing sine transform (SINT1I).', PRESENT(ErrStat) )
+         IF ( PRESENT(ErrStat) ) ErrStat = ErrID_Fatal
+         RETURN
+      ENDIF
 
 
       FFT_Data%TransformType = SIN_trans
@@ -966,6 +1021,11 @@ CONTAINS
       FFT_Data%LenWork = LenWrk
 
       CALL RFFT2I(L, M, FFT_Data%wSave, LenSav, IER)
+      IF (IER /= 0) THEN
+         CALL ProgAbort ( 'Error initializing 2D FFT (RFFT2I).', PRESENT(ErrStat) )
+         IF ( PRESENT(ErrStat) ) ErrStat = ErrID_Fatal
+         RETURN
+      ENDIF
 
       FFT_Data%TransformType = Fourier2D_trans
 
@@ -1007,6 +1067,11 @@ CONTAINS
 
       CALL RFFT2B(SIZE(R,1), FFT_Data%L, FFT_Data%M, R, FFT_Data%wSave, SIZE(FFT_Data%wSave), &
                   wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in 2D FFT (RFFT2B).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
       IF (FFT_Data%Normalize) THEN
           R(1:FFT_Data%L, 1:FFT_Data%M) = FFT_Data%InvN * R(1:FFT_Data%L, 1:FFT_Data%M)
@@ -1049,6 +1114,11 @@ CONTAINS
 
       CALL RFFT2F(SIZE(R,1), FFT_Data%L, FFT_Data%M, R, FFT_Data%wSave, SIZE(FFT_Data%wSave), &
                   wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in 2D FFT (RFFT2F).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
       IF (FFT_Data%Normalize) THEN
           R(1:FFT_Data%L, 1:FFT_Data%M) = FFT_Data%InvN * R(1:FFT_Data%L, 1:FFT_Data%M)
@@ -1111,6 +1181,11 @@ CONTAINS
       FFT_Data%LenWork = LenWrk
 
       CALL CFFT2I(L, M, FFT_Data%wSave, LenSav, IER)
+      IF (IER /= 0) THEN
+         CALL ProgAbort ( 'Error initializing 2D complex FFT (CFFT2I).', PRESENT(ErrStat) )
+         IF ( PRESENT(ErrStat) ) ErrStat = ErrID_Fatal
+         RETURN
+      ENDIF
 
       FFT_Data%TransformType = CFourier2D_trans
 
@@ -1152,6 +1227,11 @@ CONTAINS
 
       CALL CFFT2B(SIZE(C,1), FFT_Data%L, FFT_Data%M, C, FFT_Data%wSave, SIZE(FFT_Data%wSave), &
                   wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in 2D complex FFT (CFFT2B).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
       IF (FFT_Data%Normalize) THEN
           C(1:FFT_Data%L, 1:FFT_Data%M) = FFT_Data%InvN * C(1:FFT_Data%L, 1:FFT_Data%M)
@@ -1194,6 +1274,11 @@ CONTAINS
 
       CALL CFFT2F(SIZE(C,1), FFT_Data%L, FFT_Data%M, C, FFT_Data%wSave, SIZE(FFT_Data%wSave), &
                   wWork, FFT_Data%LenWork, IER)
+      IF (IER /= 0) THEN
+          CALL ProgAbort( 'Error in 2D complex FFT (CFFT2F).', TrapErrors )
+          IF (PRESENT(ErrStat)) ErrStat = ErrID_Fatal
+          RETURN
+      END IF
 
       IF (FFT_Data%Normalize) THEN
           C(1:FFT_Data%L, 1:FFT_Data%M) = FFT_Data%InvN * C(1:FFT_Data%L, 1:FFT_Data%M)
