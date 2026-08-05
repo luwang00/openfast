@@ -277,7 +277,7 @@ SUBROUTINE ProgExit ( StatCode )
 END SUBROUTINE ProgExit ! ( StatCode )
 !=======================================================================
 !> This routine sets the values of NaN_D, Inf_D, NaN, Inf (IEEE
-!! values for not-a-number and infinity in sindle and double
+!! values for not-a-number and infinity in single and double
 !! precision) This uses standard F03 intrinsic routines,
 !! however Gnu has not yet implemented it, so we've placed this
 !! routine in the system-specific code.
