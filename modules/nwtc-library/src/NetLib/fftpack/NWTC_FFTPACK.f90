@@ -723,7 +723,7 @@ CONTAINS
 
       IF ( Sttus /= 0 )  THEN
          CALL ProgAbort ( 'Error allocating memory for the cosine transform working array.', PRESENT(ErrStat) )
-         ErrStat = Sttus
+         ErrStat = ErrID_Fatal
          RETURN
       ENDIF
 
