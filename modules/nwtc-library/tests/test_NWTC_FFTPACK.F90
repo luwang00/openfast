@@ -19,6 +19,9 @@ subroutine test_NWTC_FFTPACK_suite(testsuite)
    testsuite = [ &
       new_unittest("FFT_roundtrip", test_fft_roundtrip), &
       new_unittest("FFT_forward_known", test_fft_forward_known), &
+      new_unittest("FFT_forward_sign", test_fft_forward_sign), &
+      new_unittest("FFT_backward_sign", test_fft_backward_sign), &
+      new_unittest("FFT_cx_sign", test_fft_cx_sign), &
       new_unittest("FFT_cx_vs_real", test_fft_cx_vs_real), &
       new_unittest("CFFT_forward_known", test_cfft_forward_known), &
       new_unittest("COST_known_values", test_cost_known_values), &
@@ -94,6 +97,130 @@ subroutine test_fft_forward_known(error)
    if (allocated(error)) return
    call check(error, real(x(N), kind=8), 0.0d0, thr=real(tol, kind=8))
    if (allocated(error)) return
+
+   call ExitFFT(fft, ErrStat)
+end subroutine
+
+! Forward FFT sign convention: FFTPACK 4.1 stores R(2k-1) = -sum h*sin(...)
+subroutine test_fft_forward_sign(error)
+   type(error_type), allocatable, intent(out) :: error
+   integer, parameter :: N = 8
+   real(SiKi) :: x(N), expected(N)
+   type(FFT_DataType) :: fft
+   integer :: ErrStat, i, k
+   real(SiKi) :: pi_val, arg
+
+   pi_val = real(Pi_D, SiKi)
+
+   ! Signal with nonzero imaginary spectral content
+   do i = 1, N
+      x(i) = sin(2.0_SiKi * pi_val * real(i-1, SiKi) / real(N, SiKi)) &
+           + 0.5_SiKi * cos(4.0_SiKi * pi_val * real(i-1, SiKi) / real(N, SiKi)) &
+           + 1.25_SiKi
+   end do
+
+   ! Reference: FFTPACK 4.1 un-normalized forward transform
+   expected = 0.0_SiKi
+   do i = 1, N
+      expected(1) = expected(1) + x(i)
+      expected(N) = expected(N) + ((-1.0_SiKi)**(i-1)) * x(i)
+   end do
+   do k = 2, N/2
+      do i = 1, N
+         arg = real(k-1, SiKi) * real(i-1, SiKi) * 2.0_SiKi * pi_val / real(N, SiKi)
+         expected(2*k-2) = expected(2*k-2) + x(i) * cos(arg)
+         expected(2*k-1) = expected(2*k-1) - x(i) * sin(arg)
+      end do
+   end do
+
+   call InitFFT(N, fft, ErrStat=ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   call ApplyFFT_f(x, fft, ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   do i = 1, N
+      call check(error, real(x(i), kind=8), real(expected(i), kind=8), thr=1.0d-4)
+      if (allocated(error)) return
+   end do
+
+   call ExitFFT(fft, ErrStat)
+end subroutine
+
+! Backward FFT sign convention: a pure imaginary coefficient must yield -2*sin(...)
+subroutine test_fft_backward_sign(error)
+   type(error_type), allocatable, intent(out) :: error
+   integer, parameter :: N = 8
+   real(SiKi) :: x(N), expected(N)
+   type(FFT_DataType) :: fft
+   integer :: ErrStat, i
+   real(SiKi) :: pi_val
+
+   pi_val = real(Pi_D, SiKi)
+
+   ! Spectrum with only the imaginary part of bin 1 set
+   x = 0.0_SiKi
+   x(3) = 1.0_SiKi
+
+   ! FFTPACK 4.1 backward: h(i) = -2*R(3)*sin(2*pi*(i-1)/N)
+   do i = 1, N
+      expected(i) = -2.0_SiKi * sin(2.0_SiKi * pi_val * real(i-1, SiKi) / real(N, SiKi))
+   end do
+
+   call InitFFT(N, fft, ErrStat=ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   call ApplyFFT(x, fft, ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   do i = 1, N
+      call check(error, real(x(i), kind=8), real(expected(i), kind=8), thr=1.0d-4)
+      if (allocated(error)) return
+   end do
+
+   call ExitFFT(fft, ErrStat)
+end subroutine
+
+! ApplyFFT_cx sign convention: h(i) = sum 2*Re{H(k)*exp(+i*2*pi*(k-1)*(i-1)/N)}
+subroutine test_fft_cx_sign(error)
+   type(error_type), allocatable, intent(out) :: error
+   integer, parameter :: N = 8
+   real(SiKi) :: x(N), expected(N)
+   complex(SiKi) :: H(N/2+1)
+   type(FFT_DataType) :: fft
+   integer :: ErrStat, i
+   real(SiKi) :: pi_val, a, b, arg
+
+   pi_val = real(Pi_D, SiKi)
+   a = 0.75_SiKi
+   b = 1.5_SiKi
+
+   ! Single complex amplitude at bin 1, endpoints must stay real
+   H = CMPLX(0.0_SiKi, 0.0_SiKi, SiKi)
+   H(2) = CMPLX(a, b, SiKi)
+
+   ! Inverse transform uses exp(+i...), so h(i) = 2*(a*cos - b*sin)
+   do i = 1, N
+      arg = 2.0_SiKi * pi_val * real(i-1, SiKi) / real(N, SiKi)
+      expected(i) = 2.0_SiKi * (a * cos(arg) - b * sin(arg))
+   end do
+
+   call InitFFT(N, fft, ErrStat=ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   call ApplyFFT_cx(x, H, fft, ErrStat)
+   call check(error, ErrStat, ErrID_None)
+   if (allocated(error)) return
+
+   do i = 1, N
+      call check(error, real(x(i), kind=8), real(expected(i), kind=8), thr=1.0d-4)
+      if (allocated(error)) return
+   end do
 
    call ExitFFT(fft, ErrStat)
 end subroutine
