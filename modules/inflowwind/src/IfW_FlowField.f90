@@ -224,8 +224,10 @@ subroutine IfW_FlowField_GetVelAcc(FF, IStart, Time, PositionXYZ, VelocityUVW, A
 
          ! Calculate grid cells for interpolation, returns velocity and acceleration
          ! components at corners of grid cell containing time and position. Also
-         ! returns interpolation values Xi.
-         call Grid3DField_GetCell(FF%Grid3D, Time, Position(:, i), OutputAccel, GridExceedAllow, &
+         ! returns interpolation values Xi. AccCell is required whenever cubic
+         ! velocity interpolation is used (its formula uses the derivative data),
+         ! not only when acceleration is explicitly requested as an output.
+         call Grid3DField_GetCell(FF%Grid3D, Time, Position(:, i), OutputAccel .or. FF%VelInterpCubic, GridExceedAllow, &
                                   VelCell, AccCell, Xi, Is3D, TmpErrStat, TmpErrMsg)
          if (TmpErrStat >= AbortErrLev) then
             call SetErrStat(TmpErrStat, TmpErrMsg, ErrStat, ErrMsg, RoutineName)
@@ -1442,8 +1444,8 @@ subroutine IfW_Grid3DField_CalcAccel(G3D, ErrStat, ErrMsg)
    call SetErrStat(TmpErrStat, TmpErrMsg, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
 
-   ! If number of time grids is 1 or 2, set all accelerations to zero, return
-   if (G3D%NTGrids < 3) then
+   ! If number of time steps is 1 or 2, set all accelerations to zero, return
+   if (G3D%NSteps < 3) then
       G3D%Acc = 0.0_SiKi
       return
    end if
