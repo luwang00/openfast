@@ -1490,16 +1490,14 @@ subroutine IfW_Grid3DField_CalcAccel(G3D, ErrStat, ErrMsg)
    call SetErrStat(TmpErrStat, TmpErrMsg, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
 
-   ! If number of time grids is 1 or 2, set all accelerations to zero
-   if (G3D%NTGrids < 3) then
-      G3D%Acc = 0.0_SiKi
-   else  ! Otherwise, calculate acceleration at each grid point
-      do iz = 1, G3D%NTGrids
-         do ic = 1, G3D%NComp
-            call CalcCubicSplineDeriv(G3D%NSteps, G3D%DTime, G3D%VelTower(ic, iz, :), G3D%AccTower(ic, iz, :))
-         end do
+   ! Calculate acceleration at each tower grid point. NSteps < 3 is already handled by the
+   ! early return above, and each tower height is interpolated independently in time, so no
+   ! minimum tower height count is required here.
+   do iz = 1, G3D%NTGrids
+      do ic = 1, G3D%NComp
+         call CalcCubicSplineDeriv(G3D%NSteps, G3D%DTime, G3D%VelTower(ic, iz, :), G3D%AccTower(ic, iz, :))
       end do
-   end if
+   end do
 
 contains
 
