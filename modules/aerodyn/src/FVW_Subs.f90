@@ -1223,9 +1223,9 @@ subroutine SegmentsToPartWrap(Sgmt, nSeg, PartPerSegment, RegFunction, Part, all
       Part%RegFunction = idRegExp ! TODO need to find a good equivalence and potentially adapt Epsilon in SegmentsToPart
    endif
    if (DEV_VERSION) then
-      call find_nan_2D(Part%P    , 'SegmentsToPartWrap Part%P')
-      call find_nan_2D(Part%Alpha, 'SegmentsToPartWrap Part%Alpha')
-      if (any(Part%RegParam(:)<-9999.99_ReKi)) then
+      call find_nan_2D(Part%P(:,1:nPart)    , 'SegmentsToPartWrap Part%P')
+      call find_nan_2D(Part%Alpha(:,1:nPart), 'SegmentsToPartWrap Part%Alpha')
+      if (any(Part%RegParam(1:nPart)<-9999.99_ReKi)) then ! Only the active particles are filled; the preallocated tail keeps its sentinel
          print*,'Error in Segment to part conversion'
          STOP
       endif
