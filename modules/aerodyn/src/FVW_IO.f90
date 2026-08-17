@@ -460,7 +460,7 @@ CONTAINS
       do j = 1, n
          read(UnList, *, iostat=IOS) Pts(j)
          if (IOS /= 0) then
-            call SetErrStat(ErrID_Fatal, 'ResolveGridAxis: error reading value at line '//trim(Num2LStr(j))//' from grid point list file "'//trim(FullFile)//'".', &
+            call SetErrStat(ErrID_Fatal, 'ResolveGridAxis: error reading grid point #'//trim(Num2LStr(j))//' from grid point list file "'//trim(FullFile)//'" (iostat='//trim(Num2LStr(IOS))//').', &
                              ErrStat, ErrMsg, 'ResolveGridAxis')
             close(UnList)
             return
