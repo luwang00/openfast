@@ -458,7 +458,13 @@ CONTAINS
          return
       endif
       do j = 1, n
-         read(UnList, *) Pts(j)
+         read(UnList, *, iostat=IOS) Pts(j)
+         if (IOS /= 0) then
+            call SetErrStat(ErrID_Fatal, 'ResolveGridAxis: error reading value at line '//trim(Num2LStr(j))//' from grid point list file "'//trim(FullFile)//'".', &
+                             ErrStat, ErrMsg, 'ResolveGridAxis')
+            close(UnList)
+            return
+         end if
       enddo
       close(UnList)
 
