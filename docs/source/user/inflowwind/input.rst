@@ -117,26 +117,26 @@ be performed in a different order than if both angles are specified in the same 
 
 .. _inflow_superposition:
 
-Superposition of Wave and Current Inflow
-========================================
-For MHK turbines, wave and current velocities and accelerations are superimposed (i.e., summed) such that all submerged components are exposed
+Superposition/Coupling of Wave and Current Inflow
+=================================================
+For MHK turbines, wave and current velocities and accelerations are superimposed (i.e., summed) or coupled (see :ref:`sea-waves`) such that all submerged components are exposed
 to the same inflow field. Both AeroDyn and HydroDyn can query SeaState for wave field information. SeaState then queries InflowWind for the current
-field, sums the velocities and accelerations, and returns the superimposed flow field information. This has several implications for modeling
+field, sums or couples the velocities and accelerations, and returns the flow field information. This has several implications for modeling
 MHK turbines, which are listed below. Note that dynamic pressure contributions from InflowWind are neglected.
 
 When modeling a rotor or rotor/tower only (i.e., hydrodynamics modeled in AeroDyn only):
 
 - SeaState must be used when defining a flow field with waves
-- Current definition in SeaState must always be set to 0
-- If SeaState is activated, InflowWind must also be activated, though the current can be set to 0
 - InflowWind must be used when defining a flow field with currents
+- Current definition in SeaState must always be set to 0
 - For combined wave and current flow fields, SeaState will query InflowWind
 
 When modeling a rotor or rotor/tower and support structure (i.e., hydrodynamics modeled in AeroDyn and HydroDyn):
 
 - SeaState must always be used, even when defining a flow field with no waves
-- Current definition in SeaState must always be set to 0
-- If SeaState is activated, InflowWind must also be activated, though the current can be set to 0
 - InflowWind must be used when defining a flow field with currents
+- Current definition in SeaState must always be set to 0
 - For current only cases, set the SeaState wave field to 0; current information will be passed through SeaState from InflowWind
 - For combined wave and current flow fields, SeaState will query InflowWind
+
+Wave and current coupling is only possible when running the OpenFAST glue code or the AeroDyn driver. This feature is not supported by the HydroDyn or MoorDyn drivers.

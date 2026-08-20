@@ -83,6 +83,9 @@ typedef  ^            ^                DbKi               dampYs   {MD_MaxNCoef}
 typedef  ^            ^                IntKi              nEIpoints      -       -  -   "number of values in bending stress-strain lookup table (0 means using constant E)"
 typedef  ^            ^                DbKi               bstiffXs {MD_MaxNCoef} -  -   "x array for stress-strain lookup table (up to MD_MaxNCoef)"
 typedef  ^            ^                DbKi               bstiffYs {MD_MaxNCoef} -  -   "y array for stress-strain lookup table"
+typedef  ^            ^                IntKi              syropeWCForm   -       -  -   "Syrope working curve formula (1 = LINEAR, 2 = QUADRATIC, 3 = EXP)"
+typedef  ^            ^                DbKi               syropeWCK1     -       -  -   "Coefficient for the Syrope working curve formula"
+typedef  ^            ^                DbKi               syropeWCK2     -       -  -   "Coefficient for the Syrope working curve formula"
 
 # rod properties from rod dictionary input
 typedef  ^            MD_RodProp       IntKi              IdNum          -       -  -   "integer identifier of this set of rod properties"
@@ -258,6 +261,10 @@ typedef  ^            ^                DbKi               cF             -      
 typedef  ^            ^                IntKi              nEApoints     -        -  -   "number of values in stress-strain lookup table (0 means using constant E)"
 typedef  ^            ^                DbKi               stiffXs  {MD_MaxNCoef} -  -   "x array for stress-strain lookup table (up to MD_MaxNCoef)"
 typedef  ^            ^                DbKi               stiffYs  {MD_MaxNCoef} -  -   "y array for stress-strain lookup table"
+typedef  ^            ^                DbKi               stiffZs  {MD_MaxNCoef} -  -   "z array for stress-strain original working curve (Syrope model only)"
+typedef  ^            ^                DbKi               stiffxs_ {MD_MaxNCoef} -  -   "auxiliary x array for Syrope working curve"
+typedef  ^            ^                DbKi               stiffys_ {MD_MaxNCoef} -  -   "auxiliary y array for Syrope working curve"
+typedef  ^            ^                DbKi               stiffzs_ {MD_MaxNCoef} -  -   "auxiliary z array for Syrope working curve"
 typedef  ^            ^                IntKi              nBApoints     -        -  -   "number of values in stress-strainrate lookup table (0 means using constant c)"
 typedef  ^            ^                DbKi               dampXs   {MD_MaxNCoef} -  -   "x array for stress-strainrate lookup table (up to MD_MaxNCoef)"
 typedef  ^            ^                DbKi               dampYs   {MD_MaxNCoef} -  -   "y array for stress-strainrate lookup table"
@@ -283,6 +290,11 @@ typedef  ^            ^                DbKi               zeta         {:}      
 typedef  ^            ^                DbKi               PDyn         {:}       -  -   "water dynamic pressure at node"  "[Pa]"
 typedef  ^            ^                DbKi               T            {:}{:}    -  -   "segment tension vectors"  "[N]"
 typedef  ^            ^                DbKi               Td           {:}{:}    -  -   "segment internal damping force vectors"  "[N]"
+typedef  ^            ^                IntKi              syropeWCForm  -        -  -   "Syrope working curve formula (1 = LINEAR, 2 = QUADRATIC, 3 = EXP)"
+typedef  ^            ^                DbKi               syropeWCK1    -        -  -   "Coefficient for the Syrope working curve formula"
+typedef  ^            ^                DbKi               syropeWCK2    -        -  -   "Coefficient for the Syrope working curve formula"
+typedef  ^            ^                DbKi               Tmax         {:}       -  -   "segment preceding highest mean tensions"  "[N]"
+typedef  ^            ^                DbKi               Tmean        {:}       -  -   "segment mean tensions"  "[N]"
 typedef  ^            ^                DbKi               W            {:}{:}    -  -   "weight/buoyancy vectors"  "[N]"
 typedef  ^            ^                DbKi               Dp           {:}{:}    -  -   "node drag (transverse)"  "[N]"
 typedef  ^            ^                DbKi               Dq           {:}{:}    -  -   "node drag (axial)"  "[N]"
@@ -306,6 +318,7 @@ typedef  ^            ^                DbKi               t_old         -       
 typedef  ^            ^                DbKi               yd_rms_old   {:}       -  -   "node old cf vel rms"  "m/s"
 typedef  ^            ^                DbKi               ydd_rms_old  {:}       -  -   "node old cf accel rms"  "m/s^2"
 typedef  ^            ^                DbKi               rdd_old      {:}{:}    -  -   "node accelerations previous iteration"  "m/s^2"
+typedef  ^            ^                Logical            store_rdd     -     .FALSE.  -   "flag to store node accelerations (for VIV or output)"  -
 
 
 # this is the ExtLd type, which holds data for each external load specification
@@ -366,6 +379,7 @@ typedef   ^       ^                    IntKi               nPointsExtra   -     
 typedef   ^       ^                    IntKi               nBodies        -     0    -   "number of Body objects"                     ""
 typedef   ^       ^                    IntKi               nRods          -     0    -   "number of Rod objects"                      ""
 typedef   ^       ^                    IntKi               nLines         -     0    -   "number of Line objects"                     ""
+typedef   ^       ^                    IntKi               nSyropeLineICs -     0    -   "number of Syrope Line initial conditions"   ""
 typedef   ^       ^                    IntKi               nExtLds        -     0    -   "number of external loads or damping"        ""
 typedef   ^       ^                    IntKi               nCtrlChans     -     0    -   "number of distinct control channels specified for use as inputs"        ""
 typedef   ^       ^                    IntKi               nFails         -     0    -   "number of failure conditions"                     ""
@@ -407,7 +421,8 @@ typedef   ^       ^                    DbKi                mu_kA          -     
 typedef   ^       ^                    DbKi                mc             -     -    -   "ratio of the static friction coefficient to the kinetic friction coefficient" "(-)"
 typedef   ^       ^                    DbKi                cv             -     -    -   "saturated damping coefficient" "(-)"
 typedef   ^       ^                    IntKi        inertialF             -     0    -   "Indicates MoorDyn returning inertial moments for coupled 6DOF objects. 0: no, 1: yes, 2: yes with ramp to inertialF_rampT" - 
-typedef   ^       ^                    R8Ki         inertialF_rampT       -    30    -   "Ramp time for inertial forces" - 
+typedef   ^       ^                    R8Ki         inertialF_rampT       -    30    -   "Ramp time for inertial forces" -
+typedef   ^       ^                    R8Ki          waveKin_rampT        -     0    -   "Ramp time for water kinematics" -
 typedef   ^       ^                    IntKi               OutSwitch      -     1    -   "Switch to disable outputs when running with full OF. 0: no MD main outfile, 1: write MD main outfile" "(-)"
 typedef   ^       ^                    IntKi             disableOutTime   -     0    -   "Disables the printing of the fairtens and timestep in init to the console, useful for the MATLAB wrapper" "(-)"
 # --- parameters for wave and current ---

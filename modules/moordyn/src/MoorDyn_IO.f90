@@ -241,9 +241,10 @@ CONTAINS
    
 
    ! read in stiffness/damping coefficient or load nonlinear data file if applicable
-   SUBROUTINE getCoefficientOrCurve(inputString, LineProp_c, LineProp_npoints, LineProp_Xs, LineProp_Ys, ErrStat3, ErrMsg3)
+   SUBROUTINE getCoefficientOrCurve(inputString, LineProp_c, LineProp_npoints, LineProp_Xs, LineProp_Ys, &
+                                    ErrStat3, ErrMsg3, PriPath)
    
-      CHARACTER(40),    INTENT(IN   )  :: inputString
+      CHARACTER(*),     INTENT(IN   )  :: inputString
       REAL(DbKi),       INTENT(INOUT)  :: LineProp_c
       INTEGER(IntKi),   INTENT(  OUT)  :: LineProp_nPoints
       REAL(DbKi),       INTENT(  OUT)  :: LineProp_Xs (MD_MaxNCoef)  ! MD_MaxNCoef set in registry
@@ -251,6 +252,7 @@ CONTAINS
       
       INTEGER(IntKi),   INTENT( OUT)   :: ErrStat3 ! Error status of the operation
       CHARACTER(*),     INTENT( OUT)   :: ErrMsg3  ! Error message if ErrStat /= ErrID_None
+      CHARACTER(*), OPTIONAL, INTENT(IN) :: PriPath ! Path to the primary MoorDyn input file
 
       INTEGER(IntKi)                   :: I
       INTEGER(IntKi)                   :: UnCoef   ! unit number for coefficient input file
@@ -259,6 +261,7 @@ CONTAINS
       INTEGER(IntKi)                   :: ErrStat4
       CHARACTER(120)                   :: ErrMsg4         
       CHARACTER(120)                   :: Line2   
+      CHARACTER(1024)                  :: FileName
       
            
       if (SCAN(inputString, "abcdfghijklmnopqrstuvwxyzABCDFGHIJKLMNOPQRSTUVWXYZ") == 0) then ! "eE" are exluded as they're used for scientific notation!
@@ -273,9 +276,14 @@ CONTAINS
          LineProp_c = 0.0
          
          ! load lookup table data from file
+         IF ( PRESENT(PriPath) .AND. PathIsRelative( inputString ) ) THEN
+            FileName = TRIM(PriPath)//TRIM(inputString)
+         ELSE
+            FileName = TRIM(inputString)
+         END IF
         
          CALL GetNewUnit( UnCoef )
-         CALL OpenFInpFile( UnCoef, TRIM(inputString), ErrStat4, ErrMsg4 )   ! add error handling?
+         CALL OpenFInpFile( UnCoef, TRIM(FileName), ErrStat4, ErrMsg4 )   ! add error handling?
          IF (ErrStat4 == ErrID_Fatal) then
             ErrStat3 = ErrStat4
             ErrMsg3 = ErrMsg4
@@ -303,7 +311,7 @@ CONTAINS
          
          if (I < 2) then
             ErrStat3 = ErrID_Fatal
-            ErrMsg3  = "Less than the minimum of 2 data lines found in file "//TRIM(inputString)//" (first 3 lines are headers)."
+            ErrMsg3  = "Less than the minimum of 2 data lines found in file "//TRIM(FileName)//" (first 3 lines are headers)."
             LineProp_npoints = 0
             Close (UnCoef)
             RETURN
@@ -322,7 +330,7 @@ CONTAINS
    
       CHARACTER(*),          INTENT(INOUT)  :: instring
       INTEGER(IntKi),        INTENT(  OUT)  :: n
-      CHARACTER(40),         INTENT(INOUT)  :: outstrings(6)  ! array of output strings. Up to 6 strings can be read
+      CHARACTER(*),          INTENT(INOUT)  :: outstrings(6)  ! array of output strings. Up to 6 strings can be read
       
       INTEGER :: pos1, pos2
  
@@ -631,7 +639,7 @@ CONTAINS
         ! error
         ELSE
           CALL DenoteInvalidOutput(p%OutParam(I)) ! flag as invalid
-          CALL WrScr('Warning: invalid output specifier '//trim(OutListTmp)//'.  Must start with L, R, or B')
+          CALL WrScr('Warning: invalid output specifier '//trim(OutListTmp)//'.')
           CYCLE
         END IF
 
@@ -810,9 +818,9 @@ CONTAINS
       
       
          ! calculate number of output entries (excluding time) to write for this line
-         LineNumOuts = 3*(m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(2:7)) &
-                       + (m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(8:9)) &
-                             + m%LineList(I)%N*SUM(m%LineList(I)%OutFlagList(10:18))
+         LineNumOuts = 3*(m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(2:8)) &
+                       + (m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(9:10)) &
+                             + m%LineList(I)%N*SUM(m%LineList(I)%OutFlagList(11:19))
    
          ALLOCATE(m%LineList(I)%LineWrOutput( 1 + LineNumOuts), STAT = ErrStat)  
          IF ( ErrStat /= ErrID_None ) THEN
@@ -959,9 +967,9 @@ CONTAINS
 
                         
             ! calculate number of output entries (excluding time) to write for this line
-            LineNumOuts = 3*(m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(2:7)) &
-                          + (m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(8:9)) &
-                                + m%LineList(I)%N*SUM(m%LineList(I)%OutFlagList(10:18))
+            LineNumOuts = 3*(m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(2:8)) &
+                          + (m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(9:10)) &
+                                + m%LineList(I)%N*SUM(m%LineList(I)%OutFlagList(11:19))
                                   
             if (wordy > 2) PRINT *, LineNumOuts, " output channels"
 
@@ -981,48 +989,52 @@ CONTAINS
             END IF
             IF (m%LineList(I)%OutFlagList(4) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
-                  ( p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Ux', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Uy', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Uz', J=0,(m%LineList(I)%N) )
+                  ( p%Delim, 'Node'//TRIM(Int2Lstr(J))//'ax', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'ay', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'az', J=0,(m%LineList(I)%N) )
             END IF
             IF (m%LineList(I)%OutFlagList(5) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
-                  ( p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Dx', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Dy', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Dz', J=0,(m%LineList(I)%N) )
+                  ( p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Ux', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Uy', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Uz', J=0,(m%LineList(I)%N) )
             END IF
             IF (m%LineList(I)%OutFlagList(6) == 1) THEN
+               WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
+                  ( p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Dx', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Dy', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Dz', J=0,(m%LineList(I)%N) )
+            END IF
+            IF (m%LineList(I)%OutFlagList(7) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, 'Node'//TRIM(Int2Lstr(J))//'bx', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'by', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'bz', J=0,(m%LineList(I)%N) )
             END IF
 
-            IF (m%LineList(I)%OutFlagList(7) == 1) THEN
+            IF (m%LineList(I)%OutFlagList(8) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Vx', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Vy', p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Vz', J=0,(m%LineList(I)%N) ) ! TODO adjust these when force to internal nodes
             END IF
-            
-            IF (m%LineList(I)%OutFlagList(8) == 1) THEN
+
+            IF (m%LineList(I)%OutFlagList(9) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Wz', J=0,(m%LineList(I)%N) )
             END IF
-            IF (m%LineList(I)%OutFlagList(9) == 1) THEN
+            IF (m%LineList(I)%OutFlagList(10) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, 'Node'//TRIM(Int2Lstr(J))//'Kurv', J=0,(m%LineList(I)%N) )
             END IF
-            
-            IF (m%LineList(I)%OutFlagList(10) == 1) THEN
+
+            IF (m%LineList(I)%OutFlagList(11) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, 'Seg'//TRIM(Int2Lstr(J))//'Ten', J=1,(m%LineList(I)%N) )
             END IF
-            IF (m%LineList(I)%OutFlagList(11) == 1) THEN
+            IF (m%LineList(I)%OutFlagList(12) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, 'Seg'//TRIM(Int2Lstr(J))//'Dmp', J=1,(m%LineList(I)%N) )
             END IF
-            IF (m%LineList(I)%OutFlagList(12) == 1) THEN
+            IF (m%LineList(I)%OutFlagList(13) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, 'Seg'//TRIM(Int2Lstr(J))//'Str', J=1,(m%LineList(I)%N) )
             END IF
-            IF (m%LineList(I)%OutFlagList(13) == 1) THEN
+            IF (m%LineList(I)%OutFlagList(14) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, 'Seg'//TRIM(Int2Lstr(J))//'SRt', J=1,(m%LineList(I)%N) )
             END IF
-            IF (m%LineList(I)%OutFlagList(14)== 1) THEN
+            IF (m%LineList(I)%OutFlagList(15)== 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A10))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, 'Seg'//TRIM(Int2Lstr(J))//'Lst', J=1,(m%LineList(I)%N) )
             END IF
@@ -1043,11 +1055,11 @@ CONTAINS
             END IF
             IF (m%LineList(I)%OutFlagList(4) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
-                  ( p%Delim, '(m/s)', p%Delim, '(m/s)', p%Delim, '(m/s)', J=0,(m%LineList(I)%N) )
+                  ( p%Delim, '(m/s^2)', p%Delim, '(m/s^2)', p%Delim, '(m/s^2)', J=0,(m%LineList(I)%N) )
             END IF
             IF (m%LineList(I)%OutFlagList(5) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
-                  ( p%Delim, '(N)', p%Delim, '(N)', p%Delim, '(N)', J=0,(m%LineList(I)%N) )
+                  ( p%Delim, '(m/s)', p%Delim, '(m/s)', p%Delim, '(m/s)', J=0,(m%LineList(I)%N) )
             END IF
             IF (m%LineList(I)%OutFlagList(6) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
@@ -1057,33 +1069,37 @@ CONTAINS
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, '(N)', p%Delim, '(N)', p%Delim, '(N)', J=0,(m%LineList(I)%N) )
             END IF
-            
             IF (m%LineList(I)%OutFlagList(8) == 1) THEN
+               WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((3+3*m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
+                  ( p%Delim, '(N)', p%Delim, '(N)', p%Delim, '(N)', J=0,(m%LineList(I)%N) )
+            END IF
+
+            IF (m%LineList(I)%OutFlagList(9) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, '(Nup)', J=0,(m%LineList(I)%N) )
             END IF
-            IF (m%LineList(I)%OutFlagList(9) == 1) THEN
+            IF (m%LineList(I)%OutFlagList(10) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, '(1/m)', J=0,(m%LineList(I)%N) )
             END IF
-            
-            IF (m%LineList(I)%OutFlagList(10) == 1) THEN
-               WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
-                  ( p%Delim, '(N)', J=1,(m%LineList(I)%N) )
-            END IF
+
             IF (m%LineList(I)%OutFlagList(11) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, '(N)', J=1,(m%LineList(I)%N) )
             END IF
             IF (m%LineList(I)%OutFlagList(12) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
-                  ( p%Delim, '(-)', J=1,(m%LineList(I)%N) )
+                  ( p%Delim, '(N)', J=1,(m%LineList(I)%N) )
             END IF
             IF (m%LineList(I)%OutFlagList(13) == 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
+                  ( p%Delim, '(-)', J=1,(m%LineList(I)%N) )
+            END IF
+            IF (m%LineList(I)%OutFlagList(14) == 1) THEN
+               WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A15))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, '(1/s)', J=1,(m%LineList(I)%N) )
             END IF
-            IF (m%LineList(I)%OutFlagList(14)== 1) THEN
+            IF (m%LineList(I)%OutFlagList(15)== 1) THEN
                WRITE(m%LineList(I)%LineUnOut,'('//TRIM(Int2LStr((m%LineList(I)%N)))//'(A1,A10))', advance='no', IOSTAT=ErrStat2) &
                   ( p%Delim, '(m)', J=1,(m%LineList(I)%N) )
             END IF
@@ -1668,9 +1684,9 @@ CONTAINS
            ! calculate number of output entries to write for this line
            !LineNumOuts = 3*(m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(2:5)) + m%LineList(I)%N*SUM(m%LineList(I)%OutFlagList(6:9))
            
-           LineNumOuts = 3*(m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(2:6)) &
-                         + (m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(7:9)) &
-                               + m%LineList(I)%N*SUM(m%LineList(I)%OutFlagList(10:18))
+           LineNumOuts = 3*(m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(2:8)) &
+                         + (m%LineList(I)%N + 1)*SUM(m%LineList(I)%OutFlagList(9:10)) &
+                               + m%LineList(I)%N*SUM(m%LineList(I)%OutFlagList(11:19))
            
            if (m%LineList(I)%OutFlagList(2) == 1) THEN   ! if node positions are included, make them using a float format for higher precision
             Frmt = '(F10.4,'//TRIM(Int2LStr(3*(m%LineList(I)%N + 1)))//'(A1,ES15.7),'//TRIM(Int2LStr(LineNumOuts - 3*(m%LineList(I)%N - 1)))//'(A1,ES15.7))'  
@@ -1692,8 +1708,8 @@ CONTAINS
                   L = L+1
                 END DO
               END DO
-           END IF         
-           
+           END IF
+
            ! Node velocities
            IF (m%LineList(I)%OutFlagList(3) == 1) THEN
               DO J = 0,m%LineList(I)%N  ! note index starts at zero because these are nodes
@@ -1703,10 +1719,20 @@ CONTAINS
                 END DO
               END DO
            END IF
-           
-           
-           ! Node wave velocities (not implemented yet)
+
+           ! Node accelerations
            IF (m%LineList(I)%OutFlagList(4) == 1) THEN
+              DO J = 0,m%LineList(I)%N  ! note index starts at zero because these are nodes
+                DO K = 1,3
+                  m%LineList(I)%LineWrOutput(L) = m%LineList(I)%rdd_old(K,J)
+                  L = L+1
+                END DO
+              END DO
+           END IF
+
+
+           ! Node wave velocities
+           IF (m%LineList(I)%OutFlagList(5) == 1) THEN
               DO J = 0,m%LineList(I)%N  ! note index starts at zero because these are nodes
                 DO K = 1,3
                   m%LineList(I)%LineWrOutput(L) = m%LineList(I)%U(K,J)
@@ -1714,10 +1740,10 @@ CONTAINS
                 END DO
               END DO
            END IF
-           
-           
+
+
            ! Node total hydrodynamic forces (except added mass - just drag for now)
-           IF (m%LineList(I)%OutFlagList(5) == 1) THEN
+           IF (m%LineList(I)%OutFlagList(6) == 1) THEN
               DO J = 0,m%LineList(I)%N  ! note index starts at zero because these are nodes
                 DO K = 1,3
                   m%LineList(I)%LineWrOutput(L) = m%LineList(I)%Dp(K,J) + m%LineList(I)%Dq(K,J)
@@ -1725,56 +1751,56 @@ CONTAINS
                 END DO
               END DO
            END IF
-           
-           
+
+
            ! Node seabed contact force
-           IF (m%LineList(I)%OutFlagList(6) == 1) THEN
-              DO J = 0,m%LineList(I)%N  
+           IF (m%LineList(I)%OutFlagList(7) == 1) THEN
+              DO J = 0,m%LineList(I)%N
                 DO K = 1,3
                   m%LineList(I)%LineWrOutput(L) = m%LineList(I)%B(K,J)
                   L = L+1
                 END DO
               END DO
            END IF
-           
+
            ! Node VIV force
-           IF (m%LineList(I)%OutFlagList(7) == 1) THEN
-            DO J = 0,m%LineList(I)%N  
+           IF (m%LineList(I)%OutFlagList(8) == 1) THEN
+            DO J = 0,m%LineList(I)%N
               DO K = 1,3
                 m%LineList(I)%LineWrOutput(L) = m%LineList(I)%Lf(K,J)
                 L = L+1
               END DO
             END DO
          END IF
-           
+
            ! Node weights
-           IF (m%LineList(I)%OutFlagList(8) == 1) THEN
+           IF (m%LineList(I)%OutFlagList(9) == 1) THEN
               DO J = 0,m%LineList(I)%N
                   m%LineList(I)%LineWrOutput(L) = m%LineList(I)%W(3,J)
                   L = L+1
               END DO
            END IF
-           
+
           ! Node curvatures
-          IF (m%LineList(I)%OutFlagList(9) == 1) THEN
+          IF (m%LineList(I)%OutFlagList(10) == 1) THEN
              DO J = 0,m%LineList(I)%N
                  m%LineList(I)%LineWrOutput(L) = m%LineList(I)%Kurv(J)
                  L = L+1
              END DO
           END IF
-           
-           
+
+
            ! Segment tension force (excludes damping term, just EA)
-           IF (m%LineList(I)%OutFlagList(10) == 1) THEN
-              DO J = 1,m%LineList(I)%N  
+           IF (m%LineList(I)%OutFlagList(11) == 1) THEN
+              DO J = 1,m%LineList(I)%N
                 m%LineList(I)%LineWrOutput(L) = TwoNorm(m%LineList(I)%T(:,J) )
                 L = L+1
               END DO
            END IF
-           
+
            ! Segment internal damping force
-           IF (m%LineList(I)%OutFlagList(11) == 1) THEN
-              DO J = 1,m%LineList(I)%N  
+           IF (m%LineList(I)%OutFlagList(12) == 1) THEN
+              DO J = 1,m%LineList(I)%N
                  IF (( m%LineList(I)%Td(3,J)*m%LineList(I)%T(3,J) ) > 0)  THEN  ! if statement for handling sign (positive = tension)
                     m%LineList(I)%LineWrOutput(L) = TwoNorm(m%LineList(I)%Td(:,J) )
                  ELSE
@@ -1783,26 +1809,26 @@ CONTAINS
                  L = L+1
               END DO
            END IF
-           
+
            ! Segment strain
-           IF (m%LineList(I)%OutFlagList(12) == 1) THEN
-              DO J = 1,m%LineList(I)%N  
-                m%LineList(I)%LineWrOutput(L) = m%LineList(I)%lstr(J)/m%LineList(I)%l(J) - 1.0 
+           IF (m%LineList(I)%OutFlagList(13) == 1) THEN
+              DO J = 1,m%LineList(I)%N
+                m%LineList(I)%LineWrOutput(L) = m%LineList(I)%lstr(J)/m%LineList(I)%l(J) - 1.0
                 L = L+1
               END DO
            END IF
-           
+
            ! Segment strain rate
-           IF (m%LineList(I)%OutFlagList(13) == 1) THEN
-              DO J = 1,m%LineList(I)%N  
+           IF (m%LineList(I)%OutFlagList(14) == 1) THEN
+              DO J = 1,m%LineList(I)%N
                 m%LineList(I)%LineWrOutput(L) = m%LineList(I)%lstrd(J)/m%LineList(I)%l(J)
                 L = L+1
               END DO
            END IF
-           
+
            ! Segment length
-           IF (m%LineList(I)%OutFlagList(14) == 1) THEN
-              DO J = 1,m%LineList(I)%N  
+           IF (m%LineList(I)%OutFlagList(15) == 1) THEN
+              DO J = 1,m%LineList(I)%N
                 m%LineList(I)%LineWrOutput(L) = m%LineList(I)%lstr(J)
                 L = L+1
               END DO

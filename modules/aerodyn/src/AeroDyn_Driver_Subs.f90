@@ -1411,7 +1411,7 @@ subroutine ValidateInputs(dvr, errStat, errMsg)
    
    if (dvr%MHK /= MHK_None .and. dvr%MHK /= MHK_FixedBottom .and. dvr%MHK /= MHK_Floating) call SetErrStat(ErrID_Fatal, 'MHK switch must be 0, 1, or 2.', ErrStat, ErrMsg, RoutineName)
    
-   if (dvr%MHK /= MHK_None .and. dvr%SS_InitInp%CompSeaSt == 1 .and. dvr%IW_InitInp%CompInflow /= 1) call SetErrStat( ErrID_Fatal, 'InflowWind must be activated for MHK turbines when SeaState is used.', ErrStat, ErrMsg, RoutineName )
+   if (dvr%MHK /= MHK_None .and. dvr%SS_InitInp%CompSeaSt == 1 .and. dvr%IW_InitInp%CompInflow == 0 .and. dvr%IW_InitInp%HWindSpeed > 0) call SetErrStat( ErrID_Fatal, 'Steady Wind option in AeroDyn driver cannot be used for MHK turbines with SeaState.', ErrStat, ErrMsg, RoutineName )
 
    if (dvr%MHK == MHK_None .and. dvr%SS_InitInp%CompSeaSt /= 0) call SetErrStat( ErrID_Fatal, 'SeaState cannot be used with wind turbines.', ErrStat, ErrMsg, RoutineName )
 

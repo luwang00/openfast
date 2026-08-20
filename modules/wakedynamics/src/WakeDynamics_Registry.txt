@@ -25,8 +25,8 @@ param ^                    -               INTEGER         Mod_Wake_Cartesian   
 # ..... InputFile Data .......................................................................................................
 typedef  ^                 WD_InputFileType  ReKi            dr             - - -  "Radial increment of radial finite-difference grid [>0.0]" m
 typedef  ^                 WD_InputFileType  IntKi           NumRadii       - - -  "Number of radii in the radial finite-difference grid [>=2]" -
-typedef  ^                 WD_InputFileType  IntKi           NumDFull       - - -  "Distance of full wake propagation as a multiple of RotorDiamRef" -
-typedef  ^                 WD_InputFileType  IntKi           NumDBuff       - - -  "Length of wake propagation buffer region as a multiple of RotorDiamRef" -
+typedef  ^                 WD_InputFileType  ReKi            NumDFull       - - -  "Distance of full wake propagation as a multiple of RotorDiamRef" -
+typedef  ^                 WD_InputFileType  ReKi            NumDBuff       - - -  "Length of wake propagation buffer region as a multiple of RotorDiamRef" -
 typedef  ^                 WD_InputFileType  IntKi           Mod_Wake       - - -  "Switch between wake formulations 1=Polar, 2=Cartesian, 3=Curl" -
 typedef  ^                 WD_InputFileType  ReKi            f_c            - - -  "Cut-off frequency of the low-pass time-filter for the wake advection, deflection, and meandering model [>0.0]" Hz
 typedef  ^                 WD_InputFileType  ReKi            C_HWkDfl_O     - - -  "Calibrated parameter in the correction for wake deflection defining the horizontal offset at the rotor" m

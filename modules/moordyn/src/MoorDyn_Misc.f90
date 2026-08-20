@@ -53,6 +53,7 @@ MODULE MoorDyn_Misc
    PUBLIC :: calculate4Dinterpolation
    PUBLIC :: calculate3Dinterpolation
    PUBLIC :: calculate2Dinterpolation
+   PUBLIC :: calculate1DinterpolationXY
    
    PUBLIC :: getDepthFromBathymetry
    
@@ -824,6 +825,75 @@ CONTAINS
       c   = c0*(1.0-fx) + c1*fx
    END SUBROUTINE calculate1Dinterpolation
 
+   SUBROUTINE calculate1DinterpolationXY(x, y, xi, yi, ErrStat, ErrMsg)
+      REAL(DbKi),     INTENT(IN)    :: x(:)
+      REAL(DbKi),     INTENT(IN)    :: y(:)
+      REAL(DbKi),     INTENT(IN)    :: xi
+      REAL(DbKi),     INTENT(OUT)   :: yi
+      INTEGER(IntKi), INTENT(OUT)   :: ErrStat
+      CHARACTER(*),   INTENT(OUT)   :: ErrMsg
+      CHARACTER(*), PARAMETER       :: RoutineName = 'calculate1DinterpolationXY'
+
+      INTEGER(IntKi)                :: n
+      INTEGER(IntKi)                :: lo, hi, mid
+      INTEGER(IntKi)                :: ix0
+      REAL(DbKi)                    :: fx, dx
+
+      ErrStat = ErrID_None
+      ErrMsg  = ''
+      yi      = 0.0_DbKi
+
+      n = SIZE(x)
+
+      IF (n /= SIZE(y)) THEN
+         CALL SetErrStat(ErrID_Fatal, 'x and y must have the same size.', ErrStat, ErrMsg, RoutineName)
+         RETURN
+      END IF
+
+      IF (n < 2) THEN
+         CALL SetErrStat(ErrID_Fatal, 'At least two points are required for interpolation.', ErrStat, ErrMsg, RoutineName)
+         RETURN
+      END IF
+
+      IF (ANY(x(2:n) <= x(1:n-1))) THEN
+         CALL SetErrStat(ErrID_Fatal, 'x array must be strictly increasing.', ErrStat, ErrMsg, RoutineName)
+         RETURN
+      END IF
+
+      ! Clamp to endpoints
+      IF (xi <= x(1)) THEN
+         yi = y(1)
+         RETURN
+      ELSE IF (xi >= x(n)) THEN
+         yi = y(n)
+         RETURN
+      END IF
+
+      ! Binary search for interval
+      lo = 1
+      hi = n
+      DO WHILE (hi - lo > 1)
+         mid = lo + (hi - lo) / 2
+         IF (x(mid) <= xi) THEN
+            lo = mid
+         ELSE
+            hi = mid
+         END IF
+      END DO
+
+      ix0 = lo
+      dx  = x(ix0+1) - x(ix0)
+
+      IF (ABS(dx) <= TINY(1.0_DbKi)) THEN
+         CALL SetErrStat(ErrID_Fatal, 'Zero or too-small x interval encountered.', ErrStat, ErrMsg, RoutineName)
+         RETURN
+      END IF
+
+      fx = (xi - x(ix0)) / dx
+
+      CALL calculate1Dinterpolation(y, ix0, fx, yi)
+
+   END SUBROUTINE calculate1DinterpolationXY
 
 
 
@@ -944,7 +1014,7 @@ CONTAINS
 
       ! local 
       CHARACTER(120)             :: RoutineName = 'getWaterKin'   
-   
+
       ErrStat = ErrID_None
       ErrMsg  = ""
 
@@ -1010,9 +1080,6 @@ CONTAINS
       ! SeaState wave kinematics
       case (3)
 
-         ! disable wavekin 3 during IC_gen, otherwise will never find steady state (because of waves)
-         if (m%IC_gen) return
-
          ! SeaState throws warning when queried location is out of bounds from the SeaState grid, so no need to handle here
 
          ! Pack all MD inputs to WaveGrid input data types (double to single)
@@ -1032,6 +1099,14 @@ CONTAINS
       case default
          call SetErrStat(ErrID_Fatal, "Invalid value of p%WaterKin", ErrStat, ErrMsg, RoutineName)
       end select
+
+      ! Apply ramp time
+      IF (t < p%waveKin_rampT) THEN 
+         U = U * t / p%waveKin_rampT
+         Ud = Ud * t / p%waveKin_rampT
+         zeta = zeta * t / p%waveKin_rampT
+         PDyn = PDyn * t / p%waveKin_rampT
+      END IF
 
    END SUBROUTINE getWaterKin
 

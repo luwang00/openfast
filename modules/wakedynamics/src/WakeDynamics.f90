@@ -970,42 +970,62 @@ subroutine WD_UpdateStates( t, n, u, p, x, xd, z, OtherState, m, errStat, errMsg
 
    do i=maxPln,0,-1
 
+      ! if a plane is beyond the buffer, simply drop it and all following planes (it should only be the last plane that gets dropped)
       if ( xd%x_plane(i) > p%x_Buff ) then
+         xd%NumPlanes = max( xd%NumPlanes - 1.0, 2.0 )   ! Plane indexing includes 0, hence the -1.0
+         cycle
+      endif
 
-         xd%NumPlanes = max( xd%NumPlanes - 1.0, 2.0 )
+      ! If a plane overtakes another plane, merge the planes by averaging, then shift all remaining planes forward.
+      if ( i+1 < NINT(xd%NumPlanes)) then    ! don't overstep bounds with i+1 indexing
+         if (xd%x_plane(i) >= xd%x_plane(i+1) ) then
 
-      else if ( i+1 < NINT(xd%NumPlanes) .and. xd%x_plane(i) >= xd%x_plane(i+1) ) then
+            call SetErrStat(ErrID_Warn, ' Turbine '//trim(num2lstr(p%TurbNum))//' wake plane '//trim(num2lstr(i))// &
+                        ' (x_plane='//trim(num2lstr(xd%x_plane(i)))//') has overtaken wake plane '//trim(num2lstr(i+1))// &
+                        ' (x_plane='//trim(num2lstr(xd%x_plane(i+1)))// &
+                        '). Merging planes by averaging. Reduce f_c to prevent planes from passing each other. ', errStat, errMsg, RoutineName)
+            if (errStat >= AbortErrLev) then
+               call Cleanup()
+               return
+            end if
 
-         call SetErrStat(ErrID_Warn, ' Turbine '//trim(num2lstr(p%TurbNum))//' wake plane '//trim(num2lstr(i))//' (x_plane='//trim(num2lstr(xd%x_plane(i)))//') has overtaken wake plane '//trim(num2lstr(i+1))//' (x_plane='//trim(num2lstr(xd%x_plane(i+1)))//'). Offending wake plane removed. Reduce f_c to prevent planes from passing each other. ', errStat, errMsg, RoutineName)
-         if (errStat >= AbortErrLev) then
-            call Cleanup()
-            return
+            ! Merge the i and i+1 plane by averaging them together
+            xd%Vx_wind_disk_filt(i) = (xd%Vx_wind_disk_filt(i) + xd%Vx_wind_disk_filt(i+1)) / 2.0_ReKi
+            xd%x_plane      (    i) = (xd%x_plane      (    i) + xd%x_plane      (    i+1)) / 2.0_ReKi
+            xd%TI_amb_filt  (    i) = (xd%TI_amb_filt  (    i) + xd%TI_amb_filt  (    i+1)) / 2.0_ReKi
+            xd%D_rotor_filt (    i) = (xd%D_rotor_filt (    i) + xd%D_rotor_filt (    i+1)) / 2.0_ReKi
+            xd%YawErr_filt  (    i) = (xd%YawErr_filt  (    i) + xd%YawErr_filt  (    i+1)) / 2.0_ReKi
+            xd%p_plane      (  :,i) = (xd%p_plane      (  :,i) + xd%p_plane      (  :,i+1)) / 2.0_ReKi
+            xd%xhat_plane   (  :,i) = (xd%xhat_plane   (  :,i) + xd%xhat_plane   (  :,i+1)) / 2.0_ReKi
+            xd%xhat_plane   (  :,i) =  xd%xhat_plane   (  :,i) / TwoNorm(xd%xhat_plane(  :,i))           ! renormalize
+            xd%V_plane_filt (  :,i) = (xd%V_plane_filt (  :,i) + xd%V_plane_filt (  :,i+1)) / 2.0_ReKi
+            xd%Vx_wake      (  :,i) = (xd%Vx_wake      (  :,i) + xd%Vx_wake      (  :,i+1)) / 2.0_ReKi
+            xd%Vr_wake      (  :,i) = (xd%Vr_wake      (  :,i) + xd%Vr_wake      (  :,i+1)) / 2.0_ReKi
+            xd%Vx_wake2     (:,:,i) = (xd%Vx_wake2     (:,:,i) + xd%Vx_wake2     (:,:,i+1)) / 2.0_ReKi
+            xd%Vy_wake2     (:,:,i) = (xd%Vy_wake2     (:,:,i) + xd%Vy_wake2     (:,:,i+1)) / 2.0_ReKi
+            xd%Vz_wake2     (:,:,i) = (xd%Vz_wake2     (:,:,i) + xd%Vz_wake2     (:,:,i+1)) / 2.0_ReKi
+
+            ! Since i and i+1 planes are now merged effectively dropping a plane, shift all planes that follow forward
+            do j = i+1,NINT(xd%NumPlanes)-2        ! NumPlanes includes 0 index plane, so last valid index is NumPlanes-1.
+                xd%Vx_wind_disk_filt(j) = xd%Vx_wind_disk_filt(j+1)
+                xd%x_plane      (    j) = xd%x_plane      (    j+1)
+                xd%TI_amb_filt  (    j) = xd%TI_amb_filt  (    j+1)
+                xd%D_rotor_filt (    j) = xd%D_rotor_filt (    j+1)
+                xd%YawErr_filt  (    j) = xd%YawErr_filt  (    j+1)
+                xd%p_plane      (  :,j) = xd%p_plane      (  :,j+1)
+                xd%xhat_plane   (  :,j) = xd%xhat_plane   (  :,j+1)
+                xd%V_plane_filt (  :,j) = xd%V_plane_filt (  :,j+1)
+                xd%Vx_wake      (  :,j) = xd%Vx_wake      (  :,j+1)
+                xd%Vr_wake      (  :,j) = xd%Vr_wake      (  :,j+1)
+                xd%Vx_wake2     (:,:,j) = xd%Vx_wake2     (:,:,j+1)
+                xd%Vy_wake2     (:,:,j) = xd%Vy_wake2     (:,:,j+1)
+                xd%Vz_wake2     (:,:,j) = xd%Vz_wake2     (:,:,j+1)
+            end do
+
+            ! Now that we shifted the planes up, remove the last one
+            xd%NumPlanes = xd%NumPlanes - 1.0
+
          end if
-
-         ! Remove offending plane and shift everything behind up
-
-         xd%NumPlanes = xd%NumPlanes - 1.0
-
-         ! Didn't check xd%NumPlanes >= 2 here. The first wake plane is unlikely to move upwind of the rotor.
-
-         do j = i+1,NINT(xd%NumPlanes)-1
-
-             xd%Vx_wind_disk_filt(j-1) = xd%Vx_wind_disk_filt(j)
-             xd%x_plane      (    j-1) = xd%x_plane      (    j)
-             xd%TI_amb_filt  (    j-1) = xd%TI_amb_filt  (    j)
-             xd%D_rotor_filt (    j-1) = xd%D_rotor_filt (    j)
-             xd%YawErr_filt  (    j-1) = xd%YawErr_filt  (    j)
-             xd%p_plane      (  :,j-1) = xd%p_plane      (  :,j)
-             xd%xhat_plane   (  :,j-1) = xd%xhat_plane   (  :,j)
-             xd%V_plane_filt (  :,j-1) = xd%V_plane_filt (  :,j)
-             xd%Vx_wake      (  :,j-1) = xd%Vx_wake      (  :,j)
-             xd%Vr_wake      (  :,j-1) = xd%Vr_wake      (  :,j)
-             xd%Vx_wake2     (:,:,j-1) = xd%Vx_wake2     (:,:,j)
-             xd%Vy_wake2     (:,:,j-1) = xd%Vy_wake2     (:,:,j)
-             xd%Vz_wake2     (:,:,j-1) = xd%Vz_wake2     (:,:,j)
-
-         end do
-
       end if
 
    end do

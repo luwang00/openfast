@@ -775,11 +775,11 @@ SUBROUTINE Farm_ReadPrimaryFile( InputFile, p, WD_InitInp, AWAE_InitInp, OutList
 
    CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%NumDFull, "NumDFull", &
       "Distance of full wake propagation, expressed as a multiple of RotorDiamRef [>0.0] or DEFAULT [DEFAULT=15]", &
-      15_IntKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+      15.0_ReKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
 
    CALL ReadVarWDefault( UnIn, InputFile, WD_InitInp%NumDBuff, "NumDBuff", &
       "Length of wake propagation buffer region, expressed as a multiple of RotorDiamRef [>=0.0] or DEFAULT [DEFAULT=5]", &
-       5_IntKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
+       5.0_ReKi, ErrStat2, ErrMsg2, UnEc); if (Failed()) return
 
    WD_InitInp%RotorDiamRef = p%RotorDiamRef
 
@@ -1047,6 +1047,7 @@ SUBROUTINE Farm_ValidateInput( p, WD_InitInp, AWAE_InitInp, ErrStat, ErrMsg )
    CHARACTER(*),   PARAMETER     :: RoutineName = 'Farm_ValidateInput'
    INTEGER(IntKi)                :: n_disDT_dt
    character(60)                 :: tmpStr
+   logical                       :: file_exists                               ! Flag for file existence check
 
    ErrStat = ErrID_None
    ErrMsg  = ""
@@ -1066,8 +1067,11 @@ SUBROUTINE Farm_ValidateInput( p, WD_InitInp, AWAE_InitInp, ErrStat, ErrMsg )
    ! TODO : Verify that the DLL file exists
 
    ! --- SHARED MOORING SYSTEM ---
-   ! TODO : Verify that p%MD_FileName file exists
-   if ((p%DT_mooring <= 0.0_ReKi) .or. (p%DT_mooring > p%DT_high)) CALL SetErrStat(ErrID_Fatal,'DT_mooring must be greater than zero and no greater than dt_high.',ErrStat,ErrMsg,RoutineName)
+   if (p%MooringMod == 3) then
+      inquire(file=trim(p%MD_FileName), exist=file_exists)
+      if (.not. file_exists) call SetErrStat(ErrID_Fatal,'Cannot find MoorDyn input file '//trim(p%MD_FileName),ErrStat,ErrMsg,RoutineName)
+      if ((p%DT_mooring <= 0.0_ReKi) .or. (p%DT_mooring > p%DT_high)) CALL SetErrStat(ErrID_Fatal,'DT_mooring must be greater than zero and no greater than dt_high.',ErrStat,ErrMsg,RoutineName)
+   end if
 
    ! --- AMBIENT WIND: INFLOWWIND MODULE --- [used only for Mod_AmbWind=2 or 3] ---
    ! FIXME: this really should be checked with the turbine specific size diameter -- maybe relocate this check to AWAE or in FF after initializing all turbines?

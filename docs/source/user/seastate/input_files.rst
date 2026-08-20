@@ -107,6 +107,8 @@ When setting up the wave grid, it is necessary to make sure the wave grid is lar
 
 OpenFAST precomputes and saves the wave-field velocity, acceleration, dynamic pressure, and wave elevation at the start of the simulation. Generating and maintaining the wave grid can be memory intensive for long simulations. Users should set the wave grid to be no larger or finer than necessary to reduce memory use. Reducing **WaveTMax** or increasing **WaveDT** (see WAVES section below) also reduces memory use. For long crested waves (no directional spreading) aligned with the *X*-direction (or *Y*-direction), **NY** (or **NX**) can be reduced to the minimum allowed value of 2 to save memory.
 
+.. _sea-waves:
+
 Waves
 -----
 
@@ -211,7 +213,8 @@ time-averaged current velocity at the still water level. For applicable **WindTy
 InflowWind, users should ensure that the flow-field grid from InflowWind reaches the still 
 water level. **WvCrntMod** has no effect when **WaveMod** = 0 or 6, or when there is no 
 current from either SeaState (**CurrMod** = 0) or InflowWind if simulating marine 
-hydrokinetic turbines.
+hydrokinetic turbines. See :ref:`inflow_superposition`
+for additional context around wave-current coupling when simulating MHK turbines.
 
 **WaveTMax** sets the length of the incident wave kinematics time
 series, but it also determines the frequency step used in the inverse
@@ -501,7 +504,8 @@ You can include water velocity due to a current model by setting
 not include current. **CurrMod** = 2 requires that the *UserCurrent()*
 subroutine of the *Current.f90* source file be implemented by the user,
 and will require recompiling either the standalone SeaState program or
-OpenFAST. Current induces steady hydrodynamic loads through the viscous-drag
+OpenFAST. **CurrMod** = 3 reads an ASCII current profile file specified by
+**CurrFile**. Current induces steady hydrodynamic loads through the viscous-drag
 terms (both distributed and lumped) of strip-theory members in HydroDyn. Current is
 not used in the potential-flow solution or when **WaveMod** = 6.
 
@@ -552,6 +556,13 @@ positive valued. :math:`U_{0_{NS}}` is the current velocity at SWL, correspondin
 The depth-independent current velocity everywhere equals **CurrDIV**.
 This current has a heading direction **CurrDIDir**, following the same
 convention as **WaveDir**.
+
+For **CurrMod** = 3, SeaState reads an ASCII file with three columns:
+depth in meters negative downward from SWL, x-velocity in m/s, and
+y-velocity in m/s. Depth values less than or equal to zero must be strictly
+decreasing. SeaState linearly interpolates the x- and y-velocity components
+separately by depth, and uses the nearest endpoint value when the query
+depth lies outside the range covered by the table.
 
 MacCamy-Fuchs diffraction model
 -------------------------------
