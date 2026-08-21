@@ -5402,6 +5402,8 @@ SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMs
    p%NMembers = InputFileData%NMembers
    p%NJoints  = InputFileData%NJoints
    p%NNodes   = InputFileData%NJoints ! Total number of nodes (joints + interior nodes); incremented below
+   p%MHK      = MHK
+   p%WtrDpth  = WtrDpth
 
    allocate( p%Members(InputFileData%NMembers), STAT = ErrStat2)
    if ( ErrStat2 /= 0 ) then
