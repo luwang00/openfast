@@ -384,6 +384,9 @@ subroutine AD_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, InitOut
       InputFileData%TwrPotent  = TwrPotent_none
       InputFileData%TwrShadow  = TwrShadow_none
       InputFileData%TwrAero    = TwrAero_none
+      InputFileData%GSPotent  = GSPotent_none
+      InputFileData%GSShadow  = GSShadow_none
+      InputFileData%GSAero    = GSAero_none
      !InputFileData%CavitCheck = .false.
      !InputFileData%TFinAero   = .false. ! not sure if this needs to be set or not
       InputFileData%DBEMT_Mod = DBEMT_none
@@ -784,7 +787,10 @@ endif
       call AllocAry( m%TwrClrnc, p%NumBlNds, p%NumBlades, 'm%TwrClrnc', ErrStat2, ErrMsg2 )
          call SetErrStat( errStat2, errMsg2, errStat, errMsg, RoutineName )
    end if
-
+   if (p%GSPotent /= GSPotent_none .or. p%GSShadow /= GSShadow_none) then
+      call AllocAry( m%GSClrnc, p%NumBlNds, p%NumBlades, 'm%GSClrnc', ErrStat2, ErrMsg2 )
+         call SetErrStat( errStat2, errMsg2, errStat, errMsg, RoutineName )
+   end if
    call AllocAry( m%Cant, p%NumBlNds, p%NumBlades, 'm%Cant', ErrStat2, ErrMsg2 )
       call SetErrStat( errStat2, errMsg2, errStat, errMsg, RoutineName )            
    call AllocAry( m%Toe, p%NumBlNds, p%NumBlades, 'm%Toe', ErrStat2, ErrMsg2 )
@@ -1586,6 +1592,9 @@ subroutine SetParameters( InitInp, InputFileData, RotData, p, p_AD, ErrStat, Err
    p%TwrPotent        = InputFileData%TwrPotent
    p%TwrShadow        = InputFileData%TwrShadow
    p%TwrAero          = InputFileData%TwrAero
+   p%GSPotent        = InputFileData%GSPotent
+   p%GSShadow        = InputFileData%GSShadow
+   p%GSAero          = InputFileData%GSAero
    p%CavitCheck       = InputFileData%CavitCheck
 
    p%NacelleDrag      = InputFileData%NacelleDrag
@@ -2437,7 +2446,7 @@ subroutine RotCalcOutput( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z, OtherSta
       CalcWriteOutput = .true. ! by default, calculate WriteOutput unless told that we do not need it
    end if
 
-   call SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat2, errMsg2)      
+   call SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat2, errMsg2, GSInflow)      
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
 
    if (p_AD%Wake_Mod /= WakeMod_FVW) then
@@ -3306,7 +3315,7 @@ END SUBROUTINE RotCalcContStateDeriv
 !----------------------------------------------------------------------------------------------------------------------------------
 !> This subroutine converts the AeroDyn inputs into values that can be used for its submodules. It calculates the disturbed inflow
 !! on the blade if tower shadow or tower influence are enabled, then uses these values to set m%BEMT_u(indx).
-subroutine SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat, errMsg)
+subroutine SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat, errMsg, GSInflow)
    real(DbKi),                   intent(in   )  :: t                      !< Current simulation time in seconds
    type(RotParameterType),       intent(in   )  :: p                      !< AD parameters
    type(AD_ParameterType),       intent(in   )  :: p_AD                   !< AD parameters
@@ -3316,7 +3325,7 @@ subroutine SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat, errMsg)
    integer,                      intent(in   )  :: indx                   !< index into m%BEMT_u(indx) array; 1=t and 2=t+dt (but not checked here)
    integer(IntKi),               intent(  out)  :: ErrStat                !< Error status of the operation
    character(*),                 intent(  out)  :: ErrMsg                 !< Error message if ErrStat /= ErrID_None
-                                 
+   type(ElemInflowType), optional,intent(in   )  :: GSInflow               !< Inflow on the general support structure at Time t (if available)
    ! local variables             
    integer(intKi)                               :: ErrStat2
    character(ErrMsgLen)                         :: ErrMsg2
@@ -3324,8 +3333,8 @@ subroutine SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat, errMsg)
    ErrStat = ErrID_None
    ErrMsg  = ""
    
-   ! Disturbed inflow on blade (if tower shadow present)
-   call SetDisturbedInflow(p, p_AD, u, RotInflow, m, errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, RoutineName)
+   ! Disturbed inflow on blade (if tower shadow present, and if general support structure influence present)
+   call SetDisturbedInflow(p, p_AD, u, RotInflow, m, errStat2, errMsg2, GSInflow); call SetErrStat(errStat2, errMsg2, errStat, errMsg, RoutineName)
 
    if (p_AD%Wake_Mod /= WakeMod_FVW) then
 
@@ -3341,7 +3350,7 @@ end subroutine SetInputs
 
 !----------------------------------------------------------------------------------------------------------------------------------
 !> Disturbed inflow on the blade if tower shadow or tower influence are enabled
-subroutine SetDisturbedInflow(p, p_AD, u, RotInflow, m, errStat, errMsg)
+subroutine SetDisturbedInflow(p, p_AD, u, RotInflow, m, errStat, errMsg, GSInflow)
    type(RotParameterType),       intent(in   )  :: p                      !< AD parameters
    type(AD_ParameterType),       intent(in   )  :: p_AD                   !< AD parameters
    type(RotInputType),           intent(in   )  :: u                      !< AD Inputs at Time
@@ -3349,6 +3358,7 @@ subroutine SetDisturbedInflow(p, p_AD, u, RotInflow, m, errStat, errMsg)
    type(RotMiscVarType),         intent(inout)  :: m                      !< Misc/optimization variables
    integer(IntKi),               intent(  out)  :: errStat                !< Error status of the operation
    character(*),                 intent(  out)  :: errMsg                 !< Error message if ErrStat /= ErrID_None
+   type(ElemInflowType), optional,intent(in   )  :: GSInflow               !< Inflow on the general support structure at Time t (if available)
    ! local variables             
    real(R8Ki)                                   :: x_hat_disk(3)
    integer(intKi)                               :: j,k
@@ -3364,6 +3374,14 @@ subroutine SetDisturbedInflow(p, p_AD, u, RotInflow, m, errStat, errMsg)
       do k = 1, p%NumBlades
          m%DisturbedInflow(:,:,k) = RotInflow%Blade(k)%InflowVel
       end do
+   end if
+
+   ! Generalized support structure (GS) influence, added on top of the tower (or undisturbed) inflow above
+   if (present(GSInflow)) then
+      if (p%hasGSMod) then
+         call GSInfl( p, p_AD%GS, u, GSInflow, m, errStat2, errMsg2 )
+            call SetErrStat(errStat2, errMsg2, errStat, errMsg, RoutineName)
+      end if
    end if
 
    if (p_AD%Skew_Mod == Skew_Mod_Orthogonal) then
@@ -4567,8 +4585,13 @@ SUBROUTINE ValidateInputData( InitInp, InputFileData, NumBl, calcCrvAngle, ErrSt
       call SetErrStat ( ErrID_Fatal, 'TwrAero must be 0 (none) or 1 (Tower aero on).', ErrStat, ErrMsg, RoutineName ) 
    end if
    if (Failed()) return
+
+   if (InputFileData%GSAero /= GSAero_none .and. InputFileData%GSAero /= GSAero_noVIV) then
+      call SetErrStat ( ErrID_Fatal, 'GSAero must be 0 (none) or 1 (multi-member generalized tower aero/hydro on).', ErrStat, ErrMsg, RoutineName ) 
+   end if
+   if (Failed()) return
    
-   if (InitInp%MHK == MHK_None .and. InputFileData%CavitCheck) call SetErrStat ( ErrID_Fatal, 'A cavitation check can only be performed for an MHK turbine.', ErrStat, ErrMsg, RoutineName )
+    if (InitInp%MHK == MHK_None .and. InputFileData%CavitCheck) call SetErrStat ( ErrID_Fatal, 'A cavitation check can only be performed for an MHK turbine.', ErrStat, ErrMsg, RoutineName )
    if (InitInp%MHK /= MHK_None .and. InputFileData%CompAA ) call SetErrStat ( ErrID_Fatal, 'The aeroacoustics module cannot be used with an MHK turbine.', ErrStat, ErrMsg, RoutineName )
    do iR = 1,size(NumBl)
       if (InitInp%MHK /= MHK_None .and. InputFileData%rotors(iR)%TFinAero) call SetErrStat ( ErrID_Fatal, 'A tail fin cannot be modeled for an MHK turbine.', ErrStat, ErrMsg, RoutineName )
@@ -5397,7 +5420,11 @@ SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMs
    p%GSPotent = GSPotent_baseline
    p%GSShadow = GSShadow_Powles
    p%GSAero   = GSAero_noVIV
-   p%hasGSMod = (p%GSPotent/=GSPotent_none) .or. (p%GSShadow/=GSShadow_none) .or. (p%GSAero/=GSAero_none)
+   if ((p%GSPotent/=GSPotent_none) .or. (p%GSShadow/=GSShadow_none) .or. (p%GSAero/=GSAero_none)) then
+      p%hasGSMod = .TRUE.
+   else
+      p%hasGSMod = .FALSE.
+   endif
    p%Density  = Density
    p%NMembers = InputFileData%NMembers
    p%NJoints  = InputFileData%NJoints
@@ -6483,7 +6510,608 @@ SUBROUTINE TwrInfl_NearestPoint(p, u, RotInflow, BladeNodePosition, r_TowerBlade
 
 END SUBROUTINE TwrInfl_NearestPoint
 !----------------------------------------------------------------------------------------------------------------------------------
+!----------------------------------------------------------------------------------------------------------------------------------
+!> This routine checks for invalid inputs to the generalized support structure (GS) influence models.
+!! Mirrors CheckTwrInfl, but the GS structure is a collection of members (not a single Line2 mesh), so
+!! consecutive-node colocation is checked member-by-member.
+SUBROUTINE CheckGSInfl(p_GS, u, ErrStat, ErrMsg )
 
+   TYPE(GSParameterType),        INTENT(IN   )  :: p_GS        !< General support structure parameters
+   TYPE(RotInputType),           INTENT(IN   )  :: u           !< Inputs at Time t
+   INTEGER(IntKi),               INTENT(  OUT)  :: ErrStat     !< Error status of the operation
+   CHARACTER(*),                 INTENT(  OUT)  :: ErrMsg      !< Error message if ErrStat /= ErrID_None
+   
+   ! local variables
+   real(reKi)                                   :: ElemSize
+   real(reKi)                                   :: tmp(3)
+   integer(intKi)                               :: iMem, j, n1, n2
+   character(*), parameter                      :: RoutineName = 'CheckGSInfl'
+   
+   
+   ErrStat = ErrID_None
+   ErrMsg  = ""
+   
+   !! the GS-influence models (potential flow and shadow) are valid only for small deflections;
+   !! so, first throw an error to avoid a division-by-zero error if any two consecutive nodes of a member are colocated.
+   
+   do iMem = 1, p_GS%NMembers
+      associate( mem => p_GS%Members(iMem) )
+      do j = 2, mem%NElements+1
+         n1 = mem%NodeIndx(j-1)
+         n2 = mem%NodeIndx(j  )
+         tmp =   u%GSMotion%Position(:,n2) + u%GSMotion%TranslationDisp(:,n2) &
+               - u%GSMotion%Position(:,n1) - u%GSMotion%TranslationDisp(:,n1)
+         ElemSize = TwoNorm(tmp)
+         if ( EqualRealNos(ElemSize,0.0_ReKi) ) then
+            call SetErrStat(ErrID_Fatal, "Division by zero: nodes "//trim(num2lstr(n1))//' and '//trim(num2lstr(n2))// &
+                                          ' of member '//trim(num2lstr(mem%MemberID))//' are colocated.', ErrStat, ErrMsg, RoutineName )
+            exit
+         end if
+      end do
+      end associate
+   end do
+      
+   
+END SUBROUTINE CheckGSInfl
+!----------------------------------------------------------------------------------------------------------------------------------
+!> This routine calculates the influence of the generalized support structure (GS) on the blade inflow,
+!! following the same modeling approach as TwrInfl. The disturbance computed here is ADDED to whatever is
+!! already stored in m%DisturbedInflow (e.g., tower influence), rather than overwriting it.
+SUBROUTINE GSInfl( p, p_GS, u, GSInflow, m, ErrStat, ErrMsg )
+!..................................................................................................................................
+
+   TYPE(RotInputType),           INTENT(IN   )  :: u                       !< Inputs at Time t
+   TYPE(RotParameterType),       INTENT(IN   )  :: p                       !< Parameters (rotor-level GSPotent/GSShadow/hasGSMod copies)
+   TYPE(GSParameterType),        INTENT(IN   )  :: p_GS                    !< General support structure parameters
+   TYPE(ElemInflowType),         INTENT(IN   )  :: GSInflow                !< Inflow on the GS structure at Time t
+   type(RotMiscVarType),         intent(inout)  :: m                       !< Misc/optimization variables
+   INTEGER(IntKi),               INTENT(  OUT)  :: ErrStat                 !< Error status of the operation
+   CHARACTER(*),                 INTENT(  OUT)  :: ErrMsg                  !< Error message if ErrStat /= ErrID_None
+
+   ! local variables
+   real(ReKi)                                   :: xbar                    ! local x^ component of r_GSBlade (distance from GS structure to blade) normalized by GS diameter
+   real(ReKi)                                   :: ybar                    ! local y^ component of r_GSBlade (distance from GS structure to blade) normalized by GS diameter
+   real(ReKi)                                   :: zbar                    ! local z^ component of r_GSBlade (distance from GS structure to blade) normalized by GS diameter
+   real(ReKi)                                   :: theta_GS_trans(3,3)     ! transpose of local GS-member orientation expressed as a DCM
+   real(ReKi)                                   :: GSCd                    ! local GS-member drag coefficient
+   real(ReKi)                                   :: GSTI                    ! local GS-member TI (for Eames shadow model) 
+   real(ReKi)                                   :: W_GS                    ! local relative wind speed normal to the GS member
+
+   real(ReKi)                                   :: BladeNodePosition(3)    ! local blade node position
+   
+   real(ReKi)                                   :: v(3)                    ! temp vector
+   real(ReKi)                                   :: v_sum(3)                ! average temp vector
+   real(ReKi)                                   :: v_rss(3)                ! root-sum-square temp vector
+   real(ReKi)                                   :: v_result(3)             ! combined (potential + shadow) disturbed velocity contribution
+   real(ReKi)                                   :: v_mem(3,p_GS%NMembers)  ! velocity influence (in global coords) from each GS member, for this blade/node
+   
+   real(ReKi)                                   :: GSClrnc                 ! local GS clearance
+   logical                                      :: FirstWarn_GSStrike
+   logical                                      :: DisturbInflow
+   
+   integer(IntKi)                               :: j, k, iMem                    ! loop counters for elements, blades
+   integer(intKi)                               :: ErrStat2
+   character(ErrMsgLen)                         :: ErrMsg2
+   character(*), parameter                      :: RoutineName = 'GSInfl'
+   
+   
+   ErrStat = ErrID_None
+   ErrMsg  = ""   
+   
+   if (.not. p%hasGSMod) return
+   if (p%GSPotent == GSPotent_none .and. p%GSShadow == GSShadow_none) return
+   
+   FirstWarn_GSStrike = .true.
+   
+      ! these models are valid for only small deflections; check for potential division-by-zero errors:   
+   call CheckGSInfl( p_GS, u, ErrStat2, ErrMsg2 )
+      call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+      if (ErrStat >= AbortErrLev) return
+      
+   do k = 1, p%NumBlades
+      do j = 1, u%BladeMotion(k)%NNodes
+         
+         ! for each line2-element node of the blade mesh, a nearest-neighbor line2 element or node of the GS
+         ! structure is found in the deflected configuration, returning theta_GS_trans, W_GS, xbar, ybar, zbar, and GSCd:
+         
+         BladeNodePosition = u%BladeMotion(k)%Position(:,j) + u%BladeMotion(k)%TranslationDisp(:,j)
+         
+         v_mem = 0.0_ReKi ! reset per-member velocity storage for this blade node
+
+         ! Loop throurgh No. GSMembers
+         do iMem = 1, p_GS%NMembers
+            call getLocalGSProps(p_GS, iMem, u, GSInflow, BladeNodePosition, theta_GS_trans, W_GS, xbar, ybar, zbar, GSCd, GSTI, GSClrnc, FirstWarn_GSStrike, DisturbInflow, ErrStat2, ErrMsg2)
+               call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+               if (.not. FirstWarn_GSStrike) call SetErrStat(ErrID_Fatal, "Generalized support structure strike.", ErrStat, ErrMsg, RoutineName )
+               if (ErrStat >= AbortErrLev) return
+
+            if ( DisturbInflow ) then
+               v = CalculateGSInfluence(p, xbar, ybar, zbar, W_GS, GSCd, GSTI)
+               v_mem(:,iMem) = matmul( theta_GS_trans, v )
+            else
+               v_mem(:,iMem) = 0.0_ReKi
+            end if
+         enddo !iMem
+
+         v_result = 0.0_ReKi
+         if ( p%GSPotent /= GSPotent_none ) then
+            ! Sum disturbed inflow here
+            v_sum = sum(v_mem, dim=2)
+            v_result = v_result + v_sum
+         endif
+         if ( p%GSShadow /= GSShadow_none ) then
+            ! Root Sum Square of disturbed velocity (combine per-member shadow deficits component-wise)
+            v_rss    = sqrt( sum(v_mem**2, dim=2) )
+            v_result = v_result + v_rss
+         endif
+
+         ! Combine the per-member velocity contributions (via v_result above) into the disturbed inflow
+         m%DisturbedInflow(:,j,k) = m%DisturbedInflow(:,j,k) + v_result
+      
+      end do !j=NumBlNds
+   end do ! NumBlades
+   
+   
+END SUBROUTINE GSInfl 
+!----------------------------------------------------------------------------------------------------------------------------------
+!> Mirrors CalculateTowerInfluence, computing the potential-flow / shadow velocity deficit induced by a
+!! generalized support structure (GS) member using the GSPotent / GSShadow models.
+FUNCTION CalculateGSInfluence(p, xbar_in, ybar, zbar, W_GS, GSCd, GSTI) RESULT(v)
+
+   TYPE(RotParameterType),       INTENT(IN   )  :: p                       !< Parameters
+   real(ReKi), intent(in)                       :: xbar_in                 ! local x^ component of r_GSBlade normalized by GS diameter
+   real(ReKi), intent(in)                       :: ybar                    ! local y^ component of r_GSBlade normalized by GS diameter
+   real(ReKi), intent(in)                       :: zbar                    ! local z^ component of r_GSBlade normalized by GS diameter
+   real(ReKi), intent(in)                       :: W_GS                    ! local relative wind speed normal to the GS member
+   real(ReKi), intent(in)                       :: GSCd                    ! local GS-member drag coefficient
+   real(ReKi), intent(in)                       :: GSTI                    ! local GS-member TI (for Eames shadow model)
+   real(ReKi)                                   :: v(3)                    ! modified velocity vector
+      
+   real(ReKi)                                   :: denom                   ! denominator
+   real(ReKi)                                   :: exponential             ! exponential term
+   real(ReKi)                                   :: xbar                    ! potentially modified version of xbar_in
+   real(ReKi)                                   :: u_GSShadow              ! axial velocity deficit fraction from GS shadow
+   real(ReKi)                                   :: u_GSPotent              ! axial velocity deficit fraction from GS potential flow
+   real(ReKi)                                   :: v_GSPotent              ! transverse velocity deficit fraction from GS potential flow
+
+
+   u_GSShadow = 0.0_ReKi
+   u_GSPotent = 0.0_ReKi
+   v_GSPotent = 0.0_ReKi
+   xbar       = xbar_in
+
+   ! calculate GS-member influence:
+   if ( abs(zbar) < 1.0_ReKi .and. p%GSPotent /= GSPotent_none ) then
+
+      if ( p%GSPotent == GSPotent_baseline ) then
+         denom = (xbar**2 + ybar**2)**2
+         u_GSPotent = ( -1.0*xbar**2 + ybar**2 ) / denom
+         v_GSPotent = ( -2.0*xbar    * ybar    ) / denom
+
+      elseif (p%GSPotent == GSPotent_Bak) then
+         ! Reference: Bak, Madsen, Johansen (2001): Influence from Blade-Tower Interaction on Fatigue Loads and Dynamics (poster);
+         !            Proceedings: EWEC'01; Copenhagen (DK)
+         xbar = xbar + 0.1 ! offset added as part of the original model of Bak et al.
+         denom = (xbar**2 + ybar**2)**2
+         u_GSPotent = ( -1.0*xbar**2 + ybar**2 ) / denom
+         v_GSPotent = ( -2.0*xbar    * ybar    ) / denom
+         denom = TwoPi*(xbar**2 + ybar**2)
+         u_GSPotent = u_GSPotent + GSCd*xbar / denom
+         v_GSPotent = v_GSPotent + GSCd*ybar / denom
+         xbar = xbar - 0.1 ! removing offset
+               
+      end if
+   end if
+         
+   select case (p%GSShadow)
+      case (GSShadow_Powles)
+         if ( xbar > 0.0_ReKi .and. abs(zbar) < 1.0_ReKi) then
+            denom = sqrt( sqrt( xbar**2 + ybar**2 ) )
+            if ( abs(ybar) < denom ) then
+               u_GSShadow = -GSCd / denom * cos( PiBy2*ybar / denom )**2
+            end if
+         end if
+      case (GSShadow_Eames)
+         if ( xbar > 0.0_ReKi .and. abs(zbar) < 1.0_ReKi) then
+            exponential = ( ybar / (GSTI * xbar) )**2
+            denom = GSTI * xbar * sqrt( TwoPi )
+            u_GSShadow = -GSCd / denom * exp ( -0.5_ReKi * exponential ) 
+         end if
+   end select
+
+   ! We limit the deficit to avoid having too much flow reversal and accumulation of vorticity behind the member
+   ! Limit to -0.5 the wind speed at the GS member
+   u_GSShadow = max(u_GSShadow, -0.5_ReKi)
+         
+         
+   v(1) = (u_GSPotent + u_GSShadow)*W_GS
+   v(2) = v_GSPotent*W_GS
+   v(3) = 0.0_ReKi
+      
+
+END FUNCTION CalculateGSInfluence
+!----------------------------------------------------------------------------------------------------------------------------------
+!> This routine returns the GS-member constants necessary to compute the GS influence, mirroring getLocalTowerProps.
+!! if u%GSMotion does not have any nodes there will be serious problems. I assume that has been checked earlier.
+SUBROUTINE getLocalGSProps(p_GS, iMem, u, GSInflow, BladeNodePosition, theta_GS_trans, W_GS, xbar, ybar, zbar, GSCd, GSTI, GSClrnc, FirstWarn_GSStrike, DisturbInflow, ErrStat, ErrMsg)
+!..................................................................................................................................
+   TYPE(RotInputType),           INTENT(IN   )  :: u                       !< Inputs at Time t
+   TYPE(GSParameterType),        INTENT(IN   )  :: p_GS                    !< General support structure parameters
+   TYPE(ElemInflowType),         INTENT(IN   )  :: GSInflow                !< Inflow on the GS structure at Time t 
+   INTEGER(IntKi)                ,INTENT(  IN)   :: iMem                    !< GS member index 
+   REAL(ReKi)                   ,INTENT(IN   )  :: BladeNodePosition(3)    !< local blade node position
+   REAL(ReKi)                   ,INTENT(  OUT)  :: theta_GS_trans(3,3)     !< transpose of local GS-member orientation expressed as a DCM 
+   LOGICAL                      ,INTENT(INOUT)  :: FirstWarn_GSStrike      !< Whether we should check and warn for a GS-structure strike 
+   LOGICAL                      ,INTENT(  OUT)  :: DisturbInflow           !< Whether GS clearance is in the range of values where it should disturb the inflow
+   REAL(ReKi)                   ,INTENT(  OUT)  :: W_GS                    !< local relative wind speed normal to the GS member
+   REAL(ReKi)                   ,INTENT(  OUT)  :: xbar                    !< local x^ component of r_GSBlade normalized by GS diameter
+   REAL(ReKi)                   ,INTENT(  OUT)  :: ybar                    !< local y^ component of r_GSBlade normalized by GS diameter
+   REAL(ReKi)                   ,INTENT(  OUT)  :: zbar                    !< local z^ component of r_GSBlade normalized by GS diameter
+   REAL(ReKi)                   ,INTENT(  OUT)  :: GSCd                    !< local GS-member drag coefficient
+   REAL(ReKi)                   ,INTENT(  OUT)  :: GSTI                    !< local GS-member TI (for Eames shadow model)
+   REAL(ReKi)                   ,INTENT(  OUT)  :: GSClrnc                 !< GS clearance for potential output 
+   INTEGER(IntKi),               INTENT(  OUT)  :: ErrStat                 !< Error status of the operation
+   CHARACTER(*),                 INTENT(  OUT)  :: ErrMsg                  !< Error message if ErrStat /= ErrID_None
+
+   ! local variables
+   real(ReKi)                                   :: r_GSBlade(3)            ! distance vector from GS member to blade
+   real(ReKi)                                   :: GSDiam                  ! local GS-member diameter  
+   logical                                      :: found   
+   character(*), parameter                      :: RoutineName = 'getLocalGSProps'
+   
+   
+   ErrStat = ErrID_None
+   ErrMsg  = ""   
+   
+   ! ..............................................
+   ! option 1: nearest line2 element
+   ! ..............................................
+   call GSInfl_NearestLine2Element(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSBlade, theta_GS_trans, W_GS, xbar, ybar, zbar, GSCd, GSTI, GSDiam, found)
+   
+   if ( .not. found) then 
+      ! ..............................................
+      ! option 2: nearest node
+      ! ..............................................
+      call GSInfl_NearestPoint(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSBlade, theta_GS_trans, W_GS, xbar, ybar, zbar, GSCd, GSTI, GSDiam)
+         
+   end if
+   
+   GSClrnc = TwoNorm(r_GSBlade) - 0.5_ReKi*GSDiam
+
+   if (FirstWarn_GSStrike) then
+      if ( GSClrnc <= 0.0_ReKi ) then
+         call WrScr( NewLine//NewLine//"** WARNING: Generalized support structure strike. **  This warning will not be repeated though the condition may persist."//NewLine//NewLine )
+         FirstWarn_GSStrike = .false.
+      end if
+   end if
+
+   
+   if ( GSClrnc>20.0_ReKi*GSDiam) then
+      ! Far away, we skip the computation and keep undisturbed inflow 
+      DisturbInflow = .false.
+   elseif ( GSClrnc<=0.01_ReKi*GSDiam) then
+      ! Inside the member, or very close, (will happen for vortex elements) we keep undisturbed inflow
+      ! We don't want to reach the stagnation points
+      DisturbInflow = .false.
+   else
+      DisturbInflow = .true.
+   end if
+
+END SUBROUTINE getLocalGSProps
+!----------------------------------------------------------------------------------------------------------------------------------
+!> Option 1: Find the nearest-neighbor line2 element (within any member) of the GS structure for which the blade
+!!   line2-element node projects orthogonally onto the member's line2-element domain. Mirrors TwrInfl_NearestLine2Element,
+!!   but loops over each member's own element list (mem%NodeIndx) instead of a single Line2 ElemTable, since the GS
+!!   structure may consist of several members that do not form one contiguous line.
+SUBROUTINE GSInfl_NearestLine2Element(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSBlade, theta_GS_trans, W_GS, xbar, ybar, zbar, GSCd, GSTI, GSDiam, found)
+!..................................................................................................................................
+   TYPE(RotInputType),              INTENT(IN   )  :: u                             !< Inputs at Time t
+   TYPE(GSParameterType),           INTENT(IN   )  :: p_GS                          !< General support structure parameters
+   TYPE(ElemInflowType),            INTENT(IN   )  :: GSInflow                      !< Inflow on the GS structure at Time t
+   REAL(ReKi)                      ,INTENT(IN   )  :: BladeNodePosition(3)          !< local blade node position
+   INTEGER(IntKi)                   ,INTENT(  IN)   :: iMem                          !< GS member index 
+   REAL(ReKi)                      ,INTENT(  OUT)  :: r_GSBlade(3)                  !< distance vector from GS member to blade
+   REAL(ReKi)                      ,INTENT(  OUT)  :: theta_GS_trans(3,3)           !< transpose of local GS-member orientation expressed as a DCM
+   REAL(ReKi)                      ,INTENT(  OUT)  :: W_GS                          !< local relative wind speed normal to the GS member
+   REAL(ReKi)                      ,INTENT(  OUT)  :: xbar                          !< local x^ component of r_GSBlade normalized by GS diameter
+   REAL(ReKi)                      ,INTENT(  OUT)  :: ybar                          !< local y^ component of r_GSBlade normalized by GS diameter
+   REAL(ReKi)                      ,INTENT(  OUT)  :: zbar                          !< local z^ component of r_GSBlade normalized by GS diameter
+   REAL(ReKi)                      ,INTENT(  OUT)  :: GSCd                          !< local GS-member drag coefficient
+   REAL(ReKi)                      ,INTENT(  OUT)  :: GSTI                          !< local GS-member TI (Eames shadow model) 
+   REAL(ReKi)                      ,INTENT(  OUT)  :: GSDiam                        !< local GS-member diameter
+   logical                         ,INTENT(  OUT)  :: found                         !< whether a mapping was found with this option 
+      
+      ! local variables
+   REAL(ReKi)      :: denom
+   REAL(ReKi)      :: dist
+   REAL(ReKi)      :: min_dist
+   REAL(ReKi)      :: elem_position, elem_position2
+   REAL(SiKi)      :: elem_position_SiKi
+
+   REAL(ReKi)      :: p1(3), p2(3)        ! position vectors for nodes on a GS-member line 2 element
+   
+   REAL(ReKi)      :: V_rel_GS(3)
+   
+   REAL(ReKi)      :: n1_n2_vector(3)     ! vector going from node 1 to node 2 in Line2 element
+   REAL(ReKi)      :: n1_Point_vector(3)  ! vector going from node 1 in Line 2 element to Destination Point
+   REAL(ReKi)      :: tmp(3)              ! temporary vector for cross product calculation
+
+   !INTEGER(IntKi)  :: iMem                ! do-loop counter for members
+   INTEGER(IntKi)  :: jElem               ! do-loop counter for elements within a member
+
+   INTEGER(IntKi)  :: n1, n2              ! global node indices associated with an element
+
+   LOGICAL         :: on_element
+   
+      
+   found = .false.
+   min_dist = HUGE(min_dist)
+
+   !do iMem = 1, p_GS%NMembers   ! number of members on the GS structure
+      associate( mem => p_GS%Members(iMem) )
+      do jElem = 1, mem%NElements   ! number of elements on this member
+            ! grab global node numbers associated with the jElem_th element of this member
+         n1 = mem%NodeIndx(jElem  )
+         n2 = mem%NodeIndx(jElem+1)
+
+         p1 = u%GSMotion%Position(:,n1) + u%GSMotion%TranslationDisp(:,n1)
+         p2 = u%GSMotion%Position(:,n2) + u%GSMotion%TranslationDisp(:,n2)
+
+            ! Calculate vectors used in projection operation
+         n1_n2_vector    = p2 - p1
+         n1_Point_vector = BladeNodePosition - p1
+
+         denom           = DOT_PRODUCT( n1_n2_vector, n1_n2_vector ) ! we've already checked that these aren't zero
+
+            ! project point onto line defined by n1 and n2
+
+         elem_position = DOT_PRODUCT(n1_n2_vector,n1_Point_vector) / denom
+
+               ! note: i forumlated it this way because Fortran doesn't necessarially do shortcutting and I don't want to call EqualRealNos if we don't need it:
+         if ( elem_position .ge. 0.0_ReKi .and. elem_position .le. 1.0_ReKi ) then !we're ON the element (between the two nodes)
+            on_element = .true.
+         else
+            elem_position_SiKi = REAL( elem_position, SiKi )
+            if (EqualRealNos( elem_position_SiKi, 1.0_SiKi )) then !we're ON the element (at a node)
+               on_element = .true.
+               elem_position = 1.0_ReKi
+            elseif (EqualRealNos( elem_position_SiKi,  0.0_SiKi )) then !we're ON the element (at a node)
+               on_element = .true.
+               elem_position = 0.0_ReKi
+            else !we're not on the element
+               on_element = .false.
+            end if
+            
+         end if
+
+         if (on_element) then
+
+            ! calculate distance between point and line (note: this is actually the distance squared);
+            ! will only store information once we have determined the closest element
+            elem_position2 = 1.0_ReKi - elem_position
+            
+            r_GSBlade  = BladeNodePosition - elem_position2*p1 - elem_position*p2
+            dist = dot_product( r_GSBlade, r_GSBlade )
+
+            if (dist .lt. min_dist) then
+               found = .true.
+               min_dist = dist
+
+               V_rel_GS =   ( GSInflow%InflowVel(:,n1) - u%GSMotion%TranslationVel(:,n1) ) * elem_position2  &
+                          + ( GSInflow%InflowVel(:,n2) - u%GSMotion%TranslationVel(:,n2) ) * elem_position
+               
+               GSDiam      = elem_position2*2.0_ReKi*mem%R(jElem) + elem_position*2.0_ReKi*mem%R(jElem+1)
+               GSCd        = elem_position2*mem%Cd(  jElem) + elem_position*mem%Cd(  jElem+1)
+               GSTI        = elem_position2*mem%TI(  jElem) + elem_position*mem%TI(  jElem+1)
+               
+               
+               ! z_hat
+               theta_GS_trans(:,3) = n1_n2_vector / sqrt( denom ) ! = n1_n2_vector / twoNorm( n1_n2_vector )
+               
+               tmp = V_rel_GS - dot_product(V_rel_GS,theta_GS_trans(:,3)) * theta_GS_trans(:,3)
+               denom = TwoNorm( tmp )
+               if (.not. EqualRealNos( denom, 0.0_ReKi ) ) then
+                  ! x_hat
+                  theta_GS_trans(:,1) = tmp / denom
+                  
+                  ! y_hat
+                  tmp = cross_product( theta_GS_trans(:,3), V_rel_GS )
+                  theta_GS_trans(:,2) = tmp / denom  
+                  
+                  W_GS = dot_product( V_rel_GS,theta_GS_trans(:,1) )
+                  xbar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,1) )
+                  ybar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,2) )
+                  zbar = 0.0_ReKi
+                                                
+               else
+                     ! there is no GS influence because dot_product(V_rel_GS,x_hat) = 0
+                     ! thus, we don't need to set the other values (except we don't want the sum of xbar^2 and ybar^2 to be 0)
+                  theta_GS_trans = 0.0_ReKi
+                  W_GS           = 0.0_ReKi
+                  xbar           = 1.0_ReKi
+                  ybar           = 0.0_ReKi  
+                  zbar           = 0.0_ReKi
+               end if
+      
+               
+            end if !the point is closest to this line2 element
+
+         end if
+
+      end do !jElem
+      end associate
+   !end do !iMem
+
+END SUBROUTINE GSInfl_NearestLine2Element
+!----------------------------------------------------------------------------------------------------------------------------------
+!> Returns the number of members for which global node index iNode is an endpoint (i.e., the member's first or
+!! last node). A value of 1 identifies a "free end" of the GS structure (e.g., the tip of a boom, analogous to the
+!! top/bottom of the tower); a value >= 2 identifies a junction where multiple members meet.
+FUNCTION GSNodeConnectivity(p_GS, iNode) RESULT(nConn)
+   TYPE(GSParameterType),        INTENT(IN   )  :: p_GS        !< General support structure parameters
+   INTEGER(IntKi),               INTENT(IN   )  :: iNode       !< global GS node index
+   INTEGER(IntKi)                               :: nConn       !< number of members for which iNode is an endpoint
+
+   INTEGER(IntKi)                               :: iMem
+
+   nConn = 0
+   do iMem = 1, p_GS%NMembers
+      associate( mem => p_GS%Members(iMem) )
+      if (mem%NodeIndx(1)               == iNode) nConn = nConn + 1
+      if (mem%NodeIndx(mem%NElements+1) == iNode) nConn = nConn + 1
+      end associate
+   end do
+
+END FUNCTION GSNodeConnectivity
+!----------------------------------------------------------------------------------------------------------------------------------
+!> Option 2: used when the blade node does not orthogonally intersect a GS-member element.
+!!  Find the nearest-neighbor node across all members of the GS structure. Mirrors TwrInfl_NearestPoint; the
+!!  "free end" cosine-taper case (option 2b) is applied only at nodes with GSNodeConnectivity <= 1 (true tips of
+!!  the structure), while interior member nodes and multi-member junctions use option 2a (no taper).
+SUBROUTINE GSInfl_NearestPoint(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSBlade, theta_GS_trans, W_GS, xbar, ybar, zbar, GSCd, GSTI, GSDiam)
+!..................................................................................................................................
+   TYPE(RotInputType),              INTENT(IN   )  :: u                             !< Inputs at Time t
+   TYPE(GSParameterType),           INTENT(IN   )  :: p_GS                          !< General support structure parameters
+   TYPE(ElemInflowType),            INTENT(IN   )  :: GSInflow                      !< Inflow on the GS structure at Time t
+   REAL(ReKi)                      ,INTENT(IN   )  :: BladeNodePosition(3)          !< local blade node position
+   INTEGER(IntKi)                   ,INTENT(  IN)   :: iMem                          !< GS member index 
+   REAL(ReKi)                      ,INTENT(  OUT)  :: r_GSBlade(3)                  !< distance vector from GS member to blade
+   REAL(ReKi)                      ,INTENT(  OUT)  :: theta_GS_trans(3,3)           !< transpose of local GS-member orientation expressed as a DCM
+   REAL(ReKi)                      ,INTENT(  OUT)  :: W_GS                          !< local relative wind speed normal to the GS member
+   REAL(ReKi)                      ,INTENT(  OUT)  :: xbar                          !< local x^ component of r_GSBlade normalized by GS diameter
+   REAL(ReKi)                      ,INTENT(  OUT)  :: ybar                          !< local y^ component of r_GSBlade normalized by GS diameter
+   REAL(ReKi)                      ,INTENT(  OUT)  :: zbar                          !< local z^ component of r_GSBlade normalized by GS diameter
+   REAL(ReKi)                      ,INTENT(  OUT)  :: GSCd                          !< local GS-member drag coefficient
+   REAL(ReKi)                      ,INTENT(  OUT)  :: GSTI                          !< local GS-member TI (for Eames shadow model)
+   REAL(ReKi)                      ,INTENT(  OUT)  :: GSDiam                        !< local GS-member diameter
+      
+      ! local variables
+   REAL(ReKi)      :: denom
+   REAL(ReKi)      :: dist
+   REAL(ReKi)      :: min_dist
+   REAL(ReKi)      :: cosTaper
+
+   REAL(ReKi)      :: p1(3)                     ! position vectors for nodes on the GS structure
+   REAL(ReKi)      :: V_rel_GS(3)
+   
+   REAL(ReKi)      :: tmp(3)                    ! temporary vector for cross product calculation
+
+   INTEGER(IntKi)  :: j                   ! do-loop counters for members and local member nodes
+   INTEGER(IntKi)  :: n1                        ! global node index
+
+   INTEGER(IntKi)  :: iMem_min, j_min, n1_min    ! member/local-node/global-node with minimum distance found so far
+
+   LOGICAL         :: isFreeEnd
+
+   
+   
+      !.................
+      ! find the closest node (searching over each member's own node list)
+      !.................
+      
+   min_dist = HUGE(min_dist)
+   iMem_min = 0
+   j_min    = 0
+   n1_min   = 0
+
+   !do iMem = 1, p_GS%NMembers
+      associate( mem => p_GS%Members(iMem) )
+      do j = 1, mem%NElements+1   ! number of nodes on this member
+      
+         n1 = mem%NodeIndx(j)
+         p1 = u%GSMotion%Position(:,n1) + u%GSMotion%TranslationDisp(:,n1)
+         
+            ! calculate distance between points (note: this is actually the distance squared);
+            ! will only store information once we have determined the closest node
+         r_GSBlade = BladeNodePosition - p1         
+         dist = dot_product( r_GSBlade, r_GSBlade )
+
+         if (dist .lt. min_dist) then
+            min_dist = dist
+            iMem_min = iMem
+            j_min    = j
+            n1_min   = n1
+         end if !the point is (so far) closest to this GS node
+
+      end do !j
+      end associate
+   !end do !iMem
+   
+      !.................
+      ! calculate the values to be returned:  
+      !..................
+   if (n1_min == 0) then
+      iMem_min = 1
+      j_min    = 1
+      n1_min   = p_GS%Members(1)%NodeIndx(1)
+      if (NWTC_VerboseLevel == NWTC_Verbose) call WrScr( 'AD:GSInfl_NearestPoint:Error finding minimum distance. Positions may be invalid.' )
+   end if
+   
+   n1 = n1_min
+   associate( mem => p_GS%Members(iMem_min) )
+   
+   r_GSBlade = BladeNodePosition - u%GSMotion%Position(:,n1) - u%GSMotion%TranslationDisp(:,n1)
+   V_rel_GS  = GSInflow%InflowVel(:,n1) - u%GSMotion%TranslationVel(:,n1)
+   GSDiam    = 2.0_ReKi * mem%R( j_min)
+   GSCd      = mem%Cd(  j_min)
+   GSTI      = mem%TI(  j_min)
+                           
+   ! z_hat
+   theta_GS_trans(:,3) = u%GSMotion%Orientation(3,:,n1)
+            
+   tmp = V_rel_GS - dot_product(V_rel_GS,theta_GS_trans(:,3)) * theta_GS_trans(:,3)
+   denom = TwoNorm( tmp )
+   
+   if (.not. EqualRealNos( denom, 0.0_ReKi ) ) then
+      
+      ! x_hat
+      theta_GS_trans(:,1) = tmp / denom
+               
+      ! y_hat
+      tmp = cross_product( theta_GS_trans(:,3), V_rel_GS )
+      theta_GS_trans(:,2) = tmp / denom  
+               
+      W_GS = dot_product( V_rel_GS,theta_GS_trans(:,1) )
+
+      isFreeEnd = .false.
+      if ( j_min == 1 .or. j_min == mem%NElements+1 ) then
+         if ( GSNodeConnectivity(p_GS, n1) <= 1 ) isFreeEnd = .true.
+      end if
+
+      if ( isFreeEnd ) then         
+         ! option 2b: true free end (tip) of the GS structure - taper the influence towards the tip, as at the tower top/bottom
+         zbar    = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,3) )
+         if (abs(zbar) < 1) then   
+            cosTaper = cos( PiBy2*zbar )
+            xbar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,1) ) / cosTaper
+            ybar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,2) ) / cosTaper
+         else ! we check that zbar < 1 before using xbar and ybar later, but I'm going to set them here anyway:
+            xbar = 1.0_ReKi
+            ybar = 0.0_ReKi  
+         end if                                    
+      else
+         ! option 2a: interior node of a member, or a junction where two or more members meet
+         xbar    = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,1) )
+         ybar    = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,2) )
+         zbar    = 0.0_ReKi
+      end if
+
+   else
+      
+         ! there is no GS influence because W_GS = dot_product(V_rel_GS,x_hat) = 0
+         ! thus, we don't need to set the other values (except we don't want the sum of xbar^2 and ybar^2 to be 0)
+      W_GS              = 0.0_ReKi
+      theta_GS_trans    = 0.0_ReKi
+      xbar              = 1.0_ReKi
+      ybar              = 0.0_ReKi  
+      zbar              = 0.0_ReKi
+      
+   end if   
+
+   end associate
+
+END SUBROUTINE GSInfl_NearestPoint
+!----------------------------------------------------------------------------------------------------------------------------------
 subroutine AD_InitVars(iR, u, p, x, z, OtherState, y, m, InitOut, InputFileData, Linearize, CompAeroMaps, ErrStat, ErrMsg)
    integer(IntKi),               intent(in)     :: iR         !< Rotor number
    type(RotInputType),           intent(inout)  :: u              !< An initial guess for the input; input mesh must be defined

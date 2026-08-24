@@ -232,6 +232,9 @@ typedef	^	AD_InputFile	IntKi	BEM_Mod	-	-	-	"Type of BEM model {1=legacy NoSweepP
 typedef	^	AD_InputFile	IntKi	TwrPotent	-	-	-	"Type of tower influence on wind based on potential flow around the tower {0=none, 1=baseline potential flow, 2=potential flow with Bak correction}"	-
 typedef	^	AD_InputFile	IntKi	TwrShadow	-	-	-	"Type of tower influence on wind based on downstream tower shadow {0=none, 1=Powles model, 2=Eames model}"	-
 typedef	^	AD_InputFile	IntKi	TwrAero	-	-	-	"Calculate tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV}"	-
+typedef ^   AD_InputFile    IntKi   GSPotent -   -   -   "Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction}"   -
+typedef ^   AD_InputFile    IntKi   GSShadow -   -   -   "Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model}"   -
+typedef	^	AD_InputFile	IntKi	GSAero	-	-	-	"Calculate multi-member generalized tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV}"	-
 typedef	^	AD_InputFile	Logical	CavitCheck	-	-	-	"Flag that tells us if we want to check for cavitation" -
 typedef ^   AD_InputFile    Logical NacelleDrag    -   -   -   "Include NacelleDrag effects?" flag
 typedef	^	AD_InputFile	Logical	CompAA   -  -  -  "Compute AeroAcoustic noise" flag
@@ -520,6 +523,7 @@ typedef	^	RotMiscVarType	ReKi	Y_Twr	{:}	-	-	"local y-component of force per unit
 typedef	^	RotMiscVarType	ReKi	Cant	{:}{:}	-	-	"curvature angle, saved for possible output to file"	rad
 typedef	^	RotMiscVarType	ReKi	Toe 	{:}{:}	-	-	"Toe angle, saved for possible output to file"	rad
 typedef	^	RotMiscVarType	ReKi	TwrClrnc	{:}{:}	-	-	"Distance between tower (including tower radius) and blade node (not including blade width), saved for possible output to file"	m
+typedef	^	RotMiscVarType	ReKi	GSClrnc	    {:}{:}	-	-	"Distance between tower (including tower radius) and blade node (not including blade width), saved for possible output to file"	m
 typedef	^	RotMiscVarType	ReKi	X	{:}{:}	-	-	"normal force per unit length (normal to the plane, not chord) of the jth node in the kth blade"	N/m
 typedef	^	RotMiscVarType	ReKi	Y	{:}{:}	-	-	"tangential force per unit length (tangential to the plane, not chord) of the jth node in the kth blade"	N/m
 typedef	^	RotMiscVarType	ReKi	Z	{:}{:}	-	-	"axial force per unit length (tangential to the plane, not chord) of the jth node in the kth blade"	N/m
