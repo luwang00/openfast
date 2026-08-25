@@ -224,6 +224,9 @@ typedef ^   GSInputFile IntKi   NJoints -   -   -   "Number of user-specified jo
 typedef ^   GSInputFile GSJointType InpJoints   {:} -   -   "Array of user-specified joints" -
 typedef ^   GSInputFile IntKi   NMembers -   -   -   "Number of user-specified members"   -
 typedef ^   GSInputFile GSInpMemberType InpMembers   {:} -   -   "Array of user-specified members" -
+typedef ^   GSInputFile IntKi   GSPotent -   -   -   "Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction}"   -
+typedef ^   GSInputFile IntKi   GSShadow -   -   -   "Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model}"   -
+typedef ^   GSInputFile IntKi   GSAero   -   -   -   "Calculate multi-member generalized tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV}"   -
 
 typedef	^	AD_InputFile	Logical	Echo	-	-	-	"Echo input file to echo file"	-
 typedef	^	AD_InputFile	DbKi	DTAero	-	-	-	"Time interval for aerodynamic calculations {or \"default\"}"	s
@@ -232,9 +235,6 @@ typedef	^	AD_InputFile	IntKi	BEM_Mod	-	-	-	"Type of BEM model {1=legacy NoSweepP
 typedef	^	AD_InputFile	IntKi	TwrPotent	-	-	-	"Type of tower influence on wind based on potential flow around the tower {0=none, 1=baseline potential flow, 2=potential flow with Bak correction}"	-
 typedef	^	AD_InputFile	IntKi	TwrShadow	-	-	-	"Type of tower influence on wind based on downstream tower shadow {0=none, 1=Powles model, 2=Eames model}"	-
 typedef	^	AD_InputFile	IntKi	TwrAero	-	-	-	"Calculate tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV}"	-
-typedef ^   AD_InputFile    IntKi   GSPotent -   -   -   "Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction}"   -
-typedef ^   AD_InputFile    IntKi   GSShadow -   -   -   "Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model}"   -
-typedef	^	AD_InputFile	IntKi	GSAero	-	-	-	"Calculate multi-member generalized tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV}"	-
 typedef	^	AD_InputFile	Logical	CavitCheck	-	-	-	"Flag that tells us if we want to check for cavitation" -
 typedef ^   AD_InputFile    Logical NacelleDrag    -   -   -   "Include NacelleDrag effects?" flag
 typedef	^	AD_InputFile	Logical	CompAA   -  -  -  "Compute AeroAcoustic noise" flag

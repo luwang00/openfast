@@ -384,9 +384,9 @@ subroutine AD_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, InitOut
       InputFileData%TwrPotent  = TwrPotent_none
       InputFileData%TwrShadow  = TwrShadow_none
       InputFileData%TwrAero    = TwrAero_none
-      InputFileData%GSPotent  = GSPotent_none
-      InputFileData%GSShadow  = GSShadow_none
-      InputFileData%GSAero    = GSAero_none
+      InputFileData%GS%GSPotent  = GSPotent_none
+      InputFileData%GS%GSShadow  = GSShadow_none
+      InputFileData%GS%GSAero    = GSAero_none
      !InputFileData%CavitCheck = .false.
      !InputFileData%TFinAero   = .false. ! not sure if this needs to be set or not
       InputFileData%DBEMT_Mod = DBEMT_none
@@ -1592,9 +1592,9 @@ subroutine SetParameters( InitInp, InputFileData, RotData, p, p_AD, ErrStat, Err
    p%TwrPotent        = InputFileData%TwrPotent
    p%TwrShadow        = InputFileData%TwrShadow
    p%TwrAero          = InputFileData%TwrAero
-   p%GSPotent        = InputFileData%GSPotent
-   p%GSShadow        = InputFileData%GSShadow
-   p%GSAero          = InputFileData%GSAero
+   p%GSPotent        = InputFileData%GS%GSPotent
+   p%GSShadow        = InputFileData%GS%GSShadow
+   p%GSAero          = InputFileData%GS%GSAero
    p%CavitCheck       = InputFileData%CavitCheck
 
    p%NacelleDrag      = InputFileData%NacelleDrag
@@ -4586,7 +4586,7 @@ SUBROUTINE ValidateInputData( InitInp, InputFileData, NumBl, calcCrvAngle, ErrSt
    end if
    if (Failed()) return
 
-   if (InputFileData%GSAero /= GSAero_none .and. InputFileData%GSAero /= GSAero_noVIV) then
+   if (InputFileData%GS%GSAero /= GSAero_none .and. InputFileData%GS%GSAero /= GSAero_noVIV) then
       call SetErrStat ( ErrID_Fatal, 'GSAero must be 0 (none) or 1 (multi-member generalized tower aero/hydro on).', ErrStat, ErrMsg, RoutineName ) 
    end if
    if (Failed()) return
@@ -5416,10 +5416,9 @@ SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMs
       return
    end if
 
-   ! Default values for now; can be based on user input later
-   p%GSPotent = GSPotent_baseline
-   p%GSShadow = GSShadow_Powles
-   p%GSAero   = GSAero_noVIV
+   p%GSPotent = InputFileData%GSPotent
+   p%GSShadow = InputFileData%GSShadow
+   p%GSAero   = InputFileData%GSAero
    if ((p%GSPotent/=GSPotent_none) .or. (p%GSShadow/=GSShadow_none) .or. (p%GSAero/=GSAero_none)) then
       p%hasGSMod = .TRUE.
    else

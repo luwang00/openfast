@@ -256,6 +256,9 @@ IMPLICIT NONE
     TYPE(GSJointType) , DIMENSION(:), ALLOCATABLE  :: InpJoints      !< Array of user-specified joints [-]
     INTEGER(IntKi)  :: NMembers = 0_IntKi      !< Number of user-specified members [-]
     TYPE(GSInpMemberType) , DIMENSION(:), ALLOCATABLE  :: InpMembers      !< Array of user-specified members [-]
+    INTEGER(IntKi)  :: GSPotent = 0_IntKi      !< Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction} [-]
+    INTEGER(IntKi)  :: GSShadow = 0_IntKi      !< Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model} [-]
+    INTEGER(IntKi)  :: GSAero = 0_IntKi      !< Calculate multi-member generalized tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV} [-]
   END TYPE GSInputFile
 ! =======================
 ! =========  AD_InputFile  =======
@@ -267,9 +270,6 @@ IMPLICIT NONE
     INTEGER(IntKi)  :: TwrPotent = 0_IntKi      !< Type of tower influence on wind based on potential flow around the tower {0=none, 1=baseline potential flow, 2=potential flow with Bak correction} [-]
     INTEGER(IntKi)  :: TwrShadow = 0_IntKi      !< Type of tower influence on wind based on downstream tower shadow {0=none, 1=Powles model, 2=Eames model} [-]
     INTEGER(IntKi)  :: TwrAero = 0_IntKi      !< Calculate tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV} [-]
-    INTEGER(IntKi)  :: GSPotent = 0_IntKi      !< Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction} [-]
-    INTEGER(IntKi)  :: GSShadow = 0_IntKi      !< Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model} [-]
-    INTEGER(IntKi)  :: GSAero = 0_IntKi      !< Calculate multi-member generalized tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV} [-]
     LOGICAL  :: CavitCheck = .false.      !< Flag that tells us if we want to check for cavitation [-]
     LOGICAL  :: NacelleDrag = .false.      !< Include NacelleDrag effects? [flag]
     LOGICAL  :: CompAA = .false.      !< Compute AeroAcoustic noise [flag]
@@ -2480,6 +2480,9 @@ subroutine AD_CopyGSInputFile(SrcGSInputFileData, DstGSInputFileData, CtrlCode, 
          if (ErrStat >= AbortErrLev) return
       end do
    end if
+   DstGSInputFileData%GSPotent = SrcGSInputFileData%GSPotent
+   DstGSInputFileData%GSShadow = SrcGSInputFileData%GSShadow
+   DstGSInputFileData%GSAero = SrcGSInputFileData%GSAero
 end subroutine
 
 subroutine AD_DestroyGSInputFile(GSInputFileData, ErrStat, ErrMsg)
@@ -2540,6 +2543,9 @@ subroutine AD_PackGSInputFile(RF, Indata)
          call AD_PackGSInpMemberType(RF, InData%InpMembers(i1)) 
       end do
    end if
+   call RegPack(RF, InData%GSPotent)
+   call RegPack(RF, InData%GSShadow)
+   call RegPack(RF, InData%GSAero)
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -2580,6 +2586,9 @@ subroutine AD_UnPackGSInputFile(RF, OutData)
          call AD_UnpackGSInpMemberType(RF, OutData%InpMembers(i1)) ! InpMembers 
       end do
    end if
+   call RegUnpack(RF, OutData%GSPotent); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSShadow); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSAero); if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
 subroutine AD_CopyInputFile(SrcInputFileData, DstInputFileData, CtrlCode, ErrStat, ErrMsg)
@@ -2602,9 +2611,6 @@ subroutine AD_CopyInputFile(SrcInputFileData, DstInputFileData, CtrlCode, ErrSta
    DstInputFileData%TwrPotent = SrcInputFileData%TwrPotent
    DstInputFileData%TwrShadow = SrcInputFileData%TwrShadow
    DstInputFileData%TwrAero = SrcInputFileData%TwrAero
-   DstInputFileData%GSPotent = SrcInputFileData%GSPotent
-   DstInputFileData%GSShadow = SrcInputFileData%GSShadow
-   DstInputFileData%GSAero = SrcInputFileData%GSAero
    DstInputFileData%CavitCheck = SrcInputFileData%CavitCheck
    DstInputFileData%NacelleDrag = SrcInputFileData%NacelleDrag
    DstInputFileData%CompAA = SrcInputFileData%CompAA
@@ -2777,9 +2783,6 @@ subroutine AD_PackInputFile(RF, Indata)
    call RegPack(RF, InData%TwrPotent)
    call RegPack(RF, InData%TwrShadow)
    call RegPack(RF, InData%TwrAero)
-   call RegPack(RF, InData%GSPotent)
-   call RegPack(RF, InData%GSShadow)
-   call RegPack(RF, InData%GSAero)
    call RegPack(RF, InData%CavitCheck)
    call RegPack(RF, InData%NacelleDrag)
    call RegPack(RF, InData%CompAA)
@@ -2862,9 +2865,6 @@ subroutine AD_UnPackInputFile(RF, OutData)
    call RegUnpack(RF, OutData%TwrPotent); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%TwrShadow); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%TwrAero); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpack(RF, OutData%GSPotent); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpack(RF, OutData%GSShadow); if (RegCheckErr(RF, RoutineName)) return
-   call RegUnpack(RF, OutData%GSAero); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%CavitCheck); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NacelleDrag); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%CompAA); if (RegCheckErr(RF, RoutineName)) return
