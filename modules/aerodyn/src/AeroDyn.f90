@@ -6579,17 +6579,22 @@ SUBROUTINE GSInfl( p, p_GS, u, GSInflow, m, ErrStat, ErrMsg )
 
    real(ReKi)                                   :: BladeNodePosition(3)    ! local blade node position
    
-   real(ReKi)                                   :: v(3)                    ! temp vector
-   real(ReKi)                                   :: v_sum(3)                ! average temp vector
-   real(ReKi)                                   :: v_rss(3)                ! root-sum-square temp vector
+   real(ReKi)                                   :: v_pot(3)                ! potential-flow contribution (member-local frame) for the current member
+   real(ReKi)                                   :: v_shad(3)               ! shadow contribution (member-local frame) for the current member
+   real(ReKi)                                   :: v_pot_wsum(3)           ! influence-weighted vector accumulator across members (global frame): sum_i w_i * v_i, w_i = |v_i|^p
+   real(ReKi)                                   :: v_pot_wtot             ! influence weight normalizer across members: sum_i w_i = sum_i |v_i|^p
+   real(ReKi)                                   :: w_pot                   ! current member's potential-flow influence weight |v_pot|^p
+   real(ReKi)                                   :: v_shad_sum(3)           ! vector sum of shadow contributions across members (global frame; sets the combined deficit direction)
+   real(ReKi)                                   :: v_shad_sumsq            ! sum over members of squared shadow deficit magnitude (sets the root-sum-square magnitude)
+   real(ReKi)                                   :: v_shad_norm            ! magnitude of v_shad_sum
    real(ReKi)                                   :: v_result(3)             ! combined (potential + shadow) disturbed velocity contribution
-   real(ReKi)                                   :: v_mem(3,p_GS%NMembers)  ! velocity influence (in global coords) from each GS member, for this blade/node
+   real(ReKi), parameter                        :: GSBlendExp = 6.0_ReKi   ! partition-of-unity blend exponent p: p->inf recovers a hard argmax (one body only); finite p>=2 smooths the handoff. Even integer => weight (v.v)^(p/2) is a polynomial (C-infinity everywhere); p=6 is the smallest even p keeping the worst-case collinear-joint dip below 5%.
    
    real(ReKi)                                   :: GSClrnc                 ! local GS clearance
    logical                                      :: FirstWarn_GSStrike
    logical                                      :: DisturbInflow
    
-   integer(IntKi)                               :: j, k, iMem                    ! loop counters for elements, blades
+   integer(IntKi)                               :: j, k, iMem                    ! loop counters for elements, blades, and GS members
    integer(intKi)                               :: ErrStat2
    character(ErrMsgLen)                         :: ErrMsg2
    character(*), parameter                      :: RoutineName = 'GSInfl'
@@ -6607,7 +6612,7 @@ SUBROUTINE GSInfl( p, p_GS, u, GSInflow, m, ErrStat, ErrMsg )
    call CheckGSInfl( p_GS, u, ErrStat2, ErrMsg2 )
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
       if (ErrStat >= AbortErrLev) return
-      
+
    do k = 1, p%NumBlades
       do j = 1, u%BladeMotion(k)%NNodes
          
@@ -6616,9 +6621,15 @@ SUBROUTINE GSInfl( p, p_GS, u, GSInflow, m, ErrStat, ErrMsg )
          
          BladeNodePosition = u%BladeMotion(k)%Position(:,j) + u%BladeMotion(k)%TranslationDisp(:,j)
          
-         v_mem = 0.0_ReKi ! reset per-member velocity storage for this blade node
+         ! reset per-member accumulators for this blade node: the potential effect is combined by an
+         ! influence-weighted partition of unity (each body carries its own field; the blend picks the
+         ! locally dominant one and never exceeds it), the shadow effect by root-sum-square
+         v_pot_wsum   = 0.0_ReKi
+         v_pot_wtot   = 0.0_ReKi
+         v_shad_sum   = 0.0_ReKi
+         v_shad_sumsq = 0.0_ReKi
 
-         ! Loop throurgh No. GSMembers
+         ! Loop through the GS members
          do iMem = 1, p_GS%NMembers
             call getLocalGSProps(p_GS, iMem, u, GSInflow, BladeNodePosition, theta_GS_trans, W_GS, xbar, ybar, zbar, GSCd, GSTI, GSClrnc, FirstWarn_GSStrike, DisturbInflow, ErrStat2, ErrMsg2)
                call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
@@ -6626,28 +6637,49 @@ SUBROUTINE GSInfl( p, p_GS, u, GSInflow, m, ErrStat, ErrMsg )
                if (ErrStat >= AbortErrLev) return
 
             if ( DisturbInflow ) then
-               v = CalculateGSInfluence(p, xbar, ybar, zbar, W_GS, GSCd, GSTI)
-               v_mem(:,iMem) = matmul( theta_GS_trans, v )
-            else
-               v_mem(:,iMem) = 0.0_ReKi
+               ! get the potential-flow and shadow contributions separately (member-local frame)
+               call CalculateGSInfluence(p, xbar, ybar, zbar, W_GS, GSCd, GSTI, v_pot, v_shad)
+               ! rotate each contribution into global coordinates and accumulate
+               v_pot        = matmul( theta_GS_trans, v_pot )
+               v_shad       = matmul( theta_GS_trans, v_shad )
+               ! potential flow: influence-weighted blend. Weight each body by its own field magnitude
+               ! |v_pot|^p (p=GSBlendExp), so the blade sees essentially the single strongest body's
+               ! field, smoothly handed off between bodies. |v_pot|^2 = dot(v_pot,v_pot) is C-infinity,
+               ! so raising it to p/2 is smooth; a body whose field has died out (|v_pot|->0) gets ~0
+               ! weight and cannot blank the field.
+               w_pot        = dot_product(v_pot,v_pot) ** (0.5_ReKi*GSBlendExp)
+               v_pot_wsum   = v_pot_wsum   + w_pot * v_pot
+               v_pot_wtot   = v_pot_wtot   + w_pot
+               v_shad_sum   = v_shad_sum   + v_shad                      ! shadow: vector sum sets the combined deficit direction
+               v_shad_sumsq = v_shad_sumsq + dot_product(v_shad,v_shad) ! shadow: accumulate squared magnitude for root-sum-square
             end if
          enddo !iMem
 
          v_result = 0.0_ReKi
          if ( p%GSPotent /= GSPotent_none ) then
-            ! Sum disturbed inflow here
-            v_sum = sum(v_mem, dim=2)
-            v_result = v_result + v_sum
+            ! potential-flow effect combines by an influence-weighted partition of unity:
+            ! v = ( sum_i |v_i|^p v_i ) / ( sum_i |v_i|^p ). The weights sum to one, so the blended
+            ! magnitude never exceeds max_i|v_i| (no junction double-counting), it reduces to the
+            ! single-member result when only one body contributes, and it needs no knowledge of the
+            ! structure topology (collinear/angled/branching are all handled by field magnitude alone).
+            if ( v_pot_wtot > 0.0_ReKi ) then
+               v_result = v_result + v_pot_wsum / v_pot_wtot
+            end if
          endif
          if ( p%GSShadow /= GSShadow_none ) then
-            ! Root Sum Square of disturbed velocity (combine per-member shadow deficits component-wise)
-            v_rss    = sqrt( sum(v_mem**2, dim=2) )
-            v_result = v_result + v_rss
+            ! shadow effect combines by root-sum-square of each member's deficit magnitude, applied
+            ! along the direction of the vector sum of the member deficits. This is a pure vector
+            ! operation (frame independent): it makes no assumption about the member-local axes and
+            ! reduces to the single-member result when only one member contributes.
+            v_shad_norm = TwoNorm( v_shad_sum )
+            if ( v_shad_norm > 0.0_ReKi ) then
+               v_result = v_result + sqrt( v_shad_sumsq ) * v_shad_sum / v_shad_norm
+            end if
          endif
 
          ! Combine the per-member velocity contributions (via v_result above) into the disturbed inflow
          m%DisturbedInflow(:,j,k) = m%DisturbedInflow(:,j,k) + v_result
-      
+
       end do !j=NumBlNds
    end do ! NumBlades
    
@@ -6655,8 +6687,10 @@ SUBROUTINE GSInfl( p, p_GS, u, GSInflow, m, ErrStat, ErrMsg )
 END SUBROUTINE GSInfl 
 !----------------------------------------------------------------------------------------------------------------------------------
 !> Mirrors CalculateTowerInfluence, computing the potential-flow / shadow velocity deficit induced by a
-!! generalized support structure (GS) member using the GSPotent / GSShadow models.
-FUNCTION CalculateGSInfluence(p, xbar_in, ybar, zbar, W_GS, GSCd, GSTI) RESULT(v)
+!! generalized support structure (GS) member using the GSPotent / GSShadow models. The potential-flow and
+!! shadow contributions are returned separately (in the member-local frame) so the caller can combine the
+!! potential effect across members by an influence-weighted blend and the shadow effect by root-sum-square.
+SUBROUTINE CalculateGSInfluence(p, xbar_in, ybar, zbar, W_GS, GSCd, GSTI, v_pot, v_shad)
 
    TYPE(RotParameterType),       INTENT(IN   )  :: p                       !< Parameters
    real(ReKi), intent(in)                       :: xbar_in                 ! local x^ component of r_GSBlade normalized by GS diameter
@@ -6665,7 +6699,8 @@ FUNCTION CalculateGSInfluence(p, xbar_in, ybar, zbar, W_GS, GSCd, GSTI) RESULT(v
    real(ReKi), intent(in)                       :: W_GS                    ! local relative wind speed normal to the GS member
    real(ReKi), intent(in)                       :: GSCd                    ! local GS-member drag coefficient
    real(ReKi), intent(in)                       :: GSTI                    ! local GS-member TI (for Eames shadow model)
-   real(ReKi)                                   :: v(3)                    ! modified velocity vector
+   real(ReKi), intent(  out)                    :: v_pot(3)                ! potential-flow velocity contribution (member-local frame)
+   real(ReKi), intent(  out)                    :: v_shad(3)               ! shadow velocity contribution (member-local frame)
       
    real(ReKi)                                   :: denom                   ! denominator
    real(ReKi)                                   :: exponential             ! exponential term
@@ -6703,6 +6738,12 @@ FUNCTION CalculateGSInfluence(p, xbar_in, ybar, zbar, W_GS, GSCd, GSTI) RESULT(v
       end if
    end if
          
+   ! NOTE (limitation): the wake is directed along x^ = the wind projected into the plane normal to the
+   ! member axis, not along the true earth-fixed wind. For a member inclined into or away from the wind
+   ! this tilts the wake up into the sky or down into the ground rather than keeping it parallel to the
+   ! ground, which is unphysical. Acceptable for near-vertical members; revisit for strongly inclined ones.
+   ! Intended fix: advect the wake along the incident wind direction (ideally low-pass filtered), since the
+   ! wake is advective; the potential-flow (kinematic) part above rightly stays in the member normal plane.
    select case (p%GSShadow)
       case (GSShadow_Powles)
          if ( xbar > 0.0_ReKi .and. abs(zbar) < 1.0_ReKi) then
@@ -6724,12 +6765,16 @@ FUNCTION CalculateGSInfluence(p, xbar_in, ybar, zbar, W_GS, GSCd, GSTI) RESULT(v
    u_GSShadow = max(u_GSShadow, -0.5_ReKi)
          
          
-   v(1) = (u_GSPotent + u_GSShadow)*W_GS
-   v(2) = v_GSPotent*W_GS
-   v(3) = 0.0_ReKi
+   v_pot(1)  = u_GSPotent*W_GS
+   v_pot(2)  = v_GSPotent*W_GS
+   v_pot(3)  = 0.0_ReKi
+
+   v_shad(1) = u_GSShadow*W_GS
+   v_shad(2) = 0.0_ReKi
+   v_shad(3) = 0.0_ReKi
       
 
-END FUNCTION CalculateGSInfluence
+END SUBROUTINE CalculateGSInfluence
 !----------------------------------------------------------------------------------------------------------------------------------
 !> This routine returns the GS-member constants necessary to compute the GS influence, mirroring getLocalTowerProps.
 !! if u%GSMotion does not have any nodes there will be serious problems. I assume that has been checked earlier.
@@ -6944,30 +6989,11 @@ SUBROUTINE GSInfl_NearestLine2Element(p_GS, iMem, u, GSInflow, BladeNodePosition
 
 END SUBROUTINE GSInfl_NearestLine2Element
 !----------------------------------------------------------------------------------------------------------------------------------
-!> Returns the number of members for which global node index iNode is an endpoint (i.e., the member's first or
-!! last node). A value of 1 identifies a "free end" of the GS structure (e.g., the tip of a boom, analogous to the
-!! top/bottom of the tower); a value >= 2 identifies a junction where multiple members meet.
-FUNCTION GSNodeConnectivity(p_GS, iNode) RESULT(nConn)
-   TYPE(GSParameterType),        INTENT(IN   )  :: p_GS        !< General support structure parameters
-   INTEGER(IntKi),               INTENT(IN   )  :: iNode       !< global GS node index
-   INTEGER(IntKi)                               :: nConn       !< number of members for which iNode is an endpoint
-
-   INTEGER(IntKi)                               :: iMem
-
-   nConn = 0
-   do iMem = 1, p_GS%NMembers
-      associate( mem => p_GS%Members(iMem) )
-      if (mem%NodeIndx(1)               == iNode) nConn = nConn + 1
-      if (mem%NodeIndx(mem%NElements+1) == iNode) nConn = nConn + 1
-      end associate
-   end do
-
-END FUNCTION GSNodeConnectivity
-!----------------------------------------------------------------------------------------------------------------------------------
 !> Option 2: used when the blade node does not orthogonally intersect a GS-member element.
-!!  Find the nearest-neighbor node across all members of the GS structure. Mirrors TwrInfl_NearestPoint; the
-!!  "free end" cosine-taper case (option 2b) is applied only at nodes with GSNodeConnectivity <= 1 (true tips of
-!!  the structure), while interior member nodes and multi-member junctions use option 2a (no taper).
+!!  Find the nearest-neighbor node within the member (which is, by construction, a member end). The true
+!!  axial offset zbar is used to apply the same cosine-squared taper as TwrInfl_NearestPoint (dividing
+!!  xbar,ybar by cos(PiBy2*zbar)), so the deficit decays smoothly to zero at |zbar|=1. The taper is applied
+!!  at every member end (junction or free tip), not only at structural free ends as in the tower model.
 SUBROUTINE GSInfl_NearestPoint(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSBlade, theta_GS_trans, W_GS, xbar, ybar, zbar, GSCd, GSTI, GSDiam)
 !..................................................................................................................................
    TYPE(RotInputType),              INTENT(IN   )  :: u                             !< Inputs at Time t
@@ -6995,13 +7021,13 @@ SUBROUTINE GSInfl_NearestPoint(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSB
    REAL(ReKi)      :: V_rel_GS(3)
    
    REAL(ReKi)      :: tmp(3)                    ! temporary vector for cross product calculation
+   REAL(ReKi)      :: zaxis(3)                  ! member axis (from the element adjacent to the nearest node)
 
    INTEGER(IntKi)  :: j                   ! do-loop counters for members and local member nodes
    INTEGER(IntKi)  :: n1                        ! global node index
+   INTEGER(IntKi)  :: nA, nB                    ! global node indices of the element adjacent to the nearest node
 
    INTEGER(IntKi)  :: iMem_min, j_min, n1_min    ! member/local-node/global-node with minimum distance found so far
-
-   LOGICAL         :: isFreeEnd
 
    
    
@@ -7056,8 +7082,20 @@ SUBROUTINE GSInfl_NearestPoint(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSB
    GSCd      = mem%Cd(  j_min)
    GSTI      = mem%TI(  j_min)
                            
-   ! z_hat
-   theta_GS_trans(:,3) = u%GSMotion%Orientation(3,:,n1)
+   ! z_hat: use the actual member axis (mirroring GSInfl_NearestLine2Element) taken from the element
+   ! adjacent to the nearest node. The point-mesh Orientation is identity and would give (0,0,1),
+   ! which is wrong for inclined members and, by making the axial offset appear as an in-plane offset,
+   ! would spuriously apply full influence from members the blade node is actually axially far beyond.
+   if ( j_min == mem%NElements+1 ) then
+      nA = mem%NodeIndx(j_min-1)
+      nB = mem%NodeIndx(j_min)
+   else
+      nA = mem%NodeIndx(j_min)
+      nB = mem%NodeIndx(j_min+1)
+   end if
+   zaxis = ( u%GSMotion%Position(:,nB) + u%GSMotion%TranslationDisp(:,nB) ) &
+         - ( u%GSMotion%Position(:,nA) + u%GSMotion%TranslationDisp(:,nA) )
+   theta_GS_trans(:,3) = zaxis / TwoNorm(zaxis)
             
    tmp = V_rel_GS - dot_product(V_rel_GS,theta_GS_trans(:,3)) * theta_GS_trans(:,3)
    denom = TwoNorm( tmp )
@@ -7073,27 +7111,20 @@ SUBROUTINE GSInfl_NearestPoint(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSB
                
       W_GS = dot_product( V_rel_GS,theta_GS_trans(:,1) )
 
-      isFreeEnd = .false.
-      if ( j_min == 1 .or. j_min == mem%NElements+1 ) then
-         if ( GSNodeConnectivity(p_GS, n1) <= 1 ) isFreeEnd = .true.
-      end if
-
-      if ( isFreeEnd ) then         
-         ! option 2b: true free end (tip) of the GS structure - taper the influence towards the tip, as at the tower top/bottom
-         zbar    = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,3) )
-         if (abs(zbar) < 1) then   
-            cosTaper = cos( PiBy2*zbar )
-            xbar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,1) ) / cosTaper
-            ybar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,2) ) / cosTaper
-         else ! we check that zbar < 1 before using xbar and ybar later, but I'm going to set them here anyway:
-            xbar = 1.0_ReKi
-            ybar = 0.0_ReKi  
-         end if                                    
-      else
-         ! option 2a: interior node of a member, or a junction where two or more members meet
-         xbar    = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,1) )
-         ybar    = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,2) )
-         zbar    = 0.0_ReKi
+      ! The nearest node is, by construction, a member end (the blade node projects beyond the member's
+      ! extent). Apply the same cosine-squared taper as TwrInfl_NearestPoint (option 2b): dividing xbar and
+      ! ybar by cos(PiBy2*zbar) makes the 1/r^2 doublet deficit scale as cos^2(PiBy2*zbar), so the influence
+      ! ramps smoothly to zero with zero slope at |zbar|=1. Unlike the tower (which tapers only at its free
+      ! top/bottom), we taper at every member end -- junction or free tip -- because each finite GS member's
+      ! doublet field must decay past its own end; a neighbouring member covers the region beyond a junction.
+      zbar    = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,3) )
+      if (abs(zbar) < 1) then
+         cosTaper = cos( PiBy2*zbar )
+         xbar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,1) ) / cosTaper
+         ybar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,2) ) / cosTaper
+      else ! zbar is checked (<1) before xbar,ybar are used downstream, but set them to safe values anyway
+         xbar = 1.0_ReKi
+         ybar = 0.0_ReKi
       end if
 
    else
