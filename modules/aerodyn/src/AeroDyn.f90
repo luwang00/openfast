@@ -3516,6 +3516,9 @@ subroutine SetSectAvgInflow(t, p, p_AD, u, RotInflow, m, errStat, errMsg)
             ! TODO use a "scalar" function or change the interface of TwrInfl. Waiting for Wind Inputs of AD to be removed from AD
             call TwrInflArray( p, u, RotInflow, m, reshape(r_A, (/3,1/)), m%SectAvgInflow(:, j:j, k), errStat2, errMsg2); if(Failed()) return
          endif
+         ! REMINDER (future work): generalized support structure (GS) influence is NOT applied to the sector-averaged
+         ! inflow. GSInfl has no array/scalar form (no GSInflArray analogous to TwrInflArray), so with SectAvg enabled
+         ! the averaged inflow omits GS while the per-node inflow (via SetDisturbedInflow->GSInfl) includes it.
       enddo
 
    enddo
@@ -4214,6 +4217,8 @@ subroutine SetInputsForFVW(p, u, tIndx, m, errStat, errMsg)
       m%FVW_u(tIndx)%V_wind   = m%Inflow(tIndx)%InflowWakeVel
       ! Applying tower shadow to V_wind based on r_wind positions
       ! NOTE: m%DisturbedInflow also contains tower shadow and we need it for CalcOutput
+      ! REMINDER (future work): only tower influence is applied to the OLAF/FVW wake wind here; generalized
+      ! support structure (GS) influence is not (no GSInflArray equivalent to TwrInflArray).
       if (p%FVW%TwrShadowOnWake) then
          do iR =1, size(p%rotors)
             if (p%rotors(iR)%TwrPotent /= TwrPotent_none .or. p%rotors(iR)%TwrShadow /= TwrShadow_none) then
@@ -6989,7 +6994,9 @@ SUBROUTINE GSInfl_NearestLine2Element(p_GS, iMem, u, GSInflow, BladeNodePosition
 END SUBROUTINE GSInfl_NearestLine2Element
 !----------------------------------------------------------------------------------------------------------------------------------
 !> Option 2: used when the blade node does not orthogonally intersect a GS-member element.
-!!  Find the nearest-neighbor node within the member (which is, by construction, a member end). The true
+!!  Find the nearest-neighbor node within the member (for a straight member this is, by construction, a member
+!!  end; a strongly curved/deflected member could instead make an interior node nearest, which would then also
+!!  receive the end taper below -- acceptable for the near-rigid members assumed here). The true
 !!  axial offset zbar is used to apply the same cosine-squared taper as TwrInfl_NearestPoint (dividing
 !!  xbar,ybar by cos(PiBy2*zbar)), so the deficit decays smoothly to zero at |zbar|=1. The taper is applied
 !!  at every member end (junction or free tip), not only at structural free ends as in the tower model.
