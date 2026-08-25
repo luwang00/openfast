@@ -306,7 +306,15 @@ CONTAINS
          end do
       end if
 
-   
+      ! blade node tower clearance (requires tower influence calculation):
+      if (p%GSPotent /= GSPotent_none .or. p%GSShadow /= GSShadow_none) then
+         do k=1,min(p%numBlades,AD_MaxBl_Out)
+            do beta=1,p%NBlOuts
+               j=p%BlOutNd(beta)
+               m%AllOuts( BNClrnc( beta,k) ) = m%GSClrnc(j,k)
+            end do
+         end do
+      end if
    
 
       m%AllOuts( RtSpeed ) = omega*RPS2RPM
@@ -704,6 +712,7 @@ SUBROUTINE ParsePrimaryFileInfo( PriPath, InitInp, InputFile, RootName, NumBlade
    integer(IntKi)                                  :: CurLine           !< current entry in FileInfo_In%Lines array
    real(ReKi)                                      :: TmpRe10(10)       !< temporary 10 number array for reading values in
    logical                                         :: TwrAeroLogical    !< convert TwrAero from logical (input file) to integer (new)
+   logical                                         :: GSAeroLogical     !< convert GSAero from logical (input file) to integer (new)
    character(1024)                                 :: sDummy            !< temporary string
    character(1024)                                 :: tmpOutStr         !< temporary string for writing to screen
    logical :: wakeModProvided, frozenWakeProvided, skewModProvided, AFAeroModProvided, UAModProvided, isLegalComment, firstWarn !< Temporary for legacy purposes
@@ -798,7 +807,22 @@ SUBROUTINE ParsePrimaryFileInfo( PriPath, InitInp, InputFile, RootName, NumBlade
       else
          InputFileData%TwrAero = TwrAero_None
       end if
-      
+
+      ! GSPotent - Type of general support influence on wind based on potential flow around the member (switch)
+   call ParseVar( FileInfo_In, CurLine, "GSPotent", InputFileData%GSPotent, ErrStat2, ErrMsg2, UnEc )
+      if (Failed()) return
+      ! GSShadow - Type of general support influence on wind based on downstream tower shadow {0=none, 1=Powles model, 2=Eames model}
+   call ParseVar( FileInfo_In, CurLine, "GSShadow", InputFileData%GSShadow, ErrStat2, ErrMsg2, UnEc )
+      if (Failed()) return
+
+      ! GSAero - Calculate multi-member generalized tower aerodynamic loads? (flag)
+   call ParseVar( FileInfo_In, CurLine, "GSAero", GSAeroLogical, ErrStat2, ErrMsg2, UnEc )
+      if (Failed()) return
+      if (GSAeroLogical) then
+         InputFileData%GSAero = GSAero_NoVIV
+      else
+         InputFileData%GSAero = GSAero_None
+      end if
    ! FrozenWake - Assume frozen wake during linearization? (flag) [used only when WakeMod=1 and when linearizing]
    call ParseVar( FileInfo_In, CurLine, "FrozenWake", FrozenWake_Old, ErrStat2, ErrMsg2, UnEc )
    frozenWakeProvided = legacyInputPresent('FrozenWake', Curline, ErrStat2, ErrMsg2, 'DBEMTMod=-1 (FrozenWake=True) or DBEMTMod>-1 (FrozenWake=False)')

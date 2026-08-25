@@ -267,6 +267,9 @@ IMPLICIT NONE
     INTEGER(IntKi)  :: TwrPotent = 0_IntKi      !< Type of tower influence on wind based on potential flow around the tower {0=none, 1=baseline potential flow, 2=potential flow with Bak correction} [-]
     INTEGER(IntKi)  :: TwrShadow = 0_IntKi      !< Type of tower influence on wind based on downstream tower shadow {0=none, 1=Powles model, 2=Eames model} [-]
     INTEGER(IntKi)  :: TwrAero = 0_IntKi      !< Calculate tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV} [-]
+    INTEGER(IntKi)  :: GSPotent = 0_IntKi      !< Type of general support influence based on potential flow around the member {0=none, 1=baseline potential flow, 2=potential flow with Bak correction} [-]
+    INTEGER(IntKi)  :: GSShadow = 0_IntKi      !< Type of general support downstream shadow effect {0=none, 1=Powles model, 2=Eames model} [-]
+    INTEGER(IntKi)  :: GSAero = 0_IntKi      !< Calculate multi-member generalized tower aerodynamic loads? {0=none, 1=aero without VIV, 2=aero with VIV} [-]
     LOGICAL  :: CavitCheck = .false.      !< Flag that tells us if we want to check for cavitation [-]
     LOGICAL  :: NacelleDrag = .false.      !< Include NacelleDrag effects? [flag]
     LOGICAL  :: CompAA = .false.      !< Compute AeroAcoustic noise [flag]
@@ -577,6 +580,7 @@ IMPLICIT NONE
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: Cant      !< curvature angle, saved for possible output to file [rad]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: Toe      !< Toe angle, saved for possible output to file [rad]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: TwrClrnc      !< Distance between tower (including tower radius) and blade node (not including blade width), saved for possible output to file [m]
+    REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: GSClrnc      !< Distance between tower (including tower radius) and blade node (not including blade width), saved for possible output to file [m]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: X      !< normal force per unit length (normal to the plane, not chord) of the jth node in the kth blade [N/m]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: Y      !< tangential force per unit length (tangential to the plane, not chord) of the jth node in the kth blade [N/m]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: Z      !< axial force per unit length (tangential to the plane, not chord) of the jth node in the kth blade [N/m]
@@ -2598,6 +2602,9 @@ subroutine AD_CopyInputFile(SrcInputFileData, DstInputFileData, CtrlCode, ErrSta
    DstInputFileData%TwrPotent = SrcInputFileData%TwrPotent
    DstInputFileData%TwrShadow = SrcInputFileData%TwrShadow
    DstInputFileData%TwrAero = SrcInputFileData%TwrAero
+   DstInputFileData%GSPotent = SrcInputFileData%GSPotent
+   DstInputFileData%GSShadow = SrcInputFileData%GSShadow
+   DstInputFileData%GSAero = SrcInputFileData%GSAero
    DstInputFileData%CavitCheck = SrcInputFileData%CavitCheck
    DstInputFileData%NacelleDrag = SrcInputFileData%NacelleDrag
    DstInputFileData%CompAA = SrcInputFileData%CompAA
@@ -2770,6 +2777,9 @@ subroutine AD_PackInputFile(RF, Indata)
    call RegPack(RF, InData%TwrPotent)
    call RegPack(RF, InData%TwrShadow)
    call RegPack(RF, InData%TwrAero)
+   call RegPack(RF, InData%GSPotent)
+   call RegPack(RF, InData%GSShadow)
+   call RegPack(RF, InData%GSAero)
    call RegPack(RF, InData%CavitCheck)
    call RegPack(RF, InData%NacelleDrag)
    call RegPack(RF, InData%CompAA)
@@ -2852,6 +2862,9 @@ subroutine AD_UnPackInputFile(RF, OutData)
    call RegUnpack(RF, OutData%TwrPotent); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%TwrShadow); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%TwrAero); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSPotent); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSShadow); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%GSAero); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%CavitCheck); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NacelleDrag); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%CompAA); if (RegCheckErr(RF, RoutineName)) return
@@ -5776,6 +5789,18 @@ subroutine AD_CopyRotMiscVarType(SrcRotMiscVarTypeData, DstRotMiscVarTypeData, C
       end if
       DstRotMiscVarTypeData%TwrClrnc = SrcRotMiscVarTypeData%TwrClrnc
    end if
+   if (allocated(SrcRotMiscVarTypeData%GSClrnc)) then
+      LB(1:2) = lbound(SrcRotMiscVarTypeData%GSClrnc)
+      UB(1:2) = ubound(SrcRotMiscVarTypeData%GSClrnc)
+      if (.not. allocated(DstRotMiscVarTypeData%GSClrnc)) then
+         allocate(DstRotMiscVarTypeData%GSClrnc(LB(1):UB(1),LB(2):UB(2)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstRotMiscVarTypeData%GSClrnc.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstRotMiscVarTypeData%GSClrnc = SrcRotMiscVarTypeData%GSClrnc
+   end if
    if (allocated(SrcRotMiscVarTypeData%X)) then
       LB(1:2) = lbound(SrcRotMiscVarTypeData%X)
       UB(1:2) = ubound(SrcRotMiscVarTypeData%X)
@@ -6307,6 +6332,9 @@ subroutine AD_DestroyRotMiscVarType(RotMiscVarTypeData, ErrStat, ErrMsg)
    if (allocated(RotMiscVarTypeData%TwrClrnc)) then
       deallocate(RotMiscVarTypeData%TwrClrnc)
    end if
+   if (allocated(RotMiscVarTypeData%GSClrnc)) then
+      deallocate(RotMiscVarTypeData%GSClrnc)
+   end if
    if (allocated(RotMiscVarTypeData%X)) then
       deallocate(RotMiscVarTypeData%X)
    end if
@@ -6491,6 +6519,7 @@ subroutine AD_PackRotMiscVarType(RF, Indata)
    call RegPackAlloc(RF, InData%Cant)
    call RegPackAlloc(RF, InData%Toe)
    call RegPackAlloc(RF, InData%TwrClrnc)
+   call RegPackAlloc(RF, InData%GSClrnc)
    call RegPackAlloc(RF, InData%X)
    call RegPackAlloc(RF, InData%Y)
    call RegPackAlloc(RF, InData%Z)
@@ -6635,6 +6664,7 @@ subroutine AD_UnPackRotMiscVarType(RF, OutData)
    call RegUnpackAlloc(RF, OutData%Cant); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%Toe); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%TwrClrnc); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%GSClrnc); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%X); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%Y); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%Z); if (RegCheckErr(RF, RoutineName)) return
