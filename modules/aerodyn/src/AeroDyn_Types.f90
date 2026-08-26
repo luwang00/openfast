@@ -580,7 +580,7 @@ IMPLICIT NONE
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: Cant      !< curvature angle, saved for possible output to file [rad]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: Toe      !< Toe angle, saved for possible output to file [rad]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: TwrClrnc      !< Distance between tower (including tower radius) and blade node (not including blade width), saved for possible output to file [m]
-    REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: GSClrnc      !< Distance between tower (including tower radius) and blade node (not including blade width), saved for possible output to file [m]
+    REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: GSClrnc      !< Distance between nearest GS member (including member radius) and blade node (not including blade width), saved for possible output to file [m]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: X      !< normal force per unit length (normal to the plane, not chord) of the jth node in the kth blade [N/m]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: Y      !< tangential force per unit length (tangential to the plane, not chord) of the jth node in the kth blade [N/m]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: Z      !< axial force per unit length (tangential to the plane, not chord) of the jth node in the kth blade [N/m]

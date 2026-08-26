@@ -6233,6 +6233,10 @@ SUBROUTINE getLocalTowerProps(p, u, RotInflow, BladeNodePosition, theta_tower_tr
    end if
 
    
+   ! NOTE (potential fix): the 20-diameter far-field limit is a numerical safeguard, not physics. The
+   ! underlying shadow is a frozen 2-D wake carried in the member-normal plane, so at many diameters it is
+   ! unphysical (no 3-D recovery/advection) and the hard cutoff adds a small step in induced velocity.
+   ! Revisit: wind-aligned wake advection and/or a smooth far-field taper instead of the hard 20*Diam step.
    if ( TwrClrnc>20.0_ReKi*TwrDiam) then
       ! Far away, we skip the computation and keep undisturbed inflow 
       DisturbInflow = .false.
@@ -6328,7 +6332,7 @@ SUBROUTINE TwrInfl_NearestLine2Element(p, u, RotInflow, BladeNodePosition, r_Tow
          else !we're not on the element
             on_element = .false.
          end if
-         
+
       end if
 
       if (on_element) then
@@ -6438,7 +6442,7 @@ SUBROUTINE TwrInfl_NearestPoint(p, u, RotInflow, BladeNodePosition, r_TowerBlade
       
          ! calculate distance between points (note: this is actually the distance squared);
          ! will only store information once we have determined the closest node
-      r_TowerBlade  = BladeNodePosition - p1         
+      r_TowerBlade  = BladeNodePosition - p1
       dist = dot_product( r_TowerBlade, r_TowerBlade )
 
       if (dist .lt. min_dist) then
@@ -6632,6 +6636,7 @@ SUBROUTINE GSInfl( p, p_GS, u, GSInflow, m, ErrStat, ErrMsg )
          v_pot_wtot   = 0.0_ReKi
          v_shad_sum   = 0.0_ReKi
          v_shad_sumsq = 0.0_ReKi
+         m%GSClrnc(j,k) = HUGE(1.0_ReKi)   ! reduced to the nearest-member clearance in the loop below
 
          ! Loop through the GS members
          do iMem = 1, p_GS%NMembers
@@ -6639,6 +6644,8 @@ SUBROUTINE GSInfl( p, p_GS, u, GSInflow, m, ErrStat, ErrMsg )
                call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
                if (.not. FirstWarn_GSStrike) call SetErrStat(ErrID_Fatal, "Generalized support structure strike.", ErrStat, ErrMsg, RoutineName )
                if (ErrStat >= AbortErrLev) return
+
+            m%GSClrnc(j,k) = min( m%GSClrnc(j,k), GSClrnc )   ! nearest-member clearance, saved for output
 
             if ( DisturbInflow ) then
                ! get the potential-flow and shadow contributions separately (member-local frame)
@@ -6681,7 +6688,10 @@ SUBROUTINE GSInfl( p, p_GS, u, GSInflow, m, ErrStat, ErrMsg )
             end if
          endif
 
-         ! Combine the per-member velocity contributions (via v_result above) into the disturbed inflow
+         ! Combine the per-member velocity contributions (via v_result above) into the disturbed inflow.
+         ! NOTE (document later): GS members are combined among themselves by the partition-of-unity /
+         ! root-sum-square blend above, but the GS effect is superimposed on the tower effect by simple
+         ! addition here (no cross-blend between the tower and GS fields).
          m%DisturbedInflow(:,j,k) = m%DisturbedInflow(:,j,k) + v_result
 
       end do !j=NumBlNds
@@ -6835,6 +6845,11 @@ SUBROUTINE getLocalGSProps(p_GS, iMem, u, GSInflow, BladeNodePosition, theta_GS_
    end if
 
    
+   ! NOTE (potential fix): the 20-diameter far-field limit is a numerical safeguard, not physics. The
+   ! underlying shadow is a frozen 2-D wake carried in the member-normal plane (see limitation note in
+   ! CalculateGSInfluence), so at many diameters it is unphysical (no 3-D recovery/advection) and the hard
+   ! cutoff adds a small step in induced velocity. Revisit: wind-aligned wake advection and/or a smooth
+   ! far-field taper instead of the hard 20*Diam step.
    if ( GSClrnc>20.0_ReKi*GSDiam) then
       ! Far away, we skip the computation and keep undisturbed inflow 
       DisturbInflow = .false.
@@ -6885,7 +6900,6 @@ SUBROUTINE GSInfl_NearestLine2Element(p_GS, iMem, u, GSInflow, BladeNodePosition
    REAL(ReKi)      :: n1_Point_vector(3)  ! vector going from node 1 in Line 2 element to Destination Point
    REAL(ReKi)      :: tmp(3)              ! temporary vector for cross product calculation
 
-   !INTEGER(IntKi)  :: iMem                ! do-loop counter for members
    INTEGER(IntKi)  :: jElem               ! do-loop counter for elements within a member
 
    INTEGER(IntKi)  :: n1, n2              ! global node indices associated with an element
@@ -6896,100 +6910,98 @@ SUBROUTINE GSInfl_NearestLine2Element(p_GS, iMem, u, GSInflow, BladeNodePosition
    found = .false.
    min_dist = HUGE(min_dist)
 
-   !do iMem = 1, p_GS%NMembers   ! number of members on the GS structure
-      associate( mem => p_GS%Members(iMem) )
-      do jElem = 1, mem%NElements   ! number of elements on this member
-            ! grab global node numbers associated with the jElem_th element of this member
-         n1 = mem%NodeIndx(jElem  )
-         n2 = mem%NodeIndx(jElem+1)
+   associate( mem => p_GS%Members(iMem) )
+   do jElem = 1, mem%NElements   ! number of elements on this member
+         ! grab global node numbers associated with the jElem_th element of this member
+      n1 = mem%NodeIndx(jElem  )
+      n2 = mem%NodeIndx(jElem+1)
 
-         p1 = u%GSMotion%Position(:,n1) + u%GSMotion%TranslationDisp(:,n1)
-         p2 = u%GSMotion%Position(:,n2) + u%GSMotion%TranslationDisp(:,n2)
+      p1 = u%GSMotion%Position(:,n1) + u%GSMotion%TranslationDisp(:,n1)
+      p2 = u%GSMotion%Position(:,n2) + u%GSMotion%TranslationDisp(:,n2)
 
-            ! Calculate vectors used in projection operation
-         n1_n2_vector    = p2 - p1
-         n1_Point_vector = BladeNodePosition - p1
+         ! Calculate vectors used in projection operation
+      n1_n2_vector    = p2 - p1
+      n1_Point_vector = BladeNodePosition - p1
 
-         denom           = DOT_PRODUCT( n1_n2_vector, n1_n2_vector ) ! we've already checked that these aren't zero
+      denom           = DOT_PRODUCT( n1_n2_vector, n1_n2_vector ) ! we've already checked that these aren't zero
 
-            ! project point onto line defined by n1 and n2
+         ! project point onto line defined by n1 and n2
 
-         elem_position = DOT_PRODUCT(n1_n2_vector,n1_Point_vector) / denom
+      elem_position = DOT_PRODUCT(n1_n2_vector,n1_Point_vector) / denom
 
-               ! note: i forumlated it this way because Fortran doesn't necessarially do shortcutting and I don't want to call EqualRealNos if we don't need it:
-         if ( elem_position .ge. 0.0_ReKi .and. elem_position .le. 1.0_ReKi ) then !we're ON the element (between the two nodes)
+            ! note: i forumlated it this way because Fortran doesn't necessarially do shortcutting and I don't want to call EqualRealNos if we don't need it:
+      if ( elem_position .ge. 0.0_ReKi .and. elem_position .le. 1.0_ReKi ) then !we're ON the element (between the two nodes)
+         on_element = .true.
+      else
+         elem_position_SiKi = REAL( elem_position, SiKi )
+         if (EqualRealNos( elem_position_SiKi, 1.0_SiKi )) then !we're ON the element (at a node)
             on_element = .true.
-         else
-            elem_position_SiKi = REAL( elem_position, SiKi )
-            if (EqualRealNos( elem_position_SiKi, 1.0_SiKi )) then !we're ON the element (at a node)
-               on_element = .true.
-               elem_position = 1.0_ReKi
-            elseif (EqualRealNos( elem_position_SiKi,  0.0_SiKi )) then !we're ON the element (at a node)
-               on_element = .true.
-               elem_position = 0.0_ReKi
-            else !we're not on the element
-               on_element = .false.
-            end if
-            
+            elem_position = 1.0_ReKi
+         elseif (EqualRealNos( elem_position_SiKi,  0.0_SiKi )) then !we're ON the element (at a node)
+            on_element = .true.
+            elem_position = 0.0_ReKi
+         else !we're not on the element
+            on_element = .false.
          end if
 
-         if (on_element) then
+      end if
 
-            ! calculate distance between point and line (note: this is actually the distance squared);
-            ! will only store information once we have determined the closest element
-            elem_position2 = 1.0_ReKi - elem_position
+      if (on_element) then
+
+         ! calculate distance between point and line (note: this is actually the distance squared);
+         ! will only store information once we have determined the closest element
+         elem_position2 = 1.0_ReKi - elem_position
             
-            r_GSBlade  = BladeNodePosition - elem_position2*p1 - elem_position*p2
-            dist = dot_product( r_GSBlade, r_GSBlade )
+         r_GSBlade  = BladeNodePosition - elem_position2*p1 - elem_position*p2
+         dist = dot_product( r_GSBlade, r_GSBlade )
 
-            if (dist .lt. min_dist) then
-               found = .true.
-               min_dist = dist
+         if (dist .lt. min_dist) then
+            found = .true.
+            min_dist = dist
 
-               V_rel_GS =   ( GSInflow%InflowVel(:,n1) - u%GSMotion%TranslationVel(:,n1) ) * elem_position2  &
-                          + ( GSInflow%InflowVel(:,n2) - u%GSMotion%TranslationVel(:,n2) ) * elem_position
+            V_rel_GS =   ( GSInflow%InflowVel(:,n1) - u%GSMotion%TranslationVel(:,n1) ) * elem_position2  &
+                       + ( GSInflow%InflowVel(:,n2) - u%GSMotion%TranslationVel(:,n2) ) * elem_position
                
-               GSDiam      = elem_position2*2.0_ReKi*mem%R(jElem) + elem_position*2.0_ReKi*mem%R(jElem+1)
-               GSCd        = elem_position2*mem%Cd(  jElem) + elem_position*mem%Cd(  jElem+1)
-               GSTI        = elem_position2*mem%TI(  jElem) + elem_position*mem%TI(  jElem+1)
+            GSDiam      = elem_position2*2.0_ReKi*mem%R(jElem) + elem_position*2.0_ReKi*mem%R(jElem+1)
+            GSCd        = elem_position2*mem%Cd(  jElem) + elem_position*mem%Cd(  jElem+1)
+            GSTI        = elem_position2*mem%TI(  jElem) + elem_position*mem%TI(  jElem+1)
                
                
-               ! z_hat
-               theta_GS_trans(:,3) = n1_n2_vector / sqrt( denom ) ! = n1_n2_vector / twoNorm( n1_n2_vector )
+            ! z_hat
+            theta_GS_trans(:,3) = n1_n2_vector / sqrt( denom ) ! = n1_n2_vector / twoNorm( n1_n2_vector )
                
-               tmp = V_rel_GS - dot_product(V_rel_GS,theta_GS_trans(:,3)) * theta_GS_trans(:,3)
-               denom = TwoNorm( tmp )
-               if (.not. EqualRealNos( denom, 0.0_ReKi ) ) then
-                  ! x_hat
-                  theta_GS_trans(:,1) = tmp / denom
+            tmp = V_rel_GS - dot_product(V_rel_GS,theta_GS_trans(:,3)) * theta_GS_trans(:,3)
+            denom = TwoNorm( tmp )
+            if (.not. EqualRealNos( denom, 0.0_ReKi ) ) then
+               ! x_hat
+               theta_GS_trans(:,1) = tmp / denom
                   
-                  ! y_hat
-                  tmp = cross_product( theta_GS_trans(:,3), V_rel_GS )
-                  theta_GS_trans(:,2) = tmp / denom  
+               ! y_hat
+               tmp = cross_product( theta_GS_trans(:,3), V_rel_GS )
+               theta_GS_trans(:,2) = tmp / denom  
                   
-                  W_GS = dot_product( V_rel_GS,theta_GS_trans(:,1) )
-                  xbar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,1) )
-                  ybar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,2) )
-                  zbar = 0.0_ReKi
+               W_GS = dot_product( V_rel_GS,theta_GS_trans(:,1) )
+               xbar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,1) )
+               ybar = 2.0/GSDiam * dot_product( r_GSBlade, theta_GS_trans(:,2) )
+               zbar = 0.0_ReKi
                                                 
-               else
-                     ! there is no GS influence because dot_product(V_rel_GS,x_hat) = 0
-                     ! thus, we don't need to set the other values (except we don't want the sum of xbar^2 and ybar^2 to be 0)
-                  theta_GS_trans = 0.0_ReKi
-                  W_GS           = 0.0_ReKi
-                  xbar           = 1.0_ReKi
-                  ybar           = 0.0_ReKi  
-                  zbar           = 0.0_ReKi
-               end if
+            else
+                  ! there is no GS influence because dot_product(V_rel_GS,x_hat) = 0
+                  ! thus, we don't need to set the other values (except we don't want the sum of xbar^2 and ybar^2 to be 0)
+               theta_GS_trans = 0.0_ReKi
+               W_GS           = 0.0_ReKi
+               xbar           = 1.0_ReKi
+               ybar           = 0.0_ReKi
+               zbar           = 0.0_ReKi
+            end if
       
                
-            end if !the point is closest to this line2 element
+         end if !the point is closest to this line2 element
 
-         end if
+      end if
 
-      end do !jElem
-      end associate
-   !end do !iMem
+   end do !jElem
+   end associate
 
 END SUBROUTINE GSInfl_NearestLine2Element
 !----------------------------------------------------------------------------------------------------------------------------------
@@ -7033,7 +7045,7 @@ SUBROUTINE GSInfl_NearestPoint(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSB
    INTEGER(IntKi)  :: n1                        ! global node index
    INTEGER(IntKi)  :: nA, nB                    ! global node indices of the element adjacent to the nearest node
 
-   INTEGER(IntKi)  :: iMem_min, j_min, n1_min    ! member/local-node/global-node with minimum distance found so far
+   INTEGER(IntKi)  :: j_min, n1_min    ! local-node/global-node with minimum distance found so far
 
    
    
@@ -7042,45 +7054,38 @@ SUBROUTINE GSInfl_NearestPoint(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSB
       !.................
       
    min_dist = HUGE(min_dist)
-   iMem_min = 0
    j_min    = 0
    n1_min   = 0
 
-   !do iMem = 1, p_GS%NMembers
-      associate( mem => p_GS%Members(iMem) )
-      do j = 1, mem%NElements+1   ! number of nodes on this member
+   associate( mem => p_GS%Members(iMem) )
+   do j = 1, mem%NElements+1   ! number of nodes on this member
       
-         n1 = mem%NodeIndx(j)
-         p1 = u%GSMotion%Position(:,n1) + u%GSMotion%TranslationDisp(:,n1)
+      n1 = mem%NodeIndx(j)
+      p1 = u%GSMotion%Position(:,n1) + u%GSMotion%TranslationDisp(:,n1)
          
-            ! calculate distance between points (note: this is actually the distance squared);
-            ! will only store information once we have determined the closest node
-         r_GSBlade = BladeNodePosition - p1         
-         dist = dot_product( r_GSBlade, r_GSBlade )
+         ! calculate distance between points (note: this is actually the distance squared);
+         ! will only store information once we have determined the closest node
+      r_GSBlade = BladeNodePosition - p1
+      dist = dot_product( r_GSBlade, r_GSBlade )
 
-         if (dist .lt. min_dist) then
-            min_dist = dist
-            iMem_min = iMem
-            j_min    = j
-            n1_min   = n1
-         end if !the point is (so far) closest to this GS node
+      if (dist .lt. min_dist) then
+         min_dist = dist
+         j_min    = j
+         n1_min   = n1
+      end if !the point is (so far) closest to this GS node
 
-      end do !j
-      end associate
-   !end do !iMem
+   end do !j
    
       !.................
       ! calculate the values to be returned:  
       !..................
    if (n1_min == 0) then
-      iMem_min = 1
       j_min    = 1
-      n1_min   = p_GS%Members(1)%NodeIndx(1)
+      n1_min   = mem%NodeIndx(1)
       if (NWTC_VerboseLevel == NWTC_Verbose) call WrScr( 'AD:GSInfl_NearestPoint:Error finding minimum distance. Positions may be invalid.' )
    end if
    
    n1 = n1_min
-   associate( mem => p_GS%Members(iMem_min) )
    
    r_GSBlade = BladeNodePosition - u%GSMotion%Position(:,n1) - u%GSMotion%TranslationDisp(:,n1)
    V_rel_GS  = GSInflow%InflowVel(:,n1) - u%GSMotion%TranslationVel(:,n1)
@@ -7113,7 +7118,7 @@ SUBROUTINE GSInfl_NearestPoint(p_GS, iMem, u, GSInflow, BladeNodePosition, r_GSB
                
       ! y_hat
       tmp = cross_product( theta_GS_trans(:,3), V_rel_GS )
-      theta_GS_trans(:,2) = tmp / denom  
+      theta_GS_trans(:,2) = tmp / denom
                
       W_GS = dot_product( V_rel_GS,theta_GS_trans(:,1) )
 
