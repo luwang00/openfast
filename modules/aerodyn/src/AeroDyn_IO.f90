@@ -296,18 +296,25 @@ CONTAINS
          end do ! blades
       end if
       
-      ! blade node tower clearance (requires tower influence calculation):
-      if (p%TwrPotent /= TwrPotent_none .or. p%TwrShadow /= TwrShadow_none) then
+      ! blade node clearance to tower and/or generalized support (requires influence calculation):
+      ! each clearance array is allocated only when its model is active; report the smallest.
+      if (allocated(m%TwrClrnc)) then
          do k=1,min(p%numBlades,AD_MaxBl_Out)
             do beta=1,p%NBlOuts
                j=p%BlOutNd(beta)
                m%AllOuts( BNClrnc( beta,k) ) = m%TwrClrnc(j,k)
             end do
          end do
-      end if
-
-      ! blade node tower clearance (requires tower influence calculation):
-      if (p%GSPotent /= GSPotent_none .or. p%GSShadow /= GSShadow_none) then
+         ! reduce with the GS clearance when it is also active
+         if (allocated(m%GSClrnc)) then
+            do k=1,min(p%numBlades,AD_MaxBl_Out)
+               do beta=1,p%NBlOuts
+                  j=p%BlOutNd(beta)
+                  m%AllOuts( BNClrnc( beta,k) ) = min( m%AllOuts( BNClrnc( beta,k) ), m%GSClrnc(j,k) )
+               end do
+            end do
+         end if
+      else if (allocated(m%GSClrnc)) then
          do k=1,min(p%numBlades,AD_MaxBl_Out)
             do beta=1,p%NBlOuts
                j=p%BlOutNd(beta)
