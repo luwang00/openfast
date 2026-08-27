@@ -239,6 +239,31 @@ nonetheless fade to zero as :math:`\overline{z} \rightarrow 1`. No tower influen
    coordinate scaling above, which does not give a principled axial wake taper. The end
    treatment of the tower shadow is expected to be improved in a future release.
 
+.. _AD_twr_drag:
+
+Tower drag loads
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+AeroDyn can apply an aerodynamic drag load to the tower itself when tower aerodynamics are
+enabled (**TwrAero=True**). The load is a cross-flow (Morison-type) drag evaluated independently
+at each tower node.
+
+At tower node :math:`j` the relative wind is
+:math:`\mathbf{V}_\text{rel} = \mathbf{V}_\text{inflow} - \mathbf{V}_\text{motion}`, the
+difference between the local *unperturbed* inflow velocity and the tower structural velocity
+of the node. Only the component of :math:`\mathbf{V}_\text{rel}` in the plane normal to the
+tower axis produces drag; denote this transverse relative-wind vector :math:`\mathbf{V}_\perp`
+and its magnitude :math:`W_\text{tower} = \lVert \mathbf{V}_\perp \rVert`. The drag force per
+unit length is
+
+.. math::
+   \mathbf{f}_\text{drag} = \tfrac{1}{2}\, \rho\, C_d\, D\, W_\text{tower}\, \mathbf{V}_\perp
+
+where :math:`\rho` is the air (or water, for MHK) density, :math:`C_d` = ``TwrCd`` is the local
+tower drag coefficient, and :math:`D` = ``TwrDiam`` is the local tower diameter. The force acts
+in the direction of the transverse relative wind, the axial (along-tower) component is zero, and
+no moment is applied. This per-unit-length load is distributed along the tower line mesh and 
+later mapped to the ElastoDyn tower structural mesh in a coupled simulation.
 
 .. _AD_gs_influence:
 
@@ -352,6 +377,47 @@ When only one member contributes, this reduces exactly to that member's deficit.
    a near-field kinematic effect and is correctly resolved in the member-normal plane, so this
    change would affect only the shadow model.
 
+.. _AD_gs_drag:
+
+Generalized support-structure drag loads
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The generalized support structure carries the same cross-flow drag load as the tower
+(:numref:`AD_twr_drag`), applied member by member when GS aerodynamics are enabled
+(**GSAero=True**). For a member element with unit axial vector :math:`\hat{\mathbf{k}}`, the
+transverse relative wind at a node is obtained by removing the along-member component of the
+relative wind,
+
+.. math::
+   \mathbf{V}_\perp = \mathbf{V}_\text{rel} - (\mathbf{V}_\text{rel}\cdot\hat{\mathbf{k}})\,\hat{\mathbf{k}},
+   \qquad
+   \mathbf{V}_\text{rel} = \mathbf{V}_\text{inflow} - \mathbf{V}_\text{motion},
+
+and the drag force per unit length takes the same form as for the tower, with the member
+diameter :math:`D = 2R` and member drag coefficient :math:`C_d` in place of ``TwrDiam`` and
+``TwrCd``:
+
+.. math::
+   \mathbf{f}_\text{drag} = \tfrac{1}{2}\, \rho\, C_d\, D\, W_\text{GS}\, \mathbf{V}_\perp,
+   \qquad W_\text{GS} = \lVert \mathbf{V}_\perp \rVert
+
+The only procedural difference from the tower is the mesh on which the load is returned. The
+tower load is a distributed (per-unit-length) load on a line mesh, whereas the GS load mesh is a
+point mesh. The distributed member drag is therefore lumped to the element end nodes: each
+element of length :math:`\Delta l` contributes half of its integrated drag to each of its two
+end nodes, and the contributions of the elements meeting at a shared node are summed. As with
+the tower, no moment is applied. The lumped nodal forces are mapped to the SubDyn structural mesh
+in a coupled simulation.
+
+.. note::
+   The GS model provides only the aerodynamic/hydrodynamic *drag* load on the support members.
+   The other load components relevant to MHK simulations --- buoyancy, added mass, and fluid
+   inertia (see :numref:`AD_buoyancy` and :numref:`AD_addedmass_inertia`) --- are not computed for
+   the generalized support structure and should instead be modeled in HydroDyn. To avoid
+   double-counting, the support-structure drag should be modeled in *either* AeroDyn (via the GS
+   drag load) *or* HydroDyn, but not both. The GS influence on the rotor inflow
+   (:numref:`AD_gs_influence`) is a separate, flow-disturbance effect and can always be included in
+   AeroDyn regardless of where the support-structure drag is modeled.
 
 .. _AD_buoyancy:
 
