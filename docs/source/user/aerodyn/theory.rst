@@ -240,6 +240,119 @@ nonetheless fade to zero as :math:`\overline{z} \rightarrow 1`. No tower influen
    treatment of the tower shadow is expected to be improved in a future release.
 
 
+.. _AD_gs_influence:
+
+Generalized support-structure influence models
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The generalized support structure (GS) extends the tower influence models of
+:numref:`AD_twr_influence` to an arbitrary assembly of slender cylindrical members (for
+example the columns and braces of a jacket, tripod, or floating platform). Each member is
+treated exactly like the tower: at each blade node the potential-flow disturbance
+(``GSPotent``) and the downstream shadow deficit (``GSShadow``) are evaluated in a local
+member frame from the position of the blade node relative to the nearest point on that
+member, using the same normalized coordinates :math:`(\overline{x}, \overline{y},
+\overline{z})`, the same baseline and Bak potential-flow expressions (see
+:numref:`AD_twr_potent`), the same Powles and Eames shadow expressions (see
+:numref:`AD_twr_shadow`), and the same end handling --- clearance-based exclusion capsule and
+axial taper (see :numref:`AD_twr_ends`). The member diameter and drag
+coefficient play the roles that ``TwrDiam`` and :math:`C_d` play for the tower. Because the
+support members generally meet at joints, the axial taper is applied at every member end
+(free tip or junction), whereas for the single tower it is only ever needed at the two free
+ends.
+
+The distinguishing feature of the GS model is how the contributions of the individual members
+are combined at a blade node. For each blade node the potential-flow and shadow contributions
+are accumulated separately in the earth-fixed frame and combined by different rules, and the
+resulting GS disturbance is then superimposed on the tower disturbance by simple addition
+(there is no cross-blend between the tower field and the GS field).
+
+.. _AD_gs_potent_combine:
+
+Combining the potential-flow contributions
+-------------------------------------------
+
+A naive superposition (summation) of the per-member potential-flow solutions is not
+appropriate. Each member's field is the potential-flow solution for that member in isolation,
+which already enforces the non-penetration boundary condition on that member's surface. Adding
+two such fields violates the combined boundary condition and over-counts the disturbance where
+members are close together --- most visibly at a joint, where two members meeting at a point
+would each contribute a full near-field doublet and roughly double the true disturbance of the
+single connected body. Simple approaches to remove this double count (for example detecting
+collinear members that continue through a joint) were found to be fragile and not general:
+real assemblies present an unbounded variety of geometries (slightly angled continuations, a
+single member branching into two, and so on) that no finite set of topology rules covers
+robustly.
+
+The adopted combination is instead an influence-weighted *partition of unity*. Let
+:math:`\mathbf{v}_i` be the potential-flow contribution of member :math:`i` at the blade node
+(expressed in the earth-fixed frame). The combined potential-flow disturbance is
+
+.. math::
+   \mathbf{v}_\text{pot} = \frac{\sum_i w_i\, \mathbf{v}_i}{\sum_i w_i},
+   \qquad
+   w_i = \lVert \mathbf{v}_i \rVert^{\,p}
+
+with blend exponent :math:`p = 6`. Because the weights are non-negative and sum to one, the
+blended magnitude never exceeds :math:`\max_i \lVert \mathbf{v}_i \rVert`, so the combination
+can never inflate the disturbance and the joint double-counting is eliminated by construction.
+The scheme has several convenient properties:
+
+- It reduces exactly to the single-member (and hence tower) result when only one member
+  contributes.
+- It requires no knowledge of the structure topology: collinear, angled, and branching
+  configurations are all handled through the field magnitudes alone. At a collinear joint the
+  two members carry almost identical fields, so any split of the weights returns essentially
+  the single-cylinder value; at a corner the blend hands off smoothly between the members.
+- Weighting by the *influence magnitude* :math:`\lVert \mathbf{v}_i \rVert` rather than by
+  proximity ensures that a member whose field has tapered to zero (for instance one the blade
+  node lies axially beyond) receives essentially zero weight and cannot blank out the field of
+  a nearby member.
+- The exponent :math:`p` controls the sharpness of the handoff: :math:`p \rightarrow \infty`
+  recovers a hard "nearest/strongest body only" selection, while a finite :math:`p` smooths the
+  transition. An even integer is used so that :math:`w_i = (\mathbf{v}_i \cdot
+  \mathbf{v}_i)^{p/2}` is a polynomial in the velocity components and therefore smooth
+  everywhere. The value :math:`p = 6` is the smallest even integer that keeps the small
+  residual dip at a collinear same-diameter joint (an artifact of blending a full field against
+  its cosine-tapered neighbor) below about 5 %, while keeping the handoff gradients modest.
+
+The per-member end taper of :numref:`AD_twr_ends` is still applied before the blend: the taper
+makes each finite member's field die away beyond its physical extent, and the blend only decides
+which member dominates where several overlap.
+
+.. _AD_gs_shadow_combine:
+
+Combining the shadow contributions
+----------------------------------
+
+The partition of unity is deliberately *not* used for the shadow deficit. Unlike the
+potential-flow disturbance, wake deficits physically stack to some extent: two overlapping
+wakes remove more momentum than one. The correct combined deficit therefore lies somewhere
+between the single-member value (which the partition of unity would return) and the linear sum
+(which over-counts). The shadow contributions are combined by a root-sum-square of the
+individual deficit magnitudes, applied along the direction of their vector sum. Writing
+:math:`\mathbf{s}_i` for member :math:`i`'s shadow contribution in the earth-fixed frame and
+:math:`\mathbf{s}_\text{sum} = \sum_i \mathbf{s}_i`,
+
+.. math::
+   \mathbf{v}_\text{shad}
+     = \left( \sqrt{ \sum_i \lVert \mathbf{s}_i \rVert^2 } \right)
+       \frac{\mathbf{s}_\text{sum}}{\lVert \mathbf{s}_\text{sum} \rVert}
+
+When only one member contributes, this reduces exactly to that member's deficit.
+
+.. note::
+   As with the tower shadow, the GS shadow wake is directed along the wind projected into the
+   plane normal to the member axis rather than along the true (earth-fixed) wind. For a member
+   strongly raked into or away from the wind this tilts the modeled wake up into the sky or down
+   toward the ground instead of keeping it aligned with the incoming flow, which is unphysical.
+   The current formulation is adequate for near-vertical members and mirrors the established
+   tower model, but the shadow model is expected to be improved in a future release to advect the
+   wake along the (ideally low-pass filtered) incident wind direction. The potential-flow part is
+   a near-field kinematic effect and is correctly resolved in the member-normal plane, so this
+   change would affect only the shadow model.
+
+
 .. _AD_buoyancy:
 
 Buoyancy
