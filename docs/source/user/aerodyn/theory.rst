@@ -102,16 +102,65 @@ The current discrete-time formulation is complex and in the future it can be sim
 
 
 
+.. _AD_twr_influence:
+
+Tower influence models
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+AeroDyn can model the influence of the tower on the flow reaching the blades through two
+superimposable effects: a potential-flow disturbance of the flow around the tower
+(``TwrPotent``) and a downstream shadow (wake) velocity deficit (``TwrShadow``). Both are
+evaluated at each blade node from the position of the node relative to the nearest point on
+the tower, expressed in a local tower reference frame centered on the tower axis:
+:math:`\overline{x}` is the downstream (streamwise) coordinate, :math:`\overline{y}` the
+lateral coordinate, and :math:`\overline{z}` the coordinate along the tower axis, each
+normalized by the local tower radius. The resulting disturbance-velocity fractions are scaled by
+:math:`W_\text{tower}`, the local incoming wind speed component normal to the tower axis, and
+applied in the plane normal to the tower. :math:`C_d` is the local tower drag coefficient and
+:math:`TI` (Eames model only) is the local turbulence intensity at the tower node. It is
+convenient to define :math:`\overline{r} = \sqrt{ \overline{x}^2 + \overline{y}^2 }`.
+
+.. _AD_twr_potent:
+
+Tower potential-flow model
+-----------------------------
+
+The baseline potential-flow model (**TwrPotent=1**) represents the tower cross section as a
+two-dimensional cylinder in potential flow (a doublet), giving the streamwise
+(:math:`u_{TwrPotent}`) and lateral (:math:`v_{TwrPotent}`) disturbance-velocity fractions:
+
+.. math::
+   u_{TwrPotent} = \frac{-\overline{x}^2 + \overline{y}^2}{\overline{r}^4},
+   \qquad
+   v_{TwrPotent} = \frac{-2\,\overline{x}\,\overline{y}}{\overline{r}^4}
+
+The Bak correction (**TwrPotent=2**), following Bak, Madsen, and Johansen (2001), adds a
+drag-induced source term and offsets the streamwise coordinate by :math:`+0.1` (a fixed
+empirical constant) to better represent the near wake. Writing
+:math:`\overline{x}' = \overline{x} + 0.1` and
+:math:`\overline{r}' = \sqrt{ \overline{x}'^2 + \overline{y}^2 }`,
+
+.. math::
+   u_{TwrPotent} = \frac{-\overline{x}'^2 + \overline{y}^2}{\overline{r}'^4}
+                 + \frac{C_d\,\overline{x}'}{2\pi\,\overline{r}'^2},
+   \qquad
+   v_{TwrPotent} = \frac{-2\,\overline{x}'\,\overline{y}}{\overline{r}'^4}
+                 + \frac{C_d\,\overline{y}}{2\pi\,\overline{r}'^2}
+
+Alongside the tower, the potential-flow disturbance velocity is applied in full.
+Beyond the tower ends the influence is tapered and cut off; this end treatment,
+which is shared with the shadow model, is described in :numref:`AD_twr_ends`.
+
 .. _AD_twr_shadow:
 
 Tower shadow models
-~~~~~~~~~~~~~~~~~~~
+----------------------
 
 Powles tower shadow model (**TwrShadow=1**) is given by:
 
 .. math::
    u_{TwrShadow} = - \frac{C_d}{  \sqrt{\overline{r}}  }
-               \cos\left( \frac{\pi/2 \overline{y}}{\sqrt{\overline{r}}}\right)^2
+               \cos\left( \frac{\pi}{2}\,\frac{\overline{y}}{\sqrt{\overline{r}}}\right)^2
 
 where :math:`\overline{r} = \sqrt{ \overline{x}^2 + \overline{y}^2 }`.
 
@@ -123,6 +172,72 @@ Eames tower shadow model (**TwrShadow=2**) is given by:
                \exp{\left(  -\frac{1}{2}  \left(\frac{ \overline{y}}{ TI \: \overline{x} } \right)^2 \right) }
 
 where :math:`TI` is the turbulence intensity at the tower node. 
+
+To avoid excessive flow reversal behind the tower, the shadow
+deficit fraction is limited to :math:`u_{TwrShadow} \ge -0.5`.
+
+The potential-flow and shadow contributions are superimposed and scaled by
+:math:`W_\text{tower}` to give the velocity perturbation at the blade node in the local tower
+frame:
+
+.. math::
+   v_x = \left( u_{TwrPotent} + u_{TwrShadow} \right) W_\text{tower},
+   \qquad
+   v_y = v_{TwrPotent}\, W_\text{tower}
+
+This perturbation :math:`(v_x, v_y, 0)` is rotated into the earth-fixed frame and added to the
+free-stream (undisturbed) inflow velocity to obtain the disturbed inflow velocity used by the
+blade-element calculations.
+
+.. _AD_twr_ends:
+
+Tower ends and exclusion zones
+------------------------------
+
+Both tower-influence effects use the position of the blade node relative to the nearest point on
+the tower. Alongside the tower this nearest point is the orthogonal projection of the blade node
+onto the tower axis, for which the axial coordinate is :math:`\overline{z} = 0`. When a blade
+node lies axially beyond a tower end, the nearest point becomes the tower end itself, and
+:math:`\overline{z}` is then the axial distance from that end, normalized by the local tower
+radius.
+
+For each blade node, the tower clearance is computed as :math:`c = \lVert \mathbf{r} \rVert - R`,
+where :math:`\mathbf{r}` is the vector from the nearest tower point to the blade node and
+:math:`R = \tfrac{1}{2}` ``TwrDiam`` is the local tower radius. The disturbance is suppressed both
+very close to the tower (:math:`c \le 0.01\,` ``TwrDiam``) and far from it (:math:`c > 20\,` ``TwrDiam``,
+a far-field cutoff). Because the clearance beyond a tower end is measured to the end point, the
+surface of minimum clearance for the tower influence models there is a hemispherical cap closing off
+the cylinder. The near-tower exclusion zone is therefore a capsule --- a cylinder capped by hemispheres
+at both ends --- rather than a bare cylinder.
+
+Beyond a tower end the disturbance is faded out over one tower radius using a cosine-squared axial
+taper. For :math:`|\overline{z}| < 1` the in-plane coordinates are divided by
+:math:`\cos\!\left(\tfrac{\pi}{2}\overline{z}\right)`,
+
+.. math::
+   \overline{x} \;\rightarrow\; \frac{\overline{x}}{\cos\!\left(\tfrac{\pi}{2}\overline{z}\right)},
+   \qquad
+   \overline{y} \;\rightarrow\; \frac{\overline{y}}{\cos\!\left(\tfrac{\pi}{2}\overline{z}\right)}
+
+The taper is applied purely through this coordinate scaling; how it attenuates each effect
+depends on how that effect depends on :math:`\overline{x}` and :math:`\overline{y}`. Because the
+potential-flow disturbance velocity scales as
+:math:`1/\overline{r}^{\,2} = 1/(\overline{x}^2 + \overline{y}^2)`, dividing :math:`\overline{x}`
+and :math:`\overline{y}` in this way multiplies the potential-flow velocity by exactly
+:math:`\cos^2\!\left(\tfrac{\pi}{2}\overline{z}\right)`: it decreases smoothly from its full value
+at the end plane (:math:`\overline{z} = 0`) to zero at :math:`\overline{z} = 1` with zero slope
+there (:math:`C^1`-continuous). The shadow deficit is tapered by the same coordinate scaling, but
+its dependence on :math:`\overline{x}` and :math:`\overline{y}` is different, so the attenuation is
+not a clean :math:`\cos^2` factor (for the Powles model the deficit scales roughly as
+:math:`\sqrt{\cos}` with an additional shift in its lateral argument, and for the Eames model it
+scales linearly in :math:`\cos` with the lateral profile unchanged). Both shadow models
+nonetheless fade to zero as :math:`\overline{z} \rightarrow 1`. No tower influence is applied for
+:math:`|\overline{z}| \ge 1`.
+
+.. note::
+   The tower shadow deficit is currently tapered near the tower ends only as a byproduct of the
+   coordinate scaling above, which does not give a principled axial wake taper. The end
+   treatment of the tower shadow is expected to be improved in a future release.
 
 
 .. _AD_buoyancy:
