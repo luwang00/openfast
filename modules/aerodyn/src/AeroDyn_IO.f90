@@ -1191,10 +1191,10 @@ SUBROUTINE ParsePrimaryFileInfo( PriPath, InitInp, InputFile, RootName, NumBlade
    call ParseVar( FileInfo_In, CurLine, "NumGSMembers", InputFileData%GS%NMembers, ErrStat2, ErrMsg2, UnEc )
       if (Failed()) return
       !GSMemberID     GSMJointID1     GSMJointID2       GSMDia1       GSMDia2       GSMCd1       GSMCd2        GSMTI1       GSMTI2        GSMDiv
-   if ( InputFileData%Echo )   WRITE(UnEc, '(A)') 'GS Joint Table Header: '//FileInfo_In%Lines(CurLine)    ! Write section break to echo
+   if ( InputFileData%Echo )   WRITE(UnEc, '(A)') 'GS Member Table Header: '//FileInfo_In%Lines(CurLine)    ! Write section break to echo
    CurLine = CurLine + 1
       !(-)            (-)             (-)               (m)           (m)           (-)           (-)          (-)          (-)           (-)
-   if ( InputFileData%Echo )   WRITE(UnEc, '(A)') 'GS Joint Table Header: '//FileInfo_In%Lines(CurLine)    ! Write section break to echo
+   if ( InputFileData%Echo )   WRITE(UnEc, '(A)') 'GS Member Table Header: '//FileInfo_In%Lines(CurLine)    ! Write section break to echo
    CurLine = CurLine + 1
 
       ! Allocate space for general support joint table

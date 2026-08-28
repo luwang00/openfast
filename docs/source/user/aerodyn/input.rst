@@ -552,12 +552,12 @@ OpenFAST simulation that includes SubDyn, the AeroDyn generalized support struct
 is coupled to the SubDyn structural model. In contrast, the AeroDyn tower is coupled
 to the vertical tower modeled in ElastoDyn or the Simplified ElastoDyn module. With
 multirotor systems, AeroDyn can include multiple vertical towers with each tower
-coupled to a separate ElastoDyn instance; however, there can only be one shared
-generalized support structure coupled to the SubDyn model of the shared substructure.
+linked to a separate ElastoDyn instance; however, there can only be one shared
+generalized support structure interfaced with the SubDyn model of the shared substructure.
 If the coupled OpenFAST simulation does not include SubDyn, the generalized support
-structure is simply coupled to the ElastoDyn platform point. Note that in this case,
+structure is simply attached to the ElastoDyn platform point. Note that in this case,
 the generalized support structure is effectively rigid, and it is not possible to have
-multiple rotors which always require SubDyn.
+multiple rotors, which always require SubDyn.
 
 The two GS tables in the AeroDyn primary input file are always read, but their
 contents are only used when at least one of ``GSPotent`` > 0, ``GSShadow`` > 0,
@@ -568,24 +568,26 @@ input tables described below should appear exactly once in the AeroDyn input fil
 They should not be duplicated for each rotor.
 
 .. note::
-    In a coupled OpenFAST simulation the motion of the generalized support structure
+    In a coupled OpenFAST simulation, the motion of the generalized support structure
     is provided by SubDyn (through its ``Y3Mesh``). The GS joints and members defined
     here therefore represent members that are also modeled structurally in SubDyn, and
-    their geometry should ideally coincide with the corresponding SubDyn nodes so that the motion
-    transfer is meaningful. In the standalone AeroDyn driver there is no SubDyn coupling:
-    the generalized support structure is held fixed at the joint positions entered below,
-    so the driver supports a rigid (non-moving) support structure. A flexible or moving
-    support structure requires a coupled OpenFAST simulation with SubDyn.
+    their geometry should ideally coincide with the corresponding SubDyn nodes so that
+    the motion and load transfer are meaningful. In the standalone AeroDyn driver, there
+    is no SubDyn coupling; the generalized support structure is held fixed at the joint
+    positions entered below, so the driver effectively supports a rigid (non-moving)
+    support structure. A flexible or moving support structure requires a coupled OpenFAST
+    simulation with SubDyn.
 
-**Coordinate convention.** GS joint coordinates are given in the AeroDyn global
-inertial frame (z pointing up). Enter z-coordinates measured from the mean sea level
-(``z = 0`` at MSL) for wind turbines and floating MHK turbines. For fixed-bottom MHK
-turbines (``MHK = 1``) enter z-coordinates measured from the seabed (``z = 0`` at the
-seabed); AeroDyn internally shifts these by the water depth so that all internal
-calculations use MSL as the datum. Therefore, for wind and floating MHK turbines, the
-GS joint coordinates are the same as the SubDyn node coordinates, while for fixed-bottom
-MHK turbines, the GS joint coordinates are the SubDyn node coordinates summed with the 
-(positive) water depth.
+**Coordinate convention.** GS joint coordinates are given in the AeroDyn global inertial
+frame (z pointing up). For wind turbines, enter z-coordinates measured from the ground
+(land-based) or the mean sea level (offshore). The convention for MHK turbines depends on
+whether the turbine is fixed-bottom or floating. For floating MHK turbines (``MHK = 2``),
+enter z-coordinates measured from the mean sea level (MSL). For fixed-bottom MHK turbines
+(``MHK = 1``), enter z-coordinates measured from the seabed (``z = 0`` at the seabed);
+AeroDyn internally shifts these by the water depth so that all internal calculations use
+MSL as the datum. Therefore, for wind and floating MHK turbines, the GS joint coordinates
+are the same as the SubDyn node coordinates, while for fixed-bottom MHK turbines, the GS
+joint coordinates are the SubDyn node coordinates summed with the (positive) water depth.
 
 Generalized support structure joints
 ------------------------------------
@@ -621,7 +623,8 @@ its two ends:
 - ``GSMDiv`` — target element (division) length (m) along the member. AeroDyn divides
   the member into ``ceiling(memberLength / GSMDiv)`` equal elements and inserts the
   corresponding interior analysis nodes. Smaller values give finer resolution and
-  higher computational cost. Matches ``MDivSize`` in SubDyn and HydroDyn.
+  higher computational cost. It is functionally consistent with ``MDivSize`` in SubDyn
+  and HydroDyn.
 
 Diameter, drag coefficient, and turbulence intensity are linearly interpolated from
 the joint-1 value to the joint-2 value along each member, and the analysis nodes are

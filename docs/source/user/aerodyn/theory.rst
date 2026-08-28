@@ -206,11 +206,11 @@ where :math:`\mathbf{r}` is the vector from the nearest tower point to the blade
 :math:`R = \tfrac{1}{2}` ``TwrDiam`` is the local tower radius. The disturbance is suppressed both
 very close to the tower (:math:`c \le 0.01\,` ``TwrDiam``) and far from it (:math:`c > 20\,` ``TwrDiam``,
 a far-field cutoff). Because the clearance beyond a tower end is measured to the end point, the
-surface of minimum clearance for the tower influence models there is a hemispherical cap closing off
-the cylinder. The near-tower exclusion zone is therefore a capsule --- a cylinder capped by hemispheres
-at both ends --- rather than a bare cylinder.
+surface of minimum clearance for the tower influence models at member ends becomes a hemispherical cap
+closing off the cylinder. The near-tower exclusion zone is therefore a capsule --- a cylinder capped
+by hemispheres at both ends --- rather than a bare cylinder.
 
-Beyond a tower end the disturbance is faded out over one tower radius using a cosine-squared axial
+Beyond a tower end, the disturbance is faded out over one tower radius using a cosine-squared axial
 taper. For :math:`|\overline{z}| < 1` the in-plane coordinates are divided by
 :math:`\cos\!\left(\tfrac{\pi}{2}\overline{z}\right)`,
 
@@ -326,13 +326,13 @@ The scheme has several convenient properties:
 - It reduces exactly to the single-member (and hence tower) result when only one member
   contributes.
 - It requires no knowledge of the structure topology: collinear, angled, and branching
-  configurations are all handled through the field magnitudes alone. At a collinear joint the
+  configurations are all handled through the field magnitudes alone. At a collinear joint, the
   two members carry almost identical fields, so any split of the weights returns essentially
   the single-cylinder value; at a corner the blend hands off smoothly between the members.
 - Weighting by the *influence magnitude* :math:`\lVert \mathbf{v}_i \rVert` rather than by
-  proximity ensures that a member whose field has tapered to zero (for instance one the blade
-  node lies axially beyond) receives essentially zero weight and cannot blank out the field of
-  a nearby member.
+  proximity ensures that a member whose field has tapered to zero (for instance at a blade
+  node axially above the end of the member by just over one member radius) receives essentially
+  zero weight and cannot blank out the field of a nearby member slightly further away.
 - The exponent :math:`p` controls the sharpness of the handoff: :math:`p \rightarrow \infty`
   recovers a hard "nearest/strongest body only" selection, while a finite :math:`p` smooths the
   transition. An even integer is used so that :math:`w_i = (\mathbf{v}_i \cdot
@@ -369,7 +369,7 @@ When only one member contributes, this reduces exactly to that member's deficit.
 .. note::
    As with the tower shadow, the GS shadow wake is directed along the wind projected into the
    plane normal to the member axis rather than along the true (earth-fixed) wind. For a member
-   strongly raked into or away from the wind this tilts the modeled wake up into the sky or down
+   strongly raked into or away from the wind, this tilts the modeled wake up into the sky or down
    toward the ground instead of keeping it aligned with the incoming flow, which is unphysical.
    The current formulation is adequate for near-vertical members and mirrors the established
    tower model, but the shadow model is expected to be improved in a future release to advect the
@@ -417,7 +417,11 @@ in a coupled simulation.
    double-counting, the support-structure drag should be modeled in *either* AeroDyn (via the GS
    drag load) *or* HydroDyn, but not both. The GS influence on the rotor inflow
    (:numref:`AD_gs_influence`) is a separate, flow-disturbance effect and can always be included in
-   AeroDyn regardless of where the support-structure drag is modeled.
+   AeroDyn regardless of where the support-structure drag is modeled. If the user chooses to model
+   the drag force on the support structure in HydroDyn, the GS drag in AeroDyn should be disabled
+   by setting ``GSAero=False``. However, in this case, the user might still want to set the GS drag
+   coefficients appropriately for the GS shadow model or the GS potential-flow model with Bak
+   correction if enabled.
 
 .. _AD_buoyancy:
 

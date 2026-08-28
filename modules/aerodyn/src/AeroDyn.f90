@@ -5498,6 +5498,12 @@ SUBROUTINE Init_GSParam( InputFileData, p, Density, MHK, WtrDpth, ErrStat, ErrMs
          call Cleanup()
          return
       endif
+      if (InputFileData%InpMembers(iMem)%MDivSize <= 0.0_ReKi) then
+         ErrStat = ErrID_Fatal
+         ErrMsg  = RoutineName//': GSMDiv (MDivSize) must be > 0 for member with ID '//trim(num2lstr(memID))//'. '
+         call Cleanup()
+         return
+      endif
       numDiv = ceiling( memLength / InputFileData%InpMembers(iMem)%MDivSize )
       p%members(iMem)%RefLength = memLength
       p%members(iMem)%NElements = numDiv
