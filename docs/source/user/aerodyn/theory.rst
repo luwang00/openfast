@@ -298,6 +298,14 @@ are accumulated separately in the earth-fixed frame and combined by different ru
 resulting GS disturbance is then superimposed on the tower disturbance by simple addition
 (there is no cross-blend between the tower field and the GS field).
 
+.. note::
+    The generalized support-structure influence on the inflow (``GSPotent`` and ``GSShadow``)
+    is applied to the disturbed inflow at the blade nodes --- and hence to the unsteady airfoil
+    aerodynamics --- for every wake model, including the free-vortex-wake model OLAF
+    (``Wake_Mod = 3``). The one exception is the wake-convection velocity used to transport the
+    OLAF free vortex wake: only the tower influence is applied there, and the GS influence on
+    the convected wake is not yet included. This is planned to be addressed in a future release.
+
 .. _AD_gs_potent_combine:
 
 Combining the potential-flow contributions

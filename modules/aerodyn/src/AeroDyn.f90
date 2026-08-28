@@ -1998,7 +1998,7 @@ subroutine AD_UpdateStates( t, n, u, utimes, p, x, xd, z, OtherState, m, errStat
       if (Failed()) return
 
       do iR = 1,size(p%rotors)
-         call SetInputs(t, p%rotors(iR), p, uInterp%rotors(iR), InflowInterp%RotInflow(iR), m%rotors(iR), i, errStat2, errMsg2)
+         call SetInputs(t, p%rotors(iR), p, uInterp%rotors(iR), InflowInterp%RotInflow(iR), InflowInterp%GSInflow, m%rotors(iR), i, errStat2, errMsg2)
          if (Failed()) return
       enddo
    end do
@@ -2446,7 +2446,7 @@ subroutine RotCalcOutput( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z, OtherSta
       CalcWriteOutput = .true. ! by default, calculate WriteOutput unless told that we do not need it
    end if
 
-   call SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat2, errMsg2, GSInflow)      
+   call SetInputs(t, p, p_AD, u, RotInflow, GSInflow, m, indx, errStat2, errMsg2)      
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
 
    if (p_AD%Wake_Mod /= WakeMod_FVW) then
@@ -3224,19 +3224,20 @@ subroutine AD_CalcConstrStateResidual( Time, u, p, x, xd, z, OtherState, m, z_re
    
 
    do iR=1, size(p%rotors)
-      call RotCalcConstrStateResidual( Time, u%rotors(iR), m%Inflow(1)%RotInflow(iR), p%rotors(iR), p, x%rotors(iR), xd%rotors(iR), z%rotors(iR), OtherState%rotors(iR), m%rotors(iR), z_residual%rotors(iR), ErrStat2, ErrMsg2 )
+      call RotCalcConstrStateResidual( Time, u%rotors(iR), m%Inflow(1)%RotInflow(iR), m%Inflow(1)%GSInflow, p%rotors(iR), p, x%rotors(iR), xd%rotors(iR), z%rotors(iR), OtherState%rotors(iR), m%rotors(iR), z_residual%rotors(iR), ErrStat2, ErrMsg2 )
          call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    enddo
    
 end subroutine AD_CalcConstrStateResidual
 !----------------------------------------------------------------------------------------------------------------------------------
 !> Tight coupling routine for solving for the residual of the constraint state equations
-subroutine RotCalcConstrStateResidual( Time, u, RotInflow, p, p_AD, x, xd, z, OtherState, m, z_residual, ErrStat, ErrMsg )
+subroutine RotCalcConstrStateResidual( Time, u, RotInflow, GSInflow, p, p_AD, x, xd, z, OtherState, m, z_residual, ErrStat, ErrMsg )
 !..................................................................................................................................
 
    REAL(DbKi),                   INTENT(IN   )   :: Time        !< Current simulation time in seconds
    TYPE(RotInputType),           INTENT(IN   )   :: u           !< Inputs at Time
    TYPE(RotInflowType),          INTENT(IN   )   :: RotInflow   !< rotor inflow at Time
+   TYPE(ElemInflowType),         INTENT(IN   )   :: GSInflow    !< General support structure inflow at Time
    TYPE(RotParameterType),       INTENT(IN   )   :: p           !< Parameters
    TYPE(AD_ParameterType),       INTENT(IN   )   :: p_AD        !< Parameters
    TYPE(RotContinuousStateType), INTENT(IN   )   :: x           !< Continuous states at Time
@@ -3264,7 +3265,7 @@ subroutine RotCalcConstrStateResidual( Time, u, RotInflow, p, p_AD, x, xd, z, Ot
    end if
    
    
-   call SetInputs(Time, p, p_AD, u, RotInflow, m, indx, errStat2, errMsg2)
+   call SetInputs(Time, p, p_AD, u, RotInflow, GSInflow, m, indx, errStat2, errMsg2)
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
                                 
       
@@ -3275,13 +3276,14 @@ subroutine RotCalcConstrStateResidual( Time, u, RotInflow, p, p_AD, x, xd, z, Ot
 end subroutine RotCalcConstrStateResidual
 
 !----------------------------------------------------------------------------------------------------------------------------------
-subroutine RotCalcContStateDeriv( t, u, RotInflow, p, p_AD, x, xd, z, OtherState, m, dxdt, ErrStat, ErrMsg )
+subroutine RotCalcContStateDeriv( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z, OtherState, m, dxdt, ErrStat, ErrMsg )
 ! Tight coupling routine for computing derivatives of continuous states
 !..................................................................................................................................
 
    REAL(DbKi),                     INTENT(IN   )  :: t           ! Current simulation time in seconds
    TYPE(RotInputType),             INTENT(IN   )  :: u           ! Inputs at t
    TYPE(RotInflowType),            INTENT(IN   )  :: RotInflow   !< Rotor inflow Inputs at Time
+   TYPE(ElemInflowType),           INTENT(IN   )  :: GSInflow    !< General support structure inflow at Time
    TYPE(RotParameterType),         INTENT(IN   )  :: p           ! Parameters
    TYPE(AD_ParameterType),         INTENT(IN   )  :: p_AD        ! Parameters
    TYPE(RotContinuousStateType),   INTENT(IN   )  :: x           ! Continuous states at t
@@ -3305,7 +3307,7 @@ subroutine RotCalcContStateDeriv( t, u, RotInflow, p, p_AD, x, xd, z, OtherState
    ErrStat = ErrID_None
    ErrMsg  = ""
 
-   call SetInputs(t, p, p_AD, u, RotInflow, m, InputIndex, ErrStat2, ErrMsg2)
+   call SetInputs(t, p, p_AD, u, RotInflow, GSInflow, m, InputIndex, ErrStat2, ErrMsg2)
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    
    call BEMT_CalcContStateDeriv( t, m%BEMT_u(InputIndex), p%BEMT, x%BEMT, xd%BEMT, z%BEMT, OtherState%BEMT, m%BEMT, dxdt%BEMT, p_AD%AFI, ErrStat2, ErrMsg2 )
@@ -3315,17 +3317,17 @@ END SUBROUTINE RotCalcContStateDeriv
 !----------------------------------------------------------------------------------------------------------------------------------
 !> This subroutine converts the AeroDyn inputs into values that can be used for its submodules. It calculates the disturbed inflow
 !! on the blade if tower shadow or tower influence are enabled, then uses these values to set m%BEMT_u(indx).
-subroutine SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat, errMsg, GSInflow)
+subroutine SetInputs(t, p, p_AD, u, RotInflow, GSInflow, m, indx, errStat, errMsg)
    real(DbKi),                   intent(in   )  :: t                      !< Current simulation time in seconds
    type(RotParameterType),       intent(in   )  :: p                      !< AD parameters
    type(AD_ParameterType),       intent(in   )  :: p_AD                   !< AD parameters
    type(RotInputType),           intent(in   )  :: u                      !< AD Inputs at Time
    type(RotInflowType),          intent(in   )  :: RotInflow              !< Rotor inflow Inputs at Time
+   type(ElemInflowType),         intent(in   )  :: GSInflow               !< Inflow on the general support structure at Time t
    type(RotMiscVarType),         intent(inout)  :: m                      !< Misc/optimization variables
    integer,                      intent(in   )  :: indx                   !< index into m%BEMT_u(indx) array; 1=t and 2=t+dt (but not checked here)
    integer(IntKi),               intent(  out)  :: ErrStat                !< Error status of the operation
    character(*),                 intent(  out)  :: ErrMsg                 !< Error message if ErrStat /= ErrID_None
-   type(ElemInflowType), optional,intent(in   )  :: GSInflow               !< Inflow on the general support structure at Time t (if available)
    ! local variables             
    integer(intKi)                               :: ErrStat2
    character(ErrMsgLen)                         :: ErrMsg2
@@ -3334,7 +3336,7 @@ subroutine SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat, errMsg, GSInflo
    ErrMsg  = ""
    
    ! Disturbed inflow on blade (if tower shadow present, and if general support structure influence present)
-   call SetDisturbedInflow(p, p_AD, u, RotInflow, m, errStat2, errMsg2, GSInflow); call SetErrStat(errStat2, errMsg2, errStat, errMsg, RoutineName)
+   call SetDisturbedInflow(p, p_AD, u, RotInflow, GSInflow, m, errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, RoutineName)
 
    if (p_AD%Wake_Mod /= WakeMod_FVW) then
 
@@ -3350,15 +3352,15 @@ end subroutine SetInputs
 
 !----------------------------------------------------------------------------------------------------------------------------------
 !> Disturbed inflow on the blade if tower shadow or tower influence are enabled
-subroutine SetDisturbedInflow(p, p_AD, u, RotInflow, m, errStat, errMsg, GSInflow)
+subroutine SetDisturbedInflow(p, p_AD, u, RotInflow, GSInflow, m, errStat, errMsg)
    type(RotParameterType),       intent(in   )  :: p                      !< AD parameters
    type(AD_ParameterType),       intent(in   )  :: p_AD                   !< AD parameters
    type(RotInputType),           intent(in   )  :: u                      !< AD Inputs at Time
    type(RotInflowType),          intent(in   )  :: RotInflow              !< Rotor inflow at Time
+   type(ElemInflowType),         intent(in   )  :: GSInflow               !< Inflow on the general support structure at Time t
    type(RotMiscVarType),         intent(inout)  :: m                      !< Misc/optimization variables
    integer(IntKi),               intent(  out)  :: errStat                !< Error status of the operation
    character(*),                 intent(  out)  :: errMsg                 !< Error message if ErrStat /= ErrID_None
-   type(ElemInflowType), optional,intent(in   )  :: GSInflow               !< Inflow on the general support structure at Time t (if available)
    ! local variables             
    real(R8Ki)                                   :: x_hat_disk(3)
    integer(intKi)                               :: j,k
@@ -3377,11 +3379,9 @@ subroutine SetDisturbedInflow(p, p_AD, u, RotInflow, m, errStat, errMsg, GSInflo
    end if
 
    ! Generalized support structure (GS) influence, added on top of the tower (or undisturbed) inflow above
-   if (present(GSInflow)) then
-      if (p%hasGSMod) then
-         call GSInfl( p, p_AD%GS, u, GSInflow, m, errStat2, errMsg2 )
-            call SetErrStat(errStat2, errMsg2, errStat, errMsg, RoutineName)
-      end if
+   if (p%hasGSMod) then
+      call GSInfl( p, p_AD%GS, u, GSInflow, m, errStat2, errMsg2 )
+         call SetErrStat(errStat2, errMsg2, errStat, errMsg, RoutineName)
    end if
 
    if (p_AD%Skew_Mod == Skew_Mod_Orthogonal) then
@@ -4217,8 +4217,9 @@ subroutine SetInputsForFVW(p, u, tIndx, m, errStat, errMsg)
       m%FVW_u(tIndx)%V_wind   = m%Inflow(tIndx)%InflowWakeVel
       ! Applying tower shadow to V_wind based on r_wind positions
       ! NOTE: m%DisturbedInflow also contains tower shadow and we need it for CalcOutput
-      ! REMINDER (future work): only tower influence is applied to the OLAF/FVW wake wind here; generalized
-      ! support structure (GS) influence is not (no GSInflArray equivalent to TwrInflArray).
+      ! REMINDER (future work): only tower influence is applied to the OLAF/FVW wake-convection wind here;
+      ! generalized support structure (GS) influence is not (no GSInflArray equivalent to TwrInflArray).
+      ! GS influence IS applied to the lifting-line disturbed inflow used for UA below (SetDisturbedInflow).
       if (p%FVW%TwrShadowOnWake) then
          do iR =1, size(p%rotors)
             if (p%rotors(iR)%TwrPotent /= TwrPotent_none .or. p%rotors(iR)%TwrShadow /= TwrShadow_none) then
@@ -4231,7 +4232,8 @@ subroutine SetInputsForFVW(p, u, tIndx, m, errStat, errMsg)
    endif
    do iR =1, size(p%rotors)
       ! Disturbed inflow for UA on Lifting line Mesh Points
-      call SetDisturbedInflow(p%rotors(iR), p, u%rotors(iR), m%Inflow(tIndx)%RotInflow(iR), m%rotors(iR), errStat2, errMsg2)
+      ! GS influence is included here (regardless of Wake_Mod) so unsteady aero sees the GS-disturbed inflow
+      call SetDisturbedInflow(p%rotors(iR), p, u%rotors(iR), m%Inflow(tIndx)%RotInflow(iR), m%Inflow(tIndx)%GSInflow, m%rotors(iR), errStat2, errMsg2)
       call SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,RoutineName)
       do k=1,p%rotors(iR)%NumBlades
          iW=p%FVW%Bld2Wings(iR,k)
@@ -7543,7 +7545,7 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
 
    ! Get OP values here (i.e., set inputs for BEMT):
    if (p%DBEMT_Mod == DBEMT_frozen) then
-      call SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat2, errMsg2); if (Failed()) return
+      call SetInputs(t, p, p_AD, u, RotInflow, GSInflow, m, indx, errStat2, errMsg2); if (Failed()) return
 
       ! compare m%BEMT_y arguments with call to BEMT_CalcOutput
       call computeFrozenWake(m%BEMT_u(indx), p%BEMT, m%BEMT_y, m%BEMT)
@@ -7560,7 +7562,7 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
    ! Initialize x_init so that we get accurrate values for first step
    ! changes values only if states haven't been initialized
    if ((p_AD%Wake_Mod /= WakeMod_FVW) .and. (.not. OtherState%BEMT%nodesInitialized)) then
-      call SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat2, errMsg2); if (Failed()) return
+      call SetInputs(t, p, p_AD, u, RotInflow, GSInflow, m, indx, errStat2, errMsg2); if (Failed()) return
       call BEMT_InitStates(t, m%BEMT_u(indx), p%BEMT, m%x_init%BEMT, xd%BEMT, z%BEMT, &
                            m%OtherState_init%BEMT, m%BEMT, p_AD%AFI, ErrStat2, ErrMsg2); if (Failed()) return 
    end if
@@ -7568,6 +7570,10 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
    ! Copy inputs and pack them for perturbation
    call AD_CopyRotInputType(u, u_perturb, MESH_UPDATECOPY, ErrStat2, ErrMsg2); if (Failed()) return
    call AD_VarsPackInput(Vars, u, m%Jac%u)
+
+   ! Copy rotor and GS inflow types for perturbation (shared by the dYdu and dXdu loops below)
+   call AD_CopyRotInflowType(RotInflow, RotInflow_perturb, MESH_NEWCOPY, ErrStat2, ErrMsg2); if (Failed()) return
+   call AD_CopyElemInflowType(GSInflow, GSInflow_perturb, MESH_NEWCOPY, ErrStat2, ErrMsg2); if (Failed()) return
 
    ! Calculate the partial derivative of the output functions (Y) with respect to the inputs (u) here:
    if (present(dYdu)) then
@@ -7577,10 +7583,6 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
          call AllocAry(dYdu, Vars%Ny, Vars%Nu, 'dYdu', ErrStat2, ErrMsg2); if (Failed()) return
       end if
 
-      ! Copy rotor inflow type for perturbation
-      call AD_CopyRotInflowType(RotInflow, RotInflow_perturb, MESH_NEWCOPY, ErrStat2, ErrMsg2); if (Failed()) return
-      call AD_CopyElemInflowType(GSInflow, GSInflow_perturb, MESH_NEWCOPY, ErrStat2, ErrMsg2); if (Failed()) return
-   
       ! Loop through input variables
       do i = 1, size(Vars%u)
 
@@ -7596,7 +7598,7 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
             StartNode = 1
             call AD_CalcWind_Rotor(t, u_perturb, FF_ptr, p, p_AD, m_AD, RotInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
             call AD_CalcWind_GS(t, u_perturb, FF_ptr, p_AD%GS, p_AD, m_AD, GSInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
-            call SetInputs(t, p, p_AD, u_perturb, RotInflow_perturb, m, indx, ErrStat2, ErrMsg2); if (Failed()) return
+            call SetInputs(t, p, p_AD, u_perturb, RotInflow_perturb, GSInflow_perturb, m, indx, ErrStat2, ErrMsg2); if (Failed()) return
             call UpdatePhi(m%BEMT_u(indx), p%BEMT, m%z_lin%BEMT%phi, p_AD%AFI, m%BEMT, m%OtherState_jac%BEMT%ValidPhi, ErrStat2, ErrMsg2); if (Failed()) return
             call RotCalcOutput(t, u_perturb, RotInflow_perturb, GSInflow_perturb, p, p_AD, m%x_init, xd, m%z_lin, m%OtherState_jac, y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2); if (Failed()) return
             if (p_AD%Wake_Mod == WakeMod_FVW) then
@@ -7615,7 +7617,7 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
             StartNode = 1
             call AD_CalcWind_Rotor(t, u_perturb, FF_ptr, p, p_AD, m_AD, RotInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
             call AD_CalcWind_GS(t, u_perturb, FF_ptr, p_AD%GS, p_AD, m_AD, GSInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
-            call SetInputs(t, p, p_AD, u_perturb, RotInflow_perturb, m, indx, ErrStat2, ErrMsg2); if (Failed()) return
+            call SetInputs(t, p, p_AD, u_perturb, RotInflow_perturb, GSInflow_perturb, m, indx, ErrStat2, ErrMsg2); if (Failed()) return
             call UpdatePhi(m%BEMT_u(indx), p%BEMT, m%z_lin%BEMT%phi, p_AD%AFI, m%BEMT, m%OtherState_jac%BEMT%ValidPhi, ErrStat2, ErrMsg2); if (Failed()) return
             call RotCalcOutput(t, u_perturb, RotInflow_perturb, GSInflow_perturb, p, p_AD, m%x_init, xd, m%z_lin, m%OtherState_jac, y_lin, m, m_AD, iRotor, ErrStat2, ErrMsg2); if (Failed()) return
             if (p_AD%Wake_Mod == WakeMod_FVW) then
@@ -7661,7 +7663,8 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
             if (associated(FF_ptr, FF_perturb)) call PerturbFlowField(Vars%u(i), p_AD%FlowField, 1, FF_ptr)
             StartNode = 1
             call AD_CalcWind_Rotor(t, u_perturb, FF_ptr, p, p_AD, m_AD, RotInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
-            call RotCalcContStateDeriv(t, u_perturb, RotInflow_perturb, p, p_AD, m%x_init, xd, z, m%OtherState_init, m, m%dxdt_lin, ErrStat2, ErrMsg2) ; if (Failed()) return
+            call AD_CalcWind_GS(t, u_perturb, FF_ptr, p_AD%GS, p_AD, m_AD, GSInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
+            call RotCalcContStateDeriv(t, u_perturb, RotInflow_perturb, GSInflow_perturb, p, p_AD, m%x_init, xd, z, m%OtherState_init, m, m%dxdt_lin, ErrStat2, ErrMsg2) ; if (Failed()) return
             call AD_VarsPackContState(Vars, m%dxdt_lin, m%Jac%x_pos)
 
             ! Calculate negative perturbation
@@ -7670,7 +7673,8 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
             if (associated(FF_ptr, FF_perturb)) call PerturbFlowField(Vars%u(i), p_AD%FlowField, -1, FF_ptr)
             StartNode = 1
             call AD_CalcWind_Rotor(t, u_perturb, FF_ptr, p, p_AD, m_AD, RotInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
-            call RotCalcContStateDeriv(t, u_perturb, RotInflow_perturb, p, p_AD, m%x_init, xd, z, m%OtherState_init, m, m%dxdt_lin, ErrStat2, ErrMsg2) ; if (Failed()) return
+            call AD_CalcWind_GS(t, u_perturb, FF_ptr, p_AD%GS, p_AD, m_AD, GSInflow_perturb, StartNode, ErrStat2, ErrMsg2); if (Failed()) return
+            call RotCalcContStateDeriv(t, u_perturb, RotInflow_perturb, GSInflow_perturb, p, p_AD, m%x_init, xd, z, m%OtherState_init, m, m%dxdt_lin, ErrStat2, ErrMsg2) ; if (Failed()) return
             call AD_VarsPackContState(Vars, m%dxdt_lin, m%Jac%x_neg)
 
             ! Calculate column index
@@ -7810,7 +7814,7 @@ SUBROUTINE RotJacobianPContState(Vars, iRotor, t, u, RotInflow, GSInflow, p, p_A
 
    ! Get OP values here (i.e., set inputs for BEMT):
    if (p%DBEMT_Mod == DBEMT_frozen) then
-      call SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat2, errMsg2); if (Failed()) return
+      call SetInputs(t, p, p_AD, u, RotInflow, GSInflow, m, indx, errStat2, errMsg2); if (Failed()) return
 
       ! compare m%BEMT_y arguments with call to BEMT_CalcOutput
       call computeFrozenWake(m%BEMT_u(indx), p%BEMT, m%BEMT_y, m%BEMT)
@@ -7824,7 +7828,7 @@ SUBROUTINE RotJacobianPContState(Vars, iRotor, t, u, RotInflow, GSInflow, p, p_A
    ! Initialize x_init so that we get accurrate values for first step
    ! changes values only if states haven't been initialized
    if (.not. OtherState%BEMT%nodesInitialized) then
-      call SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat2, errMsg2); if (Failed()) return
+      call SetInputs(t, p, p_AD, u, RotInflow, GSInflow, m, indx, errStat2, errMsg2); if (Failed()) return
       call BEMT_InitStates(t, m%BEMT_u(indx), p%BEMT, m%x_init%BEMT, xd%BEMT, z%BEMT, &
                            m%OtherState_init%BEMT, m%BEMT, p_AD%AFI, ErrStat2, ErrMsg2); if (Failed()) return 
    end if
@@ -7886,13 +7890,13 @@ SUBROUTINE RotJacobianPContState(Vars, iRotor, t, u, RotInflow, GSInflow, p, p_A
             ! Calculate positive perturbation
             call MV_Perturb(Vars%x(i), j, 1, m%Jac%x, m%Jac%x_perturb)
             call AD_VarsUnpackContState(Vars, m%Jac%x_perturb, m%x_perturb)
-            call RotCalcContStateDeriv(t, u, RotInflow, p, p_AD, m%x_perturb, xd, z, m%OtherState_init, m, m%dxdt_lin, ErrStat2, ErrMsg2); if (Failed()) return
+            call RotCalcContStateDeriv(t, u, RotInflow, GSInflow, p, p_AD, m%x_perturb, xd, z, m%OtherState_init, m, m%dxdt_lin, ErrStat2, ErrMsg2); if (Failed()) return
             call AD_VarsPackContState(Vars, m%dxdt_lin, m%Jac%x_pos)
 
             ! Calculate negative perturbation
             call MV_Perturb(Vars%x(i), j, -1, m%Jac%x, m%Jac%x_perturb)
             call AD_VarsUnpackContState(Vars, m%Jac%x_perturb, m%x_perturb)
-            call RotCalcContStateDeriv(t, u, RotInflow, p, p_AD, m%x_perturb, xd, z, m%OtherState_init, m, m%dxdt_lin, ErrStat2, ErrMsg2); if (Failed()) return
+            call RotCalcContStateDeriv(t, u, RotInflow, GSInflow, p, p_AD, m%x_perturb, xd, z, m%OtherState_init, m, m%dxdt_lin, ErrStat2, ErrMsg2); if (Failed()) return
             call AD_VarsPackContState(Vars, m%dxdt_lin, m%Jac%x_neg)
 
             ! Calculate column index
@@ -8054,7 +8058,7 @@ SUBROUTINE RotJacobianPConstrState( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z
 
       ! get OP values here:   
    !call AD_CalcOutput( t, u, p, x, xd, z, OtherState, y, m, ErrStat2, ErrMsg2 )  ! (bjj: is this necessary? if not, still need to get BEMT inputs)
-   call SetInputs(t, p, p_AD, u, RotInflow, m, indx, errStat2, errMsg2); if (Failed()) return;
+   call SetInputs(t, p, p_AD, u, RotInflow, GSInflow, m, indx, errStat2, errMsg2); if (Failed()) return;
    call BEMT_CopyInput( m%BEMT_u(indx), m%BEMT_u(op_indx), MESH_UPDATECOPY, ErrStat2, ErrMsg2); if (Failed()) return; ! copy the BEMT OP inputs to a temporary location that won't be overwritten
  
       
@@ -8154,13 +8158,13 @@ SUBROUTINE RotJacobianPConstrState( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z
                z_perturb%BEMT%phi(j,k) = z%BEMT%phi(j,k) + delta_p
 
                   ! compute z_p at z_op + delta_p z
-               call RotCalcConstrStateResidual( t, u, RotInflow, p, p_AD, x, xd, z_perturb, OtherState, m, z_p, ErrStat2, ErrMsg2 ) ; if (Failed()) return;
+               call RotCalcConstrStateResidual( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z_perturb, OtherState, m, z_p, ErrStat2, ErrMsg2 ) ; if (Failed()) return;
                                          
                   ! get z_op - delta_m z
                z_perturb%BEMT%phi(j,k) = z%BEMT%phi(j,k) - delta_m
                      
                   ! compute z_m at u_op - delta_m u
-               call RotCalcConstrStateResidual( t, u, RotInflow, p, p_AD, x, xd, z_perturb, OtherState, m, z_m, ErrStat2, ErrMsg2 ) ; if (Failed()) return;
+               call RotCalcConstrStateResidual( t, u, RotInflow, GSInflow, p, p_AD, x, xd, z_perturb, OtherState, m, z_m, ErrStat2, ErrMsg2 ) ; if (Failed()) return;
             
                   ! get central difference:            
                do k2=1,p%NumBlades ! size(z%BEMT%Phi,2)
