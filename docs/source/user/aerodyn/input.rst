@@ -286,8 +286,10 @@ The velocity is averaged within this sector by attributing different weighting a
 
 **SectAvgPsiFwd** Forward azimuth (in degrees) relative to the blade azimuth where the sector ends. Must be positive. [used only when SectAvg=True]. Default is 60 deg.
 
-
-
+.. note::
+   The tower influence (potential flow and shadow) is included in the sector-averaged
+   inflow velocity. The generalized support structure influence is currently not accounted
+   for in the sector average.
 
 
 Dynamic Wake / Dynamic inflow model
