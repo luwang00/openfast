@@ -4596,6 +4596,12 @@ SUBROUTINE ValidateInputData( InitInp, InputFileData, NumBl, calcCrvAngle, ErrSt
    if (InputFileData%GS%GSAero /= GSAero_none .and. InputFileData%GS%GSAero /= GSAero_noVIV) then
       call SetErrStat ( ErrID_Fatal, 'GSAero must be 0 (none) or 1 (multi-member generalized tower aero/hydro on).', ErrStat, ErrMsg, RoutineName ) 
    end if
+   if (InputFileData%GS%GSPotent /= GSPotent_none .and. InputFileData%GS%GSPotent /= GSPotent_baseline .and. InputFileData%GS%GSPotent /= GSPotent_Bak) then
+      call SetErrStat ( ErrID_Fatal, 'GSPotent must be 0 (none), 1 (baseline potential flow), or 2 (potential flow with Bak correction).', ErrStat, ErrMsg, RoutineName )
+   end if
+   if (InputFileData%GS%GSShadow /= GSShadow_none .and. InputFileData%GS%GSShadow /= GSShadow_Powles .and. InputFileData%GS%GSShadow /= GSShadow_Eames) then
+      call SetErrStat ( ErrID_Fatal, 'GSShadow must be 0 (none), 1 (Powles model), or 2 (Eames model).', ErrStat, ErrMsg, RoutineName )
+   end if
    if (Failed()) return
    
     if (InitInp%MHK == MHK_None .and. InputFileData%CavitCheck) call SetErrStat ( ErrID_Fatal, 'A cavitation check can only be performed for an MHK turbine.', ErrStat, ErrMsg, RoutineName )
@@ -4942,6 +4948,10 @@ SUBROUTINE ValidateInputData( InitInp, InputFileData, NumBl, calcCrvAngle, ErrSt
    if (InputFileData%GS%NMembers<0_IntKi) then
       call SetErrStat( ErrID_Fatal, 'NumGSMembers cannot be negative.', ErrStat, ErrMsg, RoutineName ); if(Failed()) return
    end if
+   if (InputFileData%GS%NMembers==0_IntKi .and. (InputFileData%GS%GSPotent/=GSPotent_none .or. &
+       InputFileData%GS%GSShadow/=GSShadow_none .or. InputFileData%GS%GSAero/=GSAero_none)) then
+      call SetErrStat( ErrID_Warn, 'A generalized support (GS) model is enabled (GSPotent, GSShadow, or GSAero), but no GS members are defined (NumGSMembers=0); the GS model will be disabled.', ErrStat, ErrMsg, RoutineName )
+   end if
    do j = 1,InputFileData%GS%NMembers
       if (InputFileData%GS%InpMembers(j)%MemberID<0_IntKi) then
          call SetErrStat( ErrID_Fatal, 'GSMemberID cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
@@ -4963,9 +4973,13 @@ SUBROUTINE ValidateInputData( InitInp, InputFileData, NumBl, calcCrvAngle, ErrSt
       end if
       if (InputFileData%GS%InpMembers(j)%MDiam1<0.0_ReKi) then
          call SetErrStat( ErrID_Fatal, 'GSMDia1 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      elseif ((InputFileData%GS%GSPotent/=GSPotent_none .or. InputFileData%GS%GSShadow/=GSShadow_none) .and. EqualRealNos(InputFileData%GS%InpMembers(j)%MDiam1, 0.0_ReKi)) then
+         call SetErrStat( ErrID_Fatal, 'GSMDia1 must be greater than zero when GSPotent or GSShadow is enabled; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
       end if
       if (InputFileData%GS%InpMembers(j)%MDiam2<0.0_ReKi) then
          call SetErrStat( ErrID_Fatal, 'GSMDia2 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      elseif ((InputFileData%GS%GSPotent/=GSPotent_none .or. InputFileData%GS%GSShadow/=GSShadow_none) .and. EqualRealNos(InputFileData%GS%InpMembers(j)%MDiam2, 0.0_ReKi)) then
+         call SetErrStat( ErrID_Fatal, 'GSMDia2 must be greater than zero when GSPotent or GSShadow is enabled; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
       end if
       if (InputFileData%GS%InpMembers(j)%MCd1<0.0_ReKi) then
          call SetErrStat( ErrID_Fatal, 'GSMCd1 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
@@ -4978,6 +4992,17 @@ SUBROUTINE ValidateInputData( InitInp, InputFileData, NumBl, calcCrvAngle, ErrSt
       end if
       if (InputFileData%GS%InpMembers(j)%MTI2<0.0_ReKi) then
          call SetErrStat( ErrID_Fatal, 'GSMTI2 cannot be negative; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+      end if
+      ! The Eames GS shadow model divides by GSMTI, so it must be strictly positive (mirrors the Eames tower-shadow limits).
+      if (InputFileData%GS%GSShadow == GSShadow_Eames) then
+         if ( InputFileData%GS%InpMembers(j)%MTI1<=0.05_ReKi .or. InputFileData%GS%InpMembers(j)%MTI1>=1.0_ReKi .or. &
+              InputFileData%GS%InpMembers(j)%MTI2<=0.05_ReKi .or. InputFileData%GS%InpMembers(j)%MTI2>=1.0_ReKi ) then
+            call SetErrStat( ErrID_Fatal, 'The turbulence intensity (GSMTI1/GSMTI2) for the Eames GS shadow model must be greater than 0.05 and less than 1; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName ); if(Failed()) return
+         end if
+         if ( (InputFileData%GS%InpMembers(j)%MTI1>0.4_ReKi .and. InputFileData%GS%InpMembers(j)%MTI1<1.0_ReKi) .or. &
+              (InputFileData%GS%InpMembers(j)%MTI2>0.4_ReKi .and. InputFileData%GS%InpMembers(j)%MTI2<1.0_ReKi) ) then
+            call SetErrStat( ErrID_Warn, 'The turbulence intensity (GSMTI1/GSMTI2) for the Eames GS shadow model above 0.4 may return unphysical results.  Interpret with caution; check row '//trim(num2lstr(j)), ErrStat, ErrMsg, RoutineName )
+         end if
       end if
    end do
 
