@@ -239,6 +239,12 @@ nonetheless fade to zero as :math:`\overline{z} \rightarrow 1`. No tower influen
    coordinate scaling above, which does not give a principled axial wake taper. The end
    treatment of the tower shadow is expected to be improved in a future release.
 
+   Furthermore, the far-field cut-off beyond 20 tower diameters of clearance is expected to be
+   revised for the tower shadow effect in a future release. This revision would likely be made in
+   conjunction with the addition of a low-pass filter for the tower inflow velocity used to compute
+   the shadow deficit and direction. This is to prevent erratic behavior of the shadow region in
+   response to instantaneous inflow velocity fluctuations.
+
 .. _AD_twr_drag:
 
 Tower drag loads
