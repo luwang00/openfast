@@ -2202,14 +2202,12 @@ END SUBROUTINE AD_PrintSum
 
 
 !----------------------------------------------------------------------------------------------------------------------------------
-SUBROUTINE AD_PrintSum_GS( p, p_AD, u, y, ErrStat, ErrMsg )
+SUBROUTINE AD_PrintSum_GS( p, p_AD, u, ErrStat, ErrMsg )
 ! This routine generates the summary file, which contains a summary of input file options.
-   use YAML, only: yaml_write_var
       ! passed variables
    TYPE(GSParameterType),     INTENT(IN)  :: p                                    ! Parameters
    TYPE(AD_ParameterType),    INTENT(IN)  :: p_AD                                 ! Parameters
    TYPE(RotInputType),        INTENT(IN)  :: u                                    ! inputs
-   TYPE(RotOutputType),       INTENT(IN)  :: y                                    ! outputs
 
    INTEGER(IntKi),            INTENT(OUT) :: ErrStat
    CHARACTER(*),              INTENT(OUT) :: ErrMsg
@@ -2220,6 +2218,9 @@ SUBROUTINE AD_PrintSum_GS( p, p_AD, u, y, ErrStat, ErrMsg )
    INTEGER(IntKi)               :: JointID, NodeIndx
    INTEGER(IntKi)               :: UnSu                                            ! I/O unit number for the summary output file
    CHARACTER(100)               :: Msg                                             ! temporary string for writing appropriate text to summary file
+
+   ErrStat = ErrID_None
+   ErrMsg  = ""
 
    if (p%NMembers<=0_IntKi) return
 

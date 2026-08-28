@@ -637,7 +637,7 @@ subroutine AD_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, InitOut
          if (Failed()) return;
       enddo
       if ( p%GS%hasGSMod ) then
-         call AD_PrintSum_GS( p%GS, p, u%rotors(1), y%rotors(1), ErrStat, ErrMsg ); if (Failed()) return
+         call AD_PrintSum_GS( p%GS, p, u%rotors(1), ErrStat2, ErrMsg2 ); if (Failed()) return
       end if
    end if
       !............................................................................................
@@ -7555,6 +7555,7 @@ SUBROUTINE AD_JacobianPInput(Vars, iRotor, t, u_AD, p_AD, x_AD, xd_AD, z_AD, Oth
    end do
 
    call AD_CalcWind_Rotor(t, u, p_AD%FlowField, p, p_AD, m_AD, RotInflow, StartNode, ErrStat, ErrMsg)
+   if (ErrStat >= AbortErrLev) return
    call AD_CalcWind_GS(t, u, p_AD%FlowField, p_AD%GS, p_AD, m_AD, GSInflow, StartNode, ErrStat, ErrMsg)
    if (ErrStat >= AbortErrLev) return
    
@@ -7750,6 +7751,8 @@ contains
    end function
 
    subroutine cleanup()
+      call AD_DestroyRotInflowType(RotInflow_perturb, ErrStat2, ErrMsg2)
+      call AD_DestroyElemInflowType(GSInflow_perturb, ErrStat2, ErrMsg2)
       m_AD%rotors(iRotor)%BEMT%UseFrozenWake = .false.
    end subroutine cleanup
 end subroutine
@@ -7791,6 +7794,7 @@ SUBROUTINE AD_JacobianPContState(Vars, iRotor, t, u, p, x, xd, z, OtherState, y,
 
    StartNode = 1
    call AD_CalcWind_Rotor(t, u%rotors(iRotor), p%FlowField, p%rotors(iRotor), p, m, m%Inflow(1)%RotInflow(iRotor), StartNode, ErrStat, ErrMsg)
+   if (ErrStat >= AbortErrLev) return
    call AD_CalcWind_GS(t, u%rotors(1), p%FlowField, p%GS, p, m, m%Inflow(1)%GSInflow, StartNode, ErrStat, ErrMsg)
    if (ErrStat >= AbortErrLev) return
    call RotJacobianPContState(Vars, iRotor, t, u%rotors(iRotor), m%Inflow(1)%RotInflow(iRotor), m%Inflow(1)%GSInflow, p%rotors(iRotor), p, x%rotors(iRotor), xd%rotors(iRotor), z%rotors(iRotor), OtherState%rotors(iRotor), y%rotors(iRotor), m%rotors(iRotor), m, ErrStat, ErrMsg, dYdx, dXdx, dXddx, dZdx)
@@ -8026,6 +8030,7 @@ SUBROUTINE AD_JacobianPConstrState(Vars, t, u, p, x, xd, z, OtherState, y, m, Er
 
    StartNode = 1
    call AD_CalcWind_Rotor(t, u%rotors(iR), p%FlowField, p%rotors(iR), p, m, m%Inflow(1)%RotInflow(iR), StartNode, ErrStat, ErrMsg)
+   if (ErrStat >= AbortErrLev) return
    call AD_CalcWind_GS(t, u%rotors(1), p%FlowField, p%GS, p, m, m%Inflow(1)%GSInflow, StartNode, ErrStat, ErrMsg)
    if (ErrStat >= AbortErrLev) return
    call RotJacobianPConstrState(t, u%rotors(iR), m%Inflow(1)%RotInflow(iR), m%Inflow(1)%GSInflow, p%rotors(iR), p, x%rotors(iR), xd%rotors(iR), z%rotors(iR), OtherState%rotors(iR), y%rotors(iR), m%rotors(iR), m, iR, errStat, errMsg, dYdz, dXdz, dXddz, dZdz)
