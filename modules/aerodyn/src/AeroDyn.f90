@@ -2100,6 +2100,8 @@ subroutine AD_CalcWind(t, u, FLowField, p, m, o, Inflow, ErrStat, ErrMsg)
       end if
 
       if (p%FVW%MHK /= MHK_None .and. p%CompSeaSt) then ! MHK turbines with waves
+         ! BoxExceedAllow=.true. matches the InflowWind branch below: far-wake OLAF particles
+         ! that drift out of the current/wave grid extrapolate instead of aborting the run.
          call WaveField_GetWaveVelAcc_AD(p%WaveField, m%WaveField_m, &
                                          StartNode, t, &
                                          o%WakeLocationPoints, &
