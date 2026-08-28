@@ -63,6 +63,7 @@ module AeroDyn
                                                !   states(z)
    PUBLIC :: AD_VarsPackExtInput                !< Routine pack extended inputs
    public :: AD_CalcWind_Rotor                 !< Routine to calculate rotor wind inputs
+   public :: AD_CalcWind_GS                    !< Routine to calculate general support structure wind inputs
   
 contains    
 !----------------------------------------------------------------------------------------------------------------------------------   
