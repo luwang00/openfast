@@ -1254,8 +1254,7 @@ subroutine Init_u( u, p, p_AD, InputFileData, MHK, WtrDpth, InitInp, errStat, er
                        ,Nnodes    = p_AD%GS%NNodes  &
                        ,ErrStat   = ErrStat2        &
                        ,ErrMess   = ErrMsg2         &
-                       ,Orientation     = .true.    &  ! Might be ok to remove Orientation later
-                       ,TranslationDisp = .true.    &
+                       ,TranslationDisp = .true.    &  ! Orientation is not needed: the GS models only read position, displacement and velocity
                        ,TranslationVel  = .true.    &
                       )
       if (failed()) return
@@ -1302,7 +1301,6 @@ subroutine Init_u( u, p, p_AD, InputFileData, MHK, WtrDpth, InitInp, errStat, er
 
       call MeshCommit(u%GSMotion, errStat2, errMsg2 ); if (failed()) return
 
-      ! Is it necessary to initalize u%GSMotion%Orientation?
       u%GSMotion%TranslationDisp = 0.0_R8Ki
       u%GSMotion%TranslationVel  = 0.0_ReKi
 
@@ -2087,6 +2085,8 @@ subroutine AD_CalcWind(t, u, FLowField, p, m, o, Inflow, ErrStat, ErrMsg)
       if(Failed()) return
    enddo
 
+   ! The GS is a single shared structure: every rotor's GSMotion mesh is driven from the same
+   ! substructure/platform source, so the GS inflow is sampled once from rotor 1 and reused for all rotors.
    call AD_CalcWind_GS(t, u%rotors(1), FlowField, p%GS, p, m, Inflow%GSInflow, StartNode, ErrStat2, ErrMsg2)
    if(Failed()) return
 
@@ -7328,11 +7328,11 @@ subroutine AD_InitVars(iR, u, p, x, z, OtherState, y, m, InitOut, InputFileData,
                       Mesh=u%TowerMotion, &
                       Perturbs=[PerturbTower, Perturb, PerturbTower, PerturbTower])
 
-   ! Add general support motion
-   call MV_AddMeshVar(InitOut%Vars%u, "General Support", [FieldTransDisp, FieldOrientation, FieldTransVel], &
+   ! Add general support motion (no orientation: the GS models only use translational quantities)
+   call MV_AddMeshVar(InitOut%Vars%u, "General Support", [FieldTransDisp, FieldTransVel], &
                       DatLoc(AD_u_GSMotion), &
                       Mesh=u%GSMotion, &
-                      Perturbs=[PerturbTower, Perturb, PerturbTower], &
+                      Perturbs=[PerturbTower, PerturbTower], &
                       Active=p%hasGSMod)
 
    ! Add blade root motion
