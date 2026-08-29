@@ -979,6 +979,9 @@ class InputWriter_OpenFAST(object):
         f.write('{:<22d} {:<11} {:}'.format(self.fst_vt['AeroDyn']['TwrPotent'], 'TwrPotent', '- Type tower influence on wind based on potential flow around the tower (switch) {0=none, 1=baseline potential flow, 2=potential flow with Bak correction}\n'))
         f.write('{:<22d} {:<11} {:}'.format(self.fst_vt['AeroDyn']['TwrShadow'], 'TwrShadow', '- Calculate tower influence on wind based on downstream tower shadow (switch) {0=none, 1=Powles model, 2=Eames model}\n'))
         f.write('{!s:<22} {:<11} {:}'.format(self.fst_vt['AeroDyn']['TwrAero'], 'TwrAero', '- Calculate tower aerodynamic loads? (flag)\n'))
+        f.write('{:<22d} {:<11} {:}'.format(self.fst_vt['AeroDyn']['GSPotent'], 'GSPotent', '- Type of general support structure influence on wind based on potential flow around the member (switch) {0=none, 1=baseline potential flow, 2=potential flow with Bak correction}\n'))
+        f.write('{:<22d} {:<11} {:}'.format(self.fst_vt['AeroDyn']['GSShadow'], 'GSShadow', '- Calculate general support structure influence on wind based on downstream shadow (switch) {0=none, 1=Powles model, 2=Eames model}\n'))
+        f.write('{!s:<22} {:<11} {:}'.format(self.fst_vt['AeroDyn']['GSAero'], 'GSAero', '- Calculate general support structure aerodynamic loads? (flag)\n'))
         f.write('{!s:<22} {:<11} {:}'.format(self.fst_vt['AeroDyn']['CavitCheck'], 'CavitCheck', '- Perform cavitation check? (flag) [UA_Mod must be 0 when CavitCheck=true]\n'))
         f.write('{!s:<22} {:<11} {:}'.format(self.fst_vt['AeroDyn']['NacelleDrag'], 'NacelleDrag', '- Include Nacelle Drag effects? (flag)\n'))
         f.write('{!s:<22} {:<11} {:}'.format(self.fst_vt['AeroDyn']['CompAA'], 'CompAA', '- Flag to compute AeroAcoustics calculation [used only when Wake_Mod = 1 or 2]\n'))
@@ -1061,6 +1064,18 @@ class InputWriter_OpenFAST(object):
         f.write('(m)            (m)            (-)            (-)            (-)            (-)            (-)\n')
         for TwrElev, TwrDiam, TwrCd, TwrTI, TwrCb, TwrCp, TwrCa in zip(self.fst_vt['AeroDyn']['TwrElev'], self.fst_vt['AeroDyn']['TwrDiam'], self.fst_vt['AeroDyn']['TwrCd'], self.fst_vt['AeroDyn']['TwrTI'], self.fst_vt['AeroDyn']['TwrCb'], self.fst_vt['AeroDyn']['TwrCp'], self.fst_vt['AeroDyn']['TwrCa']):
             f.write('{: 2.15e} {: 2.15e} {: 2.15e} {: 2.15e} {: 2.15e} {: 2.15e} {: 2.15e} \n'.format(TwrElev, TwrDiam, TwrCd, TwrTI, TwrCb, TwrCp, TwrCa))
+        f.write('======  Generalized Support Structure Joints ========================================================\n')
+        f.write('{:<22d} {:<11} {:}'.format(self.fst_vt['AeroDyn']['NumGSJoints'], 'NumGSJoints', '- Number of general support structure joints used in the analysis  (-)\n'))
+        f.write('GSJointID      GSJointXi       GSJointYi       GSJointZi\n')
+        f.write('(-)            (m)             (m)             (m)\n')
+        for GSJointID, GSJointXi, GSJointYi, GSJointZi in zip(self.fst_vt['AeroDyn']['GSJointID'], self.fst_vt['AeroDyn']['GSJointXi'], self.fst_vt['AeroDyn']['GSJointYi'], self.fst_vt['AeroDyn']['GSJointZi']):
+            f.write('{:<14d} {: 2.15e} {: 2.15e} {: 2.15e}\n'.format(int(GSJointID), GSJointXi, GSJointYi, GSJointZi))
+        f.write('======  Generalized Support Structure Members =======================================================\n')
+        f.write('{:<22d} {:<11} {:}'.format(self.fst_vt['AeroDyn']['NumGSMembers'], 'NumGSMembers', '- Number of general support structure members used in the analysis  (-)\n'))
+        f.write('GSMemberID     GSMJointID1     GSMJointID2     GSMDia1         GSMDia2         GSMCd1          GSMCd2          GSMTI1          GSMTI2          GSMDiv\n')
+        f.write('(-)            (-)             (-)             (m)             (m)             (-)             (-)             (-)             (-)             (m)\n')
+        for GSMemberID, GSMJointID1, GSMJointID2, GSMDia1, GSMDia2, GSMCd1, GSMCd2, GSMTI1, GSMTI2, GSMDiv in zip(self.fst_vt['AeroDyn']['GSMemberID'], self.fst_vt['AeroDyn']['GSMJointID1'], self.fst_vt['AeroDyn']['GSMJointID2'], self.fst_vt['AeroDyn']['GSMDia1'], self.fst_vt['AeroDyn']['GSMDia2'], self.fst_vt['AeroDyn']['GSMCd1'], self.fst_vt['AeroDyn']['GSMCd2'], self.fst_vt['AeroDyn']['GSMTI1'], self.fst_vt['AeroDyn']['GSMTI2'], self.fst_vt['AeroDyn']['GSMDiv']):
+            f.write('{:<14d} {:<15d} {:<15d} {: 2.15e} {: 2.15e} {: 2.15e} {: 2.15e} {: 2.15e} {: 2.15e} {: 2.15e}\n'.format(int(GSMemberID), int(GSMJointID1), int(GSMJointID2), GSMDia1, GSMDia2, GSMCd1, GSMCd2, GSMTI1, GSMTI2, GSMDiv))
         f.write('======  Outputs  ====================================================================================\n')
         f.write('{!s:<22} {:<11} {:}'.format(self.fst_vt['AeroDyn']['SumPrint'], 'SumPrint', '- Generate a summary file listing input options and interpolated properties to "<rootname>.AD.sum"?  (flag)\n'))
         f.write('{:<22d} {:<11} {:}'.format(self.fst_vt['AeroDyn']['NBlOuts'], 'NBlOuts', '- Number of blade node outputs [0 - 9] (-)\n'))
