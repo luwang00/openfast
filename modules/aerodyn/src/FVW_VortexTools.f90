@@ -72,11 +72,10 @@ module FVW_VortexTools
 
    !> The type tree contains some basic data, a chained-list of nodes, and a pointer to the Particle data that were used
    type T_Tree
-      type(T_VPart)  :: Part            !< Storage for all particles
-      type(T_VSgmt)   :: Seg             !< Storage for all segments
+      type(T_VPart) :: Part            !< Storage for all particles
+      type(T_VSgmt) :: Seg             !< Storage for all segments
       integer       :: iStep =-1       !< Time step at which the tree was built
       logical       :: bGrown =.false. !< Is the tree build
-      real(ReKi)    :: DistanceDirect
       type(T_Node)  :: Root            !< Contains the chained-list of nodes
    end type T_Tree
 
@@ -627,8 +626,6 @@ contains
       endif
       Tree%iStep  = iStep
       Tree%bGrown = .true.
-      ! Regularization floor is now applied per node via node%maxRegParam in the tree traversal
-      Tree%DistanceDirect = 0.0_ReKi
    end subroutine grow_tree_part
 
    !> Recursive function to grow/setup a tree. 
@@ -979,8 +976,6 @@ contains
       endif
       Tree_Seg%iStep  = iStep
       Tree_Seg%bGrown = .true.
-      ! Regularization floor is now applied per node via node%maxRegParam in the tree traversal
-      Tree_Seg%DistanceDirect = 0.0_ReKi
    end subroutine grow_tree_segment
 
    !> Recursive function to grow/setup a tree.
