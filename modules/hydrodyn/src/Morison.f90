@@ -39,6 +39,21 @@ MODULE Morison
    PUBLIC :: Morison_Init                           ! Initialization routine
    PUBLIC :: Morison_CalcOutput                     ! Routine for computing outputs
    PUBLIC :: Morison_UpdateDiscState                ! Routine for updating discrete states
+
+   ! ..... Shallow-angle strip-theory model constants ...............................................................................
+   REAL(ReKi),     PARAMETER :: HM_SinAngLo = 0.4226182617406994_ReKi   ! sin(25 deg): pure shallow-angle model below this |n_w.k|
+   REAL(ReKi),     PARAMETER :: HM_SinAngHi = 0.5735764363510461_ReKi   ! sin(35 deg): pure baseline model above this |n_w.k|
+   REAL(ReKi),     PARAMETER :: HM_SMin     = 0.0871557427476582_ReKi   ! sin(5 deg): joint end plate treated as parallel to the free surface below this S
+   REAL(ReKi),     PARAMETER :: HM_Eps      = 0.2_ReKi                  ! Smoothing length of the water entry/exit force normalized by R
+   REAL(ReKi),     PARAMETER :: HM_HbarDeep = 5.0_ReKi                  ! Normalized center depth beyond which the added mass is the deeply submerged value
+   REAL(DbKi),     PARAMETER :: HM_AsymTol  = 1.0E-3_DbKi               ! Switch to asymptotic heave added mass when 2*pi-theta is below this
+   ! Polynomial coefficients (ascending powers of Hbar) of the normalized added mass (Table 1)
+   REAL(DbKi),     PARAMETER :: HM_CoefSub(0:5)  = (/ -5.782806107250993E-02_DbKi, 1.043012143185959E+00_DbKi, -4.153257652497481E-01_DbKi, &
+                                                       8.303624394187833E-02_DbKi, -8.289169840152171E-03_DbKi, 3.286758827989542E-04_DbKi /) ! Heave and sway, 1 <= Hbar <= 5
+   REAL(DbKi),     PARAMETER :: HM_CoefSwy1(0:4) = (/  2.026423672846756E-01_DbKi, 3.582967038045702E-01_DbKi,  1.982404817062564E-01_DbKi, &
+                                                       1.321603211375043E-01_DbKi,  8.957417595114259E-02_DbKi /)                             ! Sway, -1 <= Hbar <= 0
+   REAL(DbKi),     PARAMETER :: HM_CoefSwy2(0:4) = (/  2.026423672846756E-01_DbKi, 3.582967038045703E-01_DbKi,  1.982404817062560E-01_DbKi, &
+                                                      -1.321603211375040E-01_DbKi,  1.791483519022852E-02_DbKi /)                             ! Sway,  0 <= Hbar <= 1
    
 CONTAINS
 !----------------------------------------------------------------------------------------------------------------------------------
@@ -4530,6 +4545,176 @@ END SUBROUTINE Morison_CalcOutput
       dFdl = dFdl * p%WaveField%WtrDens * p%Gravity
 
    END SUBROUTINE GetSectionHstLds_Cyl
+
+   !> Cubic smoothing function w(s) = 3s^2 - 2s^3, clamped to 0 for s<0 and 1 for s>1
+   PURE FUNCTION HM_SmoothStep( s ) RESULT( w )
+      REAL(ReKi), INTENT( IN ) :: s
+      REAL(ReKi)               :: w
+      IF ( s <= 0.0_ReKi ) THEN
+         w = 0.0_ReKi
+      ELSE IF ( s >= 1.0_ReKi ) THEN
+         w = 1.0_ReKi
+      ELSE
+         w = s*s*(3.0_ReKi-2.0_ReKi*s)
+      END IF
+   END FUNCTION HM_SmoothStep
+
+   !> Weight of the baseline model as a function of |n_w.k|; the shallow-angle model gets 1-w
+   PURE FUNCTION HM_BlendWeight( cosAbs ) RESULT( w )
+      REAL(ReKi), INTENT( IN ) :: cosAbs
+      REAL(ReKi)               :: w
+      w = HM_SmoothStep( (cosAbs-HM_SinAngLo)/(HM_SinAngHi-HM_SinAngLo) )
+   END FUNCTION HM_BlendWeight
+
+   !> Submerged area A_s of a circular section with center depth H and its derivative dA_s/dH
+   PURE SUBROUTINE HM_SubmergedArea( H, R, As, dAsdH )
+      REAL(ReKi), INTENT( IN  ) :: H
+      REAL(ReKi), INTENT( IN  ) :: R
+      REAL(ReKi), INTENT( OUT ) :: As
+      REAL(ReKi), INTENT( OUT ) :: dAsdH
+      REAL(DbKi)                :: HD, RD, sq
+      IF ( H <= -R ) THEN
+         As    = 0.0_ReKi
+         dAsdH = 0.0_ReKi
+      ELSE IF ( H >= R ) THEN
+         As    = Pi*R*R
+         dAsdH = 0.0_ReKi
+      ELSE
+         HD    = REAL(H,DbKi)
+         RD    = REAL(R,DbKi)
+         sq    = SQRT(RD*RD-HD*HD)
+         As    = REAL( RD*RD*ACOS(-HD/RD) + HD*sq, ReKi )
+         dAsdH = REAL( 2.0_DbKi*sq, ReKi )
+      END IF
+   END SUBROUTINE HM_SubmergedArea
+
+   !> Wetted fraction f_c of the circumference of a circular section with center depth H and its derivative df_c/dH
+   PURE SUBROUTINE HM_WettedCircFrac( H, R, fc, dfcdH )
+      REAL(ReKi), INTENT( IN  ) :: H
+      REAL(ReKi), INTENT( IN  ) :: R
+      REAL(ReKi), INTENT( OUT ) :: fc
+      REAL(ReKi), INTENT( OUT ) :: dfcdH
+      REAL(DbKi)                :: HD, RD
+      IF ( H <= -R ) THEN
+         fc    = 0.0_ReKi
+         dfcdH = 0.0_ReKi
+      ELSE IF ( H >= R ) THEN
+         fc    = 1.0_ReKi
+         dfcdH = 0.0_ReKi
+      ELSE
+         HD    = REAL(H,DbKi)
+         RD    = REAL(R,DbKi)
+         fc    = REAL( ACOS(-HD/RD)/Pi_D, ReKi )
+         dfcdH = REAL( 1.0_DbKi/(Pi_D*SQRT(RD*RD-HD*HD)), ReKi )
+      END IF
+   END SUBROUTINE HM_WettedCircFrac
+
+   !> Value and first derivative of the polynomial sum_k c(k) x^k
+   PURE SUBROUTINE HM_PolyEval( c, x, f, dfdx )
+      REAL(DbKi), INTENT( IN  ) :: c(0:)
+      REAL(DbKi), INTENT( IN  ) :: x
+      REAL(DbKi), INTENT( OUT ) :: f
+      REAL(DbKi), INTENT( OUT ) :: dfdx
+      INTEGER(IntKi)            :: k
+      f    = c(UBOUND(c,1))
+      dfdx = 0.0_DbKi
+      DO k = UBOUND(c,1)-1, 0, -1
+         dfdx = dfdx*x + f
+         f    = f*x + c(k)
+      END DO
+   END SUBROUTINE HM_PolyEval
+
+   !> Normalized infinite-frequency heave added mass mu_yy/(rho*pi*R^2) of a circular section and its derivative w.r.t. Hbar = H/R
+   PURE SUBROUTINE HM_AddedMassHeave( HbarIn, mu, dmu )
+      REAL(ReKi), INTENT( IN  ) :: HbarIn
+      REAL(ReKi), INTENT( OUT ) :: mu
+      REAL(ReKi), INTENT( OUT ) :: dmu
+      REAL(DbKi)                :: Hbar, phi, s, muD, dmuD
+      Hbar = REAL(HbarIn,DbKi)
+      IF ( Hbar <= -1.0_DbKi ) THEN
+         muD  = 0.0_DbKi
+         dmuD = 0.0_DbKi
+      ELSE IF ( Hbar < 1.0_DbKi ) THEN  ! Surface piercing (Taylor, 1930)
+         ! Half-angle form with s = sin(theta/2), cos(theta/2) = -Hbar, phi = 2*pi-theta to avoid cancellation near Hbar = +/-1
+         s   = SQRT( (1.0_DbKi-Hbar)*(1.0_DbKi+Hbar) )
+         phi = 2.0_DbKi*ATAN2(s,Hbar)
+         IF ( phi < HM_AsymTol ) THEN
+            muD  = (Pi_D**2/6.0_DbKi-1.0_DbKi) + (1.0_DbKi/12.0_DbKi-Pi_D**2/72.0_DbKi)*phi**2 + phi**3/(12.0_DbKi*Pi_D) &
+                   + (Pi_D**2/2160.0_DbKi-1.0_DbKi/144.0_DbKi)*phi**4
+            dmuD = (Pi_D**2/9.0_DbKi-2.0_DbKi/3.0_DbKi) - phi/Pi_D + (1.0_DbKi/12.0_DbKi-Pi_D**2/360.0_DbKi)*phi**2
+         ELSE
+            muD  =  2.0_DbKi*Pi_D**2*s*s/(3.0_DbKi*phi**2) + s*s/3.0_DbKi - 1.0_DbKi + (phi-SIN(phi))/TwoPi_D
+            dmuD = -4.0_DbKi*Pi_D**2*Hbar/(3.0_DbKi*phi**2) + 8.0_DbKi*Pi_D**2*s/(3.0_DbKi*phi**3) - 2.0_DbKi*Hbar/3.0_DbKi - 2.0_DbKi*s/Pi_D
+         END IF
+      ELSE IF ( Hbar <= REAL(HM_HbarDeep,DbKi) ) THEN  ! Fully submerged near the free surface
+         CALL HM_PolyEval( HM_CoefSub, Hbar, muD, dmuD )
+      ELSE
+         muD  = 1.0_DbKi
+         dmuD = 0.0_DbKi
+      END IF
+      mu  = REAL(muD, ReKi)
+      dmu = REAL(dmuD,ReKi)
+   END SUBROUTINE HM_AddedMassHeave
+
+   !> Normalized infinite-frequency sway added mass mu_xx/(rho*pi*R^2) of a circular section and its derivative w.r.t. Hbar = H/R
+   PURE SUBROUTINE HM_AddedMassSway( HbarIn, mu, dmu )
+      REAL(ReKi), INTENT( IN  ) :: HbarIn
+      REAL(ReKi), INTENT( OUT ) :: mu
+      REAL(ReKi), INTENT( OUT ) :: dmu
+      REAL(DbKi)                :: Hbar, muD, dmuD
+      Hbar = REAL(HbarIn,DbKi)
+      IF ( Hbar <= -1.0_DbKi ) THEN
+         muD  = 0.0_DbKi
+         dmuD = 0.0_DbKi
+      ELSE IF ( Hbar <= 0.0_DbKi ) THEN
+         CALL HM_PolyEval( HM_CoefSwy1, Hbar, muD, dmuD )
+      ELSE IF ( Hbar <= 1.0_DbKi ) THEN
+         CALL HM_PolyEval( HM_CoefSwy2, Hbar, muD, dmuD )
+      ELSE IF ( Hbar <= REAL(HM_HbarDeep,DbKi) ) THEN
+         CALL HM_PolyEval( HM_CoefSub, Hbar, muD, dmuD )
+      ELSE
+         muD  = 1.0_DbKi
+         dmuD = 0.0_DbKi
+      END IF
+      mu  = REAL(muD, ReKi)
+      dmu = REAL(dmuD,ReKi)
+   END SUBROUTINE HM_AddedMassSway
+
+   !> Center depth H of a section measured in the section plane normal to the local free-surface cut, and S = sqrt(1-(n_w.k)^2)
+   PURE SUBROUTINE HM_SectionSubmergence( Zc, zeta, n_w, k, H, S )
+      REAL(ReKi), INTENT( IN  ) :: Zc        ! Vertical position of the section center
+      REAL(ReKi), INTENT( IN  ) :: zeta      ! Free-surface elevation directly above/below the section center
+      REAL(ReKi), INTENT( IN  ) :: n_w(3)    ! Free-surface unit normal pointing from water to air
+      REAL(ReKi), INTENT( IN  ) :: k(3)      ! Member axial unit vector
+      REAL(ReKi), INTENT( OUT ) :: H
+      REAL(ReKi), INTENT( OUT ) :: S
+      REAL(ReKi)                :: nk
+      nk = DOT_PRODUCT(n_w,k)
+      S  = SQRT( MAX(1.0_ReKi-nk*nk, 0.0_ReKi) )
+      IF ( S > 0.0_ReKi ) THEN
+         H = (zeta-Zc)*n_w(3)/S
+      ELSE ! Section parallel to the free surface: limit of H is +/- infinity
+         H = SIGN( HUGE(H), zeta-Zc )
+      END IF
+   END SUBROUTINE HM_SectionSubmergence
+
+   !> Transverse Froude-Krylov force per unit length on the wetted arc theta1->theta2 of a circular section, r = y_hat*cos(theta) + z_hat*sin(theta)
+   PURE SUBROUTINE HM_FKSection( theta1, theta2, R, rho, p_c, a_y, a_z, F_y, F_z )
+      REAL(DbKi), INTENT( IN  ) :: theta1, theta2  ! Start and end of the wetted arc
+      REAL(ReKi), INTENT( IN  ) :: R               ! Section radius
+      REAL(ReKi), INTENT( IN  ) :: rho             ! Water density
+      REAL(ReKi), INTENT( IN  ) :: p_c             ! Dynamic pressure at the section center
+      REAL(ReKi), INTENT( IN  ) :: a_y, a_z        ! Flow acceleration components along y_hat and z_hat
+      REAL(ReKi), INTENT( OUT ) :: F_y, F_z        ! Force components along y_hat and z_hat
+      REAL(DbKi)                :: pR, rR2, Iyy, Iyz, Izz
+      pR  = REAL(p_c,DbKi)*REAL(R,DbKi)
+      rR2 = REAL(rho,DbKi)*REAL(R,DbKi)**2
+      Iyy = 0.5_DbKi *(theta2-theta1) + 0.25_DbKi*(SIN(2.0_DbKi*theta2)-SIN(2.0_DbKi*theta1))  ! int cos^2
+      Izz = 0.5_DbKi *(theta2-theta1) - 0.25_DbKi*(SIN(2.0_DbKi*theta2)-SIN(2.0_DbKi*theta1))  ! int sin^2
+      Iyz = 0.25_DbKi*(COS(2.0_DbKi*theta1)-COS(2.0_DbKi*theta2))                             ! int sin*cos
+      F_y = REAL( -pR*(SIN(theta2)-SIN(theta1)) + rR2*(REAL(a_y,DbKi)*Iyy + REAL(a_z,DbKi)*Iyz), ReKi )
+      F_z = REAL(  pR*(COS(theta2)-COS(theta1)) + rR2*(REAL(a_y,DbKi)*Iyz + REAL(a_z,DbKi)*Izz), ReKi )
+   END SUBROUTINE HM_FKSection
 
    SUBROUTINE GetSectionHstLds_Rec(p, origin, pos0, k_hat, x_hat, y_hat, Sa, Sb, dSadl, dSbdl, rFS, nFS, dFdl, secStat)
       TYPE(Morison_ParameterType), INTENT( IN    ) :: p
