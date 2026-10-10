@@ -3265,6 +3265,7 @@ SUBROUTINE Morison_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, errStat, 
    REAL(ReKi)               :: HM_Xz(3), HM_pc, HM_v0(3), HM_a0(3), HM_vr(3), HM_vfz(3), HM_Hdot
    REAL(ReKi)               :: HM_FD(6), HM_FA(6), HM_FI(6), HM_FWE(6)
    REAL(ReKi)               :: HM_fc, HM_dfc, HM_d, HM_wr, HM_Fy, HM_Fz, HM_mux, HM_dmux, HM_muy, HM_dmuy, HM_ws1, HM_ws2
+   REAL(ReKi)               :: HM_rJ, HM_drJdH
    LOGICAL                  :: HM_doBase
    LOGICAL                  :: Is1stElement, Is1stFloodedMember
    LOGICAL                  :: calcHstLdsLocal
@@ -4364,9 +4365,7 @@ SUBROUTINE Morison_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, errStat, 
    !                                     External Hydrodynamic Joint Loads - Start                                 !
    !                                        F_D_End, F_I_End, F_A_End, F_IMG_End                                   !
    !---------------------------------------------------------------------------------------------------------------!      
-   ! NOTE:  All wave kinematics have already been zeroed out above the SWL or instantaneous wave height (for WaveStMod > 0), 
-   ! so loads derived from the kinematics will be correct without the use of a nodeInWater value, but other loads need to be 
-   ! multiplied by nodeInWater to zero them out above the SWL or instantaneous wave height.
+   ! NOTE:  Hydrodynamic joint loads are scaled by the wetted fraction of the joint end plate from GetJointWetting.
 
    DO J = 1, p%NJoints
       ! Obtain the node index because WaveVel, WaveAcc, and WaveDynP are defined in the node indexing scheme, not the markers (No longer relevant?)
@@ -4382,22 +4381,55 @@ SUBROUTINE Morison_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, errStat, 
 
       ! Rotate joint properties
       call RotateJoint(p, J,u%PtfmRefY,u%Mesh%Orientation(:,:,J),AM_End,An_End,DP_Const_End,I_MG_End,ErrStat2,ErrMsg2); if (Failed()) return
-      
+
+      ! Wetted fraction of the joint end plate
+      pos1 = m%DispNodePosHdn(:,J)
+      CALL GetJointWetting( p, m, Time, pos1, An_End, HM_rJ, HM_drJdH, HM_S, n_hat, HM_Zeta, ErrStat2, ErrMsg2 ); if (Failed()) return
+
+      ! Wave kinematics at X_0: joint position if submerged, otherwise the free surface directly above or below it
+      HM_Xz = (/ pos1(1), pos1(2), HM_Zeta /)
+      IF ( m%nodeInWater(J) == 1_IntKi .OR. HM_rJ <= 0.0_ReKi ) THEN ! Dry joint (r=0): all loads vanish, so skip the extra query
+         HM_pc = m%FDynP(  J)
+         HM_v0 = m%FV   (:,J)
+         HM_a0 = m%FA   (:,J)
+      ELSE
+         CALL WaveField_GetNodeWaveKin( p%WaveField, m%WaveField_m, Time, HM_Xz, .TRUE., .TRUE., nodeInWater, WaveElev1, WaveElev2, WaveElev, FDynP, FV, FA, FAMCF, ErrStat2, ErrMsg2 ); if (Failed()) return
+         HM_pc = REAL(FDynP,ReKi)
+         HM_v0 = REAL(FV,ReKi)
+         HM_a0 = REAL(FA,ReKi)
+      END IF
+      HM_vr = u%Mesh%TranslationVel(:,J) - HM_v0
+
       ! Lumped added mass loads
       qdotdot                 = reshape((/u%Mesh%TranslationAcc(:,J),u%Mesh%RotationAcc(:,J)/),(/6/)) 
-      m%F_A_End(:,J)          = m%nodeInWater(j) * matmul( AM_End, ( - qdotdot(1:3)) )
-         
-      ! TODO: The original code did not multiply by nodeInWater, but should we? GJH
-      ! Should be ok because m%FDynP and m%FA are both zeroed above the SWL (when WaveStMod=0) or the instantaneous free surface (when WaveStMod>0)
-      m%F_I_End(:,J) =   (DP_Const_End * m%FDynP(j) + matmul(AM_End,m%FA(:,j)))
+      m%F_A_End(:,J)          = -HM_rJ*SQRT(HM_rJ) * matmul( AM_End, qdotdot(1:3) )
+
+      m%F_I_End(:,J) = HM_rJ*DP_Const_End*HM_pc + HM_rJ*SQRT(HM_rJ)*matmul( AM_End, HM_a0 )
+
+      ! Water entry/exit from the rate of change of the added mass
+      IF ( HM_drJdH > 0.0_ReKi ) THEN
+         IF ( p%WaveField%WaveStMod > 0_IntKi ) THEN
+            IF ( m%nodeInWater(J) == 1_IntKi ) THEN
+               CALL WaveField_GetNodeWaveKin( p%WaveField, m%WaveField_m, Time, HM_Xz, .TRUE., .TRUE., nodeInWater, WaveElev1, WaveElev2, WaveElev, FDynP, FV, FA, FAMCF, ErrStat2, ErrMsg2 ); if (Failed()) return
+               HM_vfz = REAL(FV,ReKi)
+            ELSE
+               HM_vfz = HM_v0
+            END IF
+            HM_Hdot = DOT_PRODUCT( HM_vfz - u%Mesh%TranslationVel(:,J), n_hat ) / HM_S
+         ELSE ! Free surface fixed at the SWL
+            HM_Hdot = -u%Mesh%TranslationVel(3,J) / HM_S
+         END IF
+         m%F_WE_End(:,J) = -1.5_ReKi*SQRT(HM_rJ)*HM_drJdH*HM_Hdot * matmul( AM_End, HM_vr )
+      ELSE
+         m%F_WE_End(:,J) = 0.0_ReKi
+      END IF
          
       ! Marine growth inertia: ends: Section 4.2.2
       m%F_IMG_End(1:3,j) = -p%Mass_MG_End(j)*qdotdot(1:3)
       m%F_IMG_End(4:6,j) = -matmul(I_MG_End,qdotdot(4:6)) - cross_product(u%Mesh%RotationVel(:,J),matmul(I_MG_End,u%Mesh%RotationVel(:,J)))
 
-      ! Compute the dot product of the relative velocity vector with the directional Area of the Joint
-      ! m%nodeInWater(j) is probably not necessary because m%vrel is zeroed when the node is out of water
-      vmag  = m%nodeInWater(j) * ( m%vrel(1,j)*An_End(1) + m%vrel(2,j)*An_End(2) + m%vrel(3,j)*An_End(3) )
+      ! Compute the dot product of the relative velocity vector with the directional Area of the Joint, scaled by the wetted fraction
+      vmag  = -HM_rJ * DOT_PRODUCT( HM_vr, An_End )
       ! High-pass filtering
       vmagf = p%VRelNFiltConst(J) * (vmag + xd%v_rel_n_FiltStat(J))
 
@@ -4529,6 +4561,56 @@ END SUBROUTINE Morison_CalcOutput
         CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
 
    END SUBROUTINE GetFreeSurfaceNormal
+
+   !> Wetted area fraction r = A_s(H)/A_J of a joint treated as a circular end plate with area |An_End| and normal An_End/|An_End|
+   SUBROUTINE GetJointWetting( p, m, Time, pos, An_End, r, drdH, S, n_w, zeta, ErrStat, ErrMsg )
+      TYPE(Morison_ParameterType), INTENT( IN    ) :: p
+      TYPE(Morison_MiscVarType),   INTENT( INOUT ) :: m
+      REAL(DbKi),      INTENT( IN    ) :: Time
+      REAL(ReKi),      INTENT( IN    ) :: pos(3)    ! Joint position
+      REAL(ReKi),      INTENT( IN    ) :: An_End(3) ! Joint directional area in the current orientation
+      REAL(ReKi),      INTENT(   OUT ) :: r         ! Wetted area fraction
+      REAL(ReKi),      INTENT(   OUT ) :: drdH      ! dr/dH; zero when the wetting is all-or-nothing
+      REAL(ReKi),      INTENT(   OUT ) :: S         ! sqrt(1-(n_w.n_A)^2)
+      REAL(ReKi),      INTENT(   OUT ) :: n_w(3)    ! Free-surface unit normal
+      REAL(ReKi),      INTENT(   OUT ) :: zeta      ! Free-surface elevation at the joint
+      INTEGER(IntKi),  INTENT(   OUT ) :: ErrStat
+      CHARACTER(*),    INTENT(   OUT ) :: ErrMsg
+      CHARACTER(*),    PARAMETER       :: RoutineName = 'GetJointWetting'
+      INTEGER(IntKi)                   :: errStat2
+      CHARACTER(ErrMsgLen)             :: errMsg2
+      REAL(ReKi)                       :: A_J, H, As, dAsdH
+
+      ErrStat = ErrID_None
+      ErrMsg  = ""
+
+      IF ( p%WaveField%WaveStMod > 0_IntKi ) THEN
+         CALL GetTotalWaveElev( p, m, Time, pos, zeta, ErrStat2, ErrMsg2 )
+           CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+         CALL GetFreeSurfaceNormal( p, m, Time, pos, n_w, ErrStat2, ErrMsg2 )
+           CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+         IF ( ErrStat >= AbortErrLev ) RETURN
+      ELSE
+         zeta = 0.0_ReKi
+         n_w  = (/ 0.0_ReKi, 0.0_ReKi, 1.0_ReKi /)
+      END IF
+
+      A_J = TwoNorm( An_End )
+      S   = 0.0_ReKi
+      IF ( A_J > 0.0_ReKi ) THEN
+         CALL HM_SectionSubmergence( pos(3), zeta, n_w, An_End/A_J, H, S )
+      END IF
+
+      IF ( S < HM_SMin ) THEN ! No area or end plate nearly parallel to the free surface
+         r    = MERGE( 1.0_ReKi, 0.0_ReKi, zeta >= pos(3) )
+         drdH = 0.0_ReKi
+      ELSE
+         CALL HM_SubmergedArea( H, SQRT(A_J/Pi), As, dAsdH )
+         r    = MIN( As/A_J, 1.0_ReKi )
+         drdH = dAsdH/A_J
+      END IF
+
+   END SUBROUTINE GetJointWetting
 
    SUBROUTINE GetSectionUnitVectors_Cyl( k, y, z )
       REAL(ReKi),      INTENT( In    ) :: k(3) ! Member axial unit vector
@@ -6274,8 +6356,9 @@ SUBROUTINE Morison_UpdateDiscState( Time, u, p, x, xd, z, OtherState, m, errStat
    CHARACTER(*),                      INTENT(  OUT)  :: errMsg      !< Error message if errStat /= ErrID_None
    INTEGER(IntKi)                                    :: I, J, im, N
    INTEGER(IntKi)                                    :: nodeInWater, tmpInt
-   REAL(ReKi)                                        :: pos(3), vrel(3), FV(3), vmag, vmagf, An_End(3)
+   REAL(ReKi)                                        :: pos(3), vrel(3), vmag, vmagf, An_End(3)
    REAL(ReKi)                                        :: Rg2b(3,3)
+   REAL(ReKi)                                        :: rJ, drJdH, S, n_w(3), zeta
    REAL(ReKi)                                        :: posFC(3), SVFC(3), vrelFC, vrelFCf
    REAL(SiKi)                                        :: FVTmp(3),FATmp(3)
    TYPE(Morison_MemberType)                          :: mem         !< Current member
@@ -6297,12 +6380,6 @@ SUBROUTINE Morison_UpdateDiscState( Time, u, p, x, xd, z, OtherState, m, errStat
       ! Get joint position
       pos = m%DispNodePosHdn(:,J)
 
-      ! Get fluid velocity at the joint
-      CALL WaveField_GetNodeWaveVel( p%WaveField, m%WaveField_m, Time, pos, .FALSE., .TRUE., nodeInWater, FVTmp, ErrStat2, ErrMsg2 )
-          if (Failed()) return
-      FV   = REAL(FVTmp, ReKi)
-      vrel = ( FV - u%Mesh%TranslationVel(:,J) ) * nodeInWater
-
       ! Rotate An_End based on p%WaveDisp: reference yaw only (0) or full instantaneous orientation (1)
       select case (p%WaveDisp)
       case (0)
@@ -6313,8 +6390,19 @@ SUBROUTINE Morison_UpdateDiscState( Time, u, p, x, xd, z, OtherState, m, errStat
       end select
       An_End = matmul(transpose(Rg2b),p%An_End(:,j))
 
-      ! Compute the dot product of the relative velocity vector with the directional Area of the Joint
-      vmag  = vrel(1)*An_End(1) + vrel(2)*An_End(2) + vrel(3)*An_End(3)
+      ! Wetted fraction of the joint end plate
+      CALL GetJointWetting( p, m, Time, pos, An_End, rJ, drJdH, S, n_w, zeta, ErrStat2, ErrMsg2 ); if (Failed()) return
+
+      ! Relative normal velocity scaled by the wetted fraction; flow velocity at the joint if submerged, otherwise on the free surface
+      vmag = 0.0_ReKi
+      IF ( rJ > 0.0_ReKi ) THEN
+         pos(3) = MIN( pos(3), zeta )
+         CALL WaveField_GetNodeWaveVel( p%WaveField, m%WaveField_m, Time, pos, .TRUE., .TRUE., nodeInWater, FVTmp, ErrStat2, ErrMsg2 )
+             if (Failed()) return
+         vrel = REAL(FVTmp, ReKi) - u%Mesh%TranslationVel(:,J)
+         vmag = rJ * DOT_PRODUCT( vrel, An_End )
+      END IF
+
       ! High-pass filtering
       vmagf = p%VRelNFiltConst(J) * (vmag + xd%V_rel_n_FiltStat(J))
       ! Update relative normal velocity filter state for joint J 
