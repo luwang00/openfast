@@ -1493,6 +1493,7 @@ subroutine AllocateMemberDataArrays( member, memberLoads, errStat, errMsg )
    call AllocAry(member%Cb           , member%NElements+1, 'member%Cb           ', errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( memberLoads%F_D    , 6, member%NElements+1, 'memberLoads%F_D'  , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( memberLoads%F_A    , 6, member%NElements+1, 'memberLoads%F_A'  , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
+   call AllocAry( memberLoads%F_WE   , 6, member%NElements+1, 'memberLoads%F_WE' , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( memberLoads%F_B    , 6, member%NElements+1, 'memberLoads%F_B'  , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( memberLoads%F_BF   , 6, member%NElements+1, 'memberLoads%F_BF' , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( memberLoads%F_I    , 6, member%NElements+1, 'memberLoads%F_I'  , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
@@ -1575,6 +1576,7 @@ subroutine AllocateMemberDataArrays( member, memberLoads, errStat, errMsg )
    member%Cb            = 0.0_ReKi
    memberLoads%F_D      = 0.0_ReKi
    memberLoads%F_A      = 0.0_ReKi
+   memberLoads%F_WE     = 0.0_ReKi
    memberLoads%F_B      = 0.0_ReKi
    memberLoads%F_BF     = 0.0_ReKi
    memberLoads%F_I      = 0.0_ReKi
@@ -3080,11 +3082,17 @@ SUBROUTINE AllocateNodeLoadVariables(InitInp, p, m, NNodes, errStat, errMsg )
    CHARACTER(*),                      INTENT(  OUT)  :: errMsg      ! Error message if errStat /= ErrID_None
    integer(IntKi)                                    :: errStat2    ! Returns a non-zero value when an error occurs            
    CHARACTER(errMsgLen)                              :: errMsg2     ! Error message if errStat2 /= ErrID_None
+   integer(IntKi)                                    :: im, maxMemNodes
    character(*), parameter                           :: routineName = 'AllocateNodeLoadVariables'
    
    ! Initialize errStat        
    errStat = ErrID_None         
    errMsg  = ""               
+   
+   maxMemNodes = 0
+   do im = 1, p%NMembers
+      maxMemNodes = max(maxMemNodes, p%Members(im)%NElements+1)
+   end do
    
    call AllocAry( m%DispNodePosHdn,   3, NNodes   , 'm%DispNodePosHdn', errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName) 
    call AllocAry( m%DispNodePosHst,   3, NNodes   , 'm%DispNodePosHst', errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName) 
@@ -3102,6 +3110,9 @@ SUBROUTINE AllocateNodeLoadVariables(InitInp, p, m, NNodes, errStat, errMsg )
    call AllocAry( m%F_I_End      ,    3, p%NJoints, 'm%F_I_End'       , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( m%F_BF_End     ,    6, p%NJoints, 'm%F_BF_End'      , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( m%F_A_End      ,    3, p%NJoints, 'm%F_A_End'       , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
+   call AllocAry( m%F_WE_End     ,    3, p%NJoints, 'm%F_WE_End'      , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
+   call AllocAry( m%HM_w         ,  maxMemNodes   , 'm%HM_w'          , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
+   call AllocAry( m%HM_nw        , 3, maxMemNodes , 'm%HM_nw'         , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( m%F_D_End      ,    3, p%NJoints, 'm%F_D_End'       , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( m%F_B_End      ,    6, p%NJoints, 'm%F_B_End'       , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
    call AllocAry( m%F_IMG_End    ,    6, p%NJoints, 'm%F_IMG_End'     , errStat2, errMsg2); call SetErrStat(errStat2, errMsg2, errStat, errMsg, routineName)
@@ -3132,6 +3143,9 @@ SUBROUTINE AllocateNodeLoadVariables(InitInp, p, m, NNodes, errStat, errMsg )
    m%F_I_End        = 0.0
    m%F_BF_End       = 0.0
    m%F_A_End        = 0.0
+   m%F_WE_End       = 0.0
+   m%HM_w           = 1.0_ReKi
+   m%HM_nw          = 0.0_ReKi
    m%F_D_End        = 0.0
    m%F_B_End        = 0.0
    m%F_IMG_End      = 0.0
@@ -3306,6 +3320,7 @@ SUBROUTINE Morison_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, errStat, 
       m%memberLoads(im)%F_BF  = 0.0_ReKi
       m%memberLoads(im)%F_D   = 0.0_ReKi
       m%memberLoads(im)%F_A   = 0.0_ReKi
+      m%memberLoads(im)%F_WE  = 0.0_ReKi
       m%memberLoads(im)%F_I   = 0.0_ReKi
       m%memberLoads(im)%F_WMG = 0.0_ReKi
       m%memberLoads(im)%F_IMG = 0.0_ReKi
@@ -4128,8 +4143,8 @@ SUBROUTINE Morison_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, errStat, 
       !                                External Hydrodynamic Side Loads - End                               !
       !-----------------------------------------------------------------------------------------------------!
       DO i = 1, N+1
-         y%Mesh%Force (:,mem%NodeIndx(i)) = y%Mesh%Force (:,mem%NodeIndx(i)) + m%memberLoads(im)%F_D(1:3,i) + m%memberLoads(im)%F_A(1:3,i) + m%memberLoads(im)%F_I(1:3,i)
-         y%Mesh%Moment(:,mem%NodeIndx(i)) = y%Mesh%Moment(:,mem%NodeIndx(i)) + m%memberLoads(im)%F_D(4:6,i) + m%memberLoads(im)%F_A(4:6,i) + m%memberLoads(im)%F_I(4:6,i)
+         y%Mesh%Force (:,mem%NodeIndx(i)) = y%Mesh%Force (:,mem%NodeIndx(i)) + m%memberLoads(im)%F_D(1:3,i) + m%memberLoads(im)%F_A(1:3,i) + m%memberLoads(im)%F_I(1:3,i) + m%memberLoads(im)%F_WE(1:3,i)
+         y%Mesh%Moment(:,mem%NodeIndx(i)) = y%Mesh%Moment(:,mem%NodeIndx(i)) + m%memberLoads(im)%F_D(4:6,i) + m%memberLoads(im)%F_A(4:6,i) + m%memberLoads(im)%F_I(4:6,i) + m%memberLoads(im)%F_WE(4:6,i)
       END DO
 
       ! Compute total member force and moment about PRP if OutAll
@@ -4140,6 +4155,7 @@ SUBROUTINE Morison_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, errStat, 
          m%memberLoads(im)%F_tot = 0.0_ReKi
          do i = 1,N+1
             m%memberLoads(im)%F_sum(:,i) = m%memberLoads(im)%F_D(:,i)   + m%memberLoads(im)%F_I(:,i)   + m%memberLoads(im)%F_A(:,i)  + &
+                                           m%memberLoads(im)%F_WE(:,i)  + &
                                            m%memberLoads(im)%F_B(:,i)   + m%memberLoads(im)%F_BF(:,i)  + m%memberLoads(im)%F_IF(:,i) + &
                                            m%memberLoads(im)%F_WMG(:,i) + m%memberLoads(im)%F_IMG(:,i)
             m%memberLoads(im)%F_tot = m%memberLoads(im)%F_tot + m%memberLoads(im)%F_sum(:,i)
@@ -4296,7 +4312,7 @@ SUBROUTINE Morison_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, errStat, 
                                           + p%DragLoFSc_End(j)  * An_End(i) * p%DragConst_End(j) * abs(vmag) *max(vmag, 0.0_ReKi)
                m%F_D_End(i,j) = 2.0_ReKi * m%F_D_End(i,j)
             END IF
-            m%F_tot_End(i,j)  = m%F_D_End(i,j) + m%F_I_End(i,j) + p%F_WMG_End(i,j) + m%F_B_End(i,j) + m%F_BF_End(i,j) + m%F_A_End(i,j) + m%F_IMG_End(i,j)
+            m%F_tot_End(i,j)  = m%F_D_End(i,j) + m%F_I_End(i,j) + p%F_WMG_End(i,j) + m%F_B_End(i,j) + m%F_BF_End(i,j) + m%F_A_End(i,j) + m%F_WE_End(i,j) + m%F_IMG_End(i,j)
             y%Mesh%Force(i,j) = y%Mesh%Force(i,j) + m%F_tot_End(i,j)
          ELSE ! Three moment components
             m%F_tot_End(i,j)  = m%F_B_End(i,j) + m%F_BF_End(i,j)  + m%F_IMG_End(i,j)
