@@ -372,6 +372,9 @@ subroutine IfW_FlowField_GetVelAcc(FF, IStart, Time, PositionXYZ, VelocityUVW, A
       end if
    end if
 
+   ! Apparent wind in the translating frame; the field is sampled as given (no frame drift)
+   if (FF%FrameSpd /= 0.0_ReKi) VelocityUVW(1, 1:NumPoints) = VelocityUVW(1, 1:NumPoints) - FF%FrameSpd
+
 contains
 
    pure function GetPrimePosition(Pos) result(PrimePos)

@@ -222,6 +222,7 @@ SUBROUTINE InflowWind_Init( InitInp, InputGuess, p, ContStates, DiscStates, Cons
    ! If flowfield is allocated, deallocate and allocate again to clear old data
    if (associated(p%FlowField)) deallocate(p%FlowField)
    allocate(p%FlowField)
+   p%FlowField%FrameSpd = InitInp%FrameSpd
 
    ! Associate initialization output to flow field
    InitOutData%FlowField => p%FlowField

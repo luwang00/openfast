@@ -154,6 +154,7 @@ IMPLICIT NONE
     REAL(ReKi) , DIMENSION(1:3)  :: RefPosition = 0.0_ReKi      !< Reference position (point where box is rotated) [meters]
     REAL(ReKi)  :: PropagationDir = 0.0_ReKi      !< Direction of wind propagation [radians]
     REAL(ReKi)  :: VFlowAngle = 0.0_ReKi      !< Vertical (upflow) angle [radians]
+    REAL(ReKi)  :: FrameSpd = 0.0_ReKi      !< Speed subtracted from the X velocity for a translating simulation frame [m/s]
     LOGICAL  :: VelInterpCubic = .false.      !< Velocity interpolation order in time (1=linear; 3=cubic) [Used with WindType=2,3,4,5,7] [-]
     LOGICAL  :: RotateWindBox = .false.      !< flag indicating if the wind will be rotated [-]
     LOGICAL  :: AccFieldValid = .false.      !< flag indicating that acceleration field has been calculated [-]
@@ -1042,6 +1043,7 @@ subroutine IfW_FlowField_CopyFlowFieldType(SrcFlowFieldTypeData, DstFlowFieldTyp
    DstFlowFieldTypeData%RefPosition = SrcFlowFieldTypeData%RefPosition
    DstFlowFieldTypeData%PropagationDir = SrcFlowFieldTypeData%PropagationDir
    DstFlowFieldTypeData%VFlowAngle = SrcFlowFieldTypeData%VFlowAngle
+   DstFlowFieldTypeData%FrameSpd = SrcFlowFieldTypeData%FrameSpd
    DstFlowFieldTypeData%VelInterpCubic = SrcFlowFieldTypeData%VelInterpCubic
    DstFlowFieldTypeData%RotateWindBox = SrcFlowFieldTypeData%RotateWindBox
    DstFlowFieldTypeData%AccFieldValid = SrcFlowFieldTypeData%AccFieldValid
@@ -1094,6 +1096,7 @@ subroutine IfW_FlowField_PackFlowFieldType(RF, Indata)
    call RegPack(RF, InData%RefPosition)
    call RegPack(RF, InData%PropagationDir)
    call RegPack(RF, InData%VFlowAngle)
+   call RegPack(RF, InData%FrameSpd)
    call RegPack(RF, InData%VelInterpCubic)
    call RegPack(RF, InData%RotateWindBox)
    call RegPack(RF, InData%AccFieldValid)
@@ -1116,6 +1119,7 @@ subroutine IfW_FlowField_UnPackFlowFieldType(RF, OutData)
    call RegUnpack(RF, OutData%RefPosition); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%PropagationDir); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%VFlowAngle); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%FrameSpd); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%VelInterpCubic); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%RotateWindBox); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%AccFieldValid); if (RegCheckErr(RF, RoutineName)) return

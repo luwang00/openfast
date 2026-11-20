@@ -128,6 +128,7 @@ typedef  ^              FlowFieldType          IntKi               FieldType    
 typedef  ^              ^                      ReKi                RefPosition         3     0.0_ReKi  -     "Reference position (point where box is rotated)"                 meters
 typedef  ^              ^                      ReKi                PropagationDir      -     0.0_ReKi  -     "Direction of wind propagation"                                   radians
 typedef  ^              ^                      ReKi                VFlowAngle          -     0.0_ReKi  -     "Vertical (upflow) angle"                                         radians
+typedef  ^              ^                      ReKi                FrameSpd            -     0.0_ReKi  -     "Speed subtracted from the X velocity for a translating simulation frame" m/s
 typedef  ^              ^                      logical             VelInterpCubic      -  .false.      -     "Velocity interpolation order in time (1=linear; 3=cubic) [Used with WindType=2,3,4,5,7]" -
 typedef  ^              ^                      logical             RotateWindBox       -  .false.      -     "flag indicating if the wind will be rotated"                     -
 typedef  ^              ^                      logical             AccFieldValid       -  .false.      -     "flag indicating that acceleration field has been calculated" -
