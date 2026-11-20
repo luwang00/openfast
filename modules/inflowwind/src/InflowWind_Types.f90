@@ -122,6 +122,7 @@ IMPLICIT NONE
     INTEGER(IntKi)  :: MHK = 0_IntKi      !< MHK turbine type switch [-]
     REAL(ReKi)  :: WtrDpth = 0.0_ReKi      !< Water depth [m]
     REAL(ReKi)  :: MSL2SWL = 0.0_ReKi      !< Mean sea level to still water level [m]
+    REAL(ReKi)  :: FrameSpd = 0      !< Speed of the simulation frame translating along global +X [m/s]
     LOGICAL  :: BoxExceedAllow = .FALSE.      !< Flag to allow Extrapolation winds outside box starting at this index (for OLAF wakes and LidarSim) [-]
     LOGICAL  :: LidarEnabled = .false.      !< Enable LiDAR for this instance of InflowWind? (FAST.Farm, ADI, and InflowWind driver/library are not compatible) [-]
     REAL(ReKi) , DIMENSION(1:3)  :: HubPosition = 0.0_ReKi      !< initial position of the hub (lidar mounted on hub) [0,0,HubHeight] [m]
@@ -541,6 +542,7 @@ subroutine InflowWind_CopyInitInput(SrcInitInputData, DstInitInputData, CtrlCode
    DstInitInputData%MHK = SrcInitInputData%MHK
    DstInitInputData%WtrDpth = SrcInitInputData%WtrDpth
    DstInitInputData%MSL2SWL = SrcInitInputData%MSL2SWL
+   DstInitInputData%FrameSpd = SrcInitInputData%FrameSpd
    DstInitInputData%BoxExceedAllow = SrcInitInputData%BoxExceedAllow
    DstInitInputData%LidarEnabled = SrcInitInputData%LidarEnabled
    DstInitInputData%HubPosition = SrcInitInputData%HubPosition
@@ -584,6 +586,7 @@ subroutine InflowWind_PackInitInput(RF, Indata)
    call RegPack(RF, InData%MHK)
    call RegPack(RF, InData%WtrDpth)
    call RegPack(RF, InData%MSL2SWL)
+   call RegPack(RF, InData%FrameSpd)
    call RegPack(RF, InData%BoxExceedAllow)
    call RegPack(RF, InData%LidarEnabled)
    call RegPack(RF, InData%HubPosition)
@@ -611,6 +614,7 @@ subroutine InflowWind_UnPackInitInput(RF, OutData)
    call RegUnpack(RF, OutData%MHK); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%WtrDpth); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%MSL2SWL); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%FrameSpd); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%BoxExceedAllow); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%LidarEnabled); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%HubPosition); if (RegCheckErr(RF, RoutineName)) return

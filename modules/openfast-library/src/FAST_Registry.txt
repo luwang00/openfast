@@ -164,6 +164,7 @@ typedef ^   FAST_ParameterType  ReKi    Patm        -   -   -   "Atmospheric pre
 typedef ^   FAST_ParameterType  ReKi    Pvap        -   -   -   "Vapour pressure of working fluid" Pa
 typedef ^   FAST_ParameterType  ReKi    WtrDpth     -   -   -   "Water depth" m
 typedef ^   FAST_ParameterType  ReKi    MSL2SWL     -   -   -   "Offset between still-water level and mean sea level" m
+typedef ^   FAST_ParameterType  ReKi    FrameSpd    -   0   -   "Speed of the simulation frame translating along global +X" m/s
 # Input file names:
 typedef	^	FAST_ParameterType	CHARACTER(1024)	EDFile	:	-	-	"ElastoDyn/Simplified-ElastoDyn input file paths (NRotors)"	-
 typedef	^	FAST_ParameterType	CHARACTER(1024)	BDBldFile	::	-	-	"BeamDyn input file paths for each blade (MaxBladesBD,NRotors)"	-

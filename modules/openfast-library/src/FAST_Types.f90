@@ -177,6 +177,7 @@ IMPLICIT NONE
     REAL(ReKi)  :: Pvap = 0.0_ReKi      !< Vapour pressure of working fluid [Pa]
     REAL(ReKi)  :: WtrDpth = 0.0_ReKi      !< Water depth [m]
     REAL(ReKi)  :: MSL2SWL = 0.0_ReKi      !< Offset between still-water level and mean sea level [m]
+    REAL(ReKi)  :: FrameSpd = 0      !< Speed of the simulation frame translating along global +X [m/s]
     CHARACTER(1024) , DIMENSION(:), ALLOCATABLE  :: EDFile      !< ElastoDyn/Simplified-ElastoDyn input file paths (NRotors) [-]
     CHARACTER(1024) , DIMENSION(:,:), ALLOCATABLE  :: BDBldFile      !< BeamDyn input file paths for each blade (MaxBladesBD,NRotors) [-]
     CHARACTER(1024) , DIMENSION(:), ALLOCATABLE  :: ServoFile      !< Turbine control and electrical-drive input file paths (NRotors) [-]
@@ -1196,6 +1197,7 @@ subroutine FAST_CopyParam(SrcParamData, DstParamData, CtrlCode, ErrStat, ErrMsg)
    DstParamData%Pvap = SrcParamData%Pvap
    DstParamData%WtrDpth = SrcParamData%WtrDpth
    DstParamData%MSL2SWL = SrcParamData%MSL2SWL
+   DstParamData%FrameSpd = SrcParamData%FrameSpd
    if (allocated(SrcParamData%EDFile)) then
       LB(1:1) = lbound(SrcParamData%EDFile)
       UB(1:1) = ubound(SrcParamData%EDFile)
@@ -1427,6 +1429,7 @@ subroutine FAST_PackParam(RF, Indata)
    call RegPack(RF, InData%Pvap)
    call RegPack(RF, InData%WtrDpth)
    call RegPack(RF, InData%MSL2SWL)
+   call RegPack(RF, InData%FrameSpd)
    call RegPackAlloc(RF, InData%EDFile)
    call RegPackAlloc(RF, InData%BDBldFile)
    call RegPackAlloc(RF, InData%ServoFile)
@@ -1551,6 +1554,7 @@ subroutine FAST_UnPackParam(RF, OutData)
    call RegUnpack(RF, OutData%Pvap); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%WtrDpth); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%MSL2SWL); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%FrameSpd); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%EDFile); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%BDBldFile); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%ServoFile); if (RegCheckErr(RF, RoutineName)) return

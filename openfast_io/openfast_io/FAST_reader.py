@@ -378,6 +378,7 @@ class InputReader_OpenFAST(object):
         self.fst_vt['Fst']['Pvap']      = float_read(f.readline().split()[0])
         self.fst_vt['Fst']['WtrDpth']   = float_read(f.readline().split()[0])
         self.fst_vt['Fst']['MSL2SWL']   = float_read(f.readline().split()[0])
+        self.fst_vt['Fst']['FrameSpd']  = float_read(f.readline().split()[0])
 
         # Input Files (input_files)
         f.readline()

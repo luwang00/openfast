@@ -98,6 +98,7 @@ IMPLICIT NONE
     CHARACTER(1024)  :: OutRootName      !< Supplied by Driver:  The name of the root file (without extension) including the full path [-]
     LOGICAL  :: Linearize = .FALSE.      !< Flag that tells this module if the glue code wants to linearize. [-]
     REAL(ReKi)  :: Gravity = 0.0_ReKi      !< Supplied by Driver:  Gravitational acceleration [(m/s^2)]
+    REAL(ReKi)  :: FrameSpd = 0      !< Speed of the simulation frame translating along global +X [m/s]
     REAL(DbKi)  :: TMax = 0.0_R8Ki      !< Supplied by Driver:  The total simulation time [(sec)]
     LOGICAL  :: VisMeshes = .false.      !< Output visualization meshes [-]
     LOGICAL  :: InvalidWithSSExctn = .false.      !< Whether SeaState configuration is invalid with HydroDyn's state-space excitation (ExctnMod=2) [(-)]
@@ -709,6 +710,7 @@ subroutine HydroDyn_CopyInitInput(SrcInitInputData, DstInitInputData, CtrlCode, 
    DstInitInputData%OutRootName = SrcInitInputData%OutRootName
    DstInitInputData%Linearize = SrcInitInputData%Linearize
    DstInitInputData%Gravity = SrcInitInputData%Gravity
+   DstInitInputData%FrameSpd = SrcInitInputData%FrameSpd
    DstInitInputData%TMax = SrcInitInputData%TMax
    DstInitInputData%VisMeshes = SrcInitInputData%VisMeshes
    DstInitInputData%InvalidWithSSExctn = SrcInitInputData%InvalidWithSSExctn
@@ -742,6 +744,7 @@ subroutine HydroDyn_PackInitInput(RF, Indata)
    call RegPack(RF, InData%OutRootName)
    call RegPack(RF, InData%Linearize)
    call RegPack(RF, InData%Gravity)
+   call RegPack(RF, InData%FrameSpd)
    call RegPack(RF, InData%TMax)
    call RegPack(RF, InData%VisMeshes)
    call RegPack(RF, InData%InvalidWithSSExctn)
@@ -772,6 +775,7 @@ subroutine HydroDyn_UnPackInitInput(RF, OutData)
    call RegUnpack(RF, OutData%OutRootName); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%Linearize); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%Gravity); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%FrameSpd); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%TMax); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%VisMeshes); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%InvalidWithSSExctn); if (RegCheckErr(RF, RoutineName)) return

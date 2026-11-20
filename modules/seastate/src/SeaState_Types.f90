@@ -96,6 +96,7 @@ IMPLICIT NONE
     REAL(ReKi)  :: defWtrDpth = 0.0_ReKi      !< Default water depth from the driver; may be overwritten                         [m]
     REAL(ReKi)  :: defMSL2SWL = 0.0_ReKi      !< Default mean sea level to still water level from the driver; may be overwritten [m]
     INTEGER(IntKi)  :: MHK = 0_IntKi      !< MHK flag [-]
+    REAL(ReKi)  :: FrameSpd = 0      !< Speed of the simulation frame translating along global +X [m/s]
     REAL(DbKi)  :: TMax = 0.0_R8Ki      !< Supplied by Driver:  The total simulation time [(sec)]
     REAL(DbKi)  :: WaveTimeShift = 0      !< Add this to the time to effectively phase shift the wave (useful for hybrid tank testing). Positive value only (advance time) [(s)]
     INTEGER(IntKi)  :: WaveFieldMod = 0_IntKi      !< Wave field handling (-) (switch) 0: use individual SeaState inputs without adjustment, 1: adjust wave phases based on turbine offsets from farm origin [-]
@@ -484,6 +485,7 @@ subroutine SeaSt_CopyInitInput(SrcInitInputData, DstInitInputData, CtrlCode, Err
    DstInitInputData%defWtrDpth = SrcInitInputData%defWtrDpth
    DstInitInputData%defMSL2SWL = SrcInitInputData%defMSL2SWL
    DstInitInputData%MHK = SrcInitInputData%MHK
+   DstInitInputData%FrameSpd = SrcInitInputData%FrameSpd
    DstInitInputData%TMax = SrcInitInputData%TMax
    DstInitInputData%WaveTimeShift = SrcInitInputData%WaveTimeShift
    DstInitInputData%WaveFieldMod = SrcInitInputData%WaveFieldMod
@@ -529,6 +531,7 @@ subroutine SeaSt_PackInitInput(RF, Indata)
    call RegPack(RF, InData%defWtrDpth)
    call RegPack(RF, InData%defMSL2SWL)
    call RegPack(RF, InData%MHK)
+   call RegPack(RF, InData%FrameSpd)
    call RegPack(RF, InData%TMax)
    call RegPack(RF, InData%WaveTimeShift)
    call RegPack(RF, InData%WaveFieldMod)
@@ -571,6 +574,7 @@ subroutine SeaSt_UnPackInitInput(RF, OutData)
    call RegUnpack(RF, OutData%defWtrDpth); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%defMSL2SWL); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%MHK); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%FrameSpd); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%TMax); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%WaveTimeShift); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%WaveFieldMod); if (RegCheckErr(RF, RoutineName)) return

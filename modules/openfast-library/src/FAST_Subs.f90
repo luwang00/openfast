@@ -494,6 +494,7 @@ SUBROUTINE FAST_InitializeAll( t_initial, m_Glue, p_FAST, y_FAST, m_FAST, ED, SE
       Init%InData_IfW%OutputAccel            = p_FAST%MHK /= MHK_None
       Init%InData_IfW%MHK                    = p_FAST%MHK
       Init%InData_IfW%WtrDpth                = p_FAST%WtrDpth
+      Init%InData_IfW%FrameSpd               = p_FAST%FrameSpd
       
       Init%InData_IfW%NumWindPoints          = 0
       IF (p_FAST%CompServo == Module_SrvD) THEN
@@ -584,6 +585,7 @@ SUBROUTINE FAST_InitializeAll( t_initial, m_Glue, p_FAST, y_FAST, m_FAST, ED, SE
       Init%InData_SeaSt%defWtrDens    = p_FAST%WtrDens
       Init%InData_SeaSt%defWtrDpth    = p_FAST%WtrDpth
       Init%InData_SeaSt%defMSL2SWL    = p_FAST%MSL2SWL
+      Init%InData_SeaSt%FrameSpd      = p_FAST%FrameSpd
       Init%InData_SeaSt%MHK           = p_FAST%MHK
       Init%InData_SeaSt%UseInputFile  = .TRUE.
       Init%InData_SeaSt%Linearize     = p_FAST%Linearize
@@ -1052,6 +1054,7 @@ SUBROUTINE FAST_InitializeAll( t_initial, m_Glue, p_FAST, y_FAST, m_FAST, ED, SE
       Init%InData_HD%OutRootName   = TRIM(p_FAST%OutFileRoot)//'.'//TRIM(y_FAST%Module_Abrev(Module_HD))
       Init%InData_HD%TMax          = p_FAST%TMax
       Init%InData_HD%Linearize     = p_FAST%Linearize
+      Init%InData_HD%FrameSpd      = p_FAST%FrameSpd
 
       ! Initial platform position; PlatformPos(1:3) is effectively the initial position of the HD origin
       if ( p_FAST%CompSub == Module_SD ) then
@@ -2095,6 +2098,14 @@ SUBROUTINE ValidateInputData(p, m_FAST, ErrStat, ErrMsg)
 
    IF (p%WtrDpth < 0.0_ReKi) CALL SetErrStat( ErrID_Fatal, 'WtrDpth must not be negative.', ErrStat, ErrMsg, RoutineName )
 
+   if (.not. EqualRealNos(p%FrameSpd, 0.0_ReKi)) then
+      if (p%FarmIntegration)                call SetErrStat( ErrID_Fatal, 'FrameSpd must be 0 with FAST.Farm.', ErrStat, ErrMsg, RoutineName )
+      if (p%CompMooring /= Module_None)     call SetErrStat( ErrID_Fatal, 'FrameSpd must be 0 when a mooring module is used. Set CompMooring = 0 or FrameSpd = 0 in the FAST input file.', ErrStat, ErrMsg, RoutineName )
+      if (p%CompIce /= Module_None)         call SetErrStat( ErrID_Fatal, 'FrameSpd must be 0 when an ice module is used. Set CompIce = 0 or FrameSpd = 0 in the FAST input file.', ErrStat, ErrMsg, RoutineName )
+      if (p%MHK /= MHK_None)                call SetErrStat( ErrID_Fatal, 'FrameSpd must be 0 for an MHK turbine. Set MHK = 0 or FrameSpd = 0 in the FAST input file.', ErrStat, ErrMsg, RoutineName )
+      if (p%CompInflow == Module_ExtInfw)   call SetErrStat( ErrID_Fatal, 'FrameSpd must be 0 with ExtInflow. Set CompInflow /= 2 or FrameSpd = 0 in the FAST input file.', ErrStat, ErrMsg, RoutineName )
+   end if
+
 !   IF ( p%InterpOrder < 0 .OR. p%InterpOrder > 2 ) THEN
    IF ( p%InterpOrder < 1 .OR. p%InterpOrder > 2 ) THEN
       if (.not. p%CompAeroMaps) CALL SetErrStat( ErrID_Fatal, 'InterpOrder must be 1 or 2.', ErrStat, ErrMsg, RoutineName ) ! 5/13/14 bjj: MAS and JMJ compromise for certain integrators is that InterpOrder cannot be 0
@@ -3123,6 +3134,10 @@ SUBROUTINE FAST_ReadPrimaryFile( InputFile, p, m_FAST, OverrideAbortErrLev, ErrS
 
          ! MSL2SWL - Offset between still-water level and mean sea level (m):
    CALL ReadVar( UnIn, InputFile, p%MSL2SWL, "MSL2SWL", "Offset between still-water level and mean sea level (m)", ErrStat2, ErrMsg2, UnEc)
+         if (Failed()) return
+
+         ! FrameSpd - Speed of the simulation frame translating along global +X (m/s):
+   CALL ReadVar( UnIn, InputFile, p%FrameSpd, "FrameSpd", "Speed of the simulation frame translating along global +X (m/s)", ErrStat2, ErrMsg2, UnEc)
          if (Failed()) return
 
    !---------------------- INPUT FILES ---------------------------------------------
