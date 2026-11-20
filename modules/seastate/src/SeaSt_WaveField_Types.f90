@@ -84,6 +84,8 @@ IMPLICIT NONE
     REAL(SiKi) , DIMENSION(:,:,:), ALLOCATABLE  :: WaveElevC      !< Discrete Fourier transform of the instantaneous elevation of incident waves at all grid points.  First column is real part, second column is imaginary part [(m)]
     REAL(SiKi) , DIMENSION(:,:), ALLOCATABLE  :: WaveElevC0      !< Fourier components of the incident wave elevation at the platform reference point. First column is the real part; second column is the imaginary part [(m)]
     REAL(SiKi) , DIMENSION(:), ALLOCATABLE  :: WaveDirArr      !< Wave direction array. Each frequency has a unique direction of WaveNDir > 1 [(degrees)]
+    REAL(SiKi) , DIMENSION(:), ALLOCATABLE  :: WaveOmegaI      !< Intrinsic angular frequency of each wave component (equal to the grid frequency without Doppler shift) [(rad/s)]
+    REAL(SiKi) , DIMENSION(:), ALLOCATABLE  :: WaveNmbr      !< Wavenumber of each wave component [(1/m)]
     LOGICAL  :: hasCurrField = .false.      !< True if CurrField is populated for MHK simulations [(-)]
     TYPE(FlowFieldType) , POINTER :: CurrField => NULL()      !< Pointer to FlowField type from InflowWind containing the dynamic current information [(-)]
     REAL(ReKi)  :: WtrDpth = 0.0_ReKi      !< Water depth, this is necessary to inform glue-code what the module is using for WtrDpth (may not be the glue-code's default) [(m)]
@@ -364,6 +366,30 @@ subroutine SeaSt_WaveField_CopySeaSt_WaveFieldType(SrcSeaSt_WaveFieldTypeData, D
       end if
       DstSeaSt_WaveFieldTypeData%WaveDirArr = SrcSeaSt_WaveFieldTypeData%WaveDirArr
    end if
+   if (allocated(SrcSeaSt_WaveFieldTypeData%WaveOmegaI)) then
+      LB(1:1) = lbound(SrcSeaSt_WaveFieldTypeData%WaveOmegaI)
+      UB(1:1) = ubound(SrcSeaSt_WaveFieldTypeData%WaveOmegaI)
+      if (.not. allocated(DstSeaSt_WaveFieldTypeData%WaveOmegaI)) then
+         allocate(DstSeaSt_WaveFieldTypeData%WaveOmegaI(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstSeaSt_WaveFieldTypeData%WaveOmegaI.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstSeaSt_WaveFieldTypeData%WaveOmegaI = SrcSeaSt_WaveFieldTypeData%WaveOmegaI
+   end if
+   if (allocated(SrcSeaSt_WaveFieldTypeData%WaveNmbr)) then
+      LB(1:1) = lbound(SrcSeaSt_WaveFieldTypeData%WaveNmbr)
+      UB(1:1) = ubound(SrcSeaSt_WaveFieldTypeData%WaveNmbr)
+      if (.not. allocated(DstSeaSt_WaveFieldTypeData%WaveNmbr)) then
+         allocate(DstSeaSt_WaveFieldTypeData%WaveNmbr(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstSeaSt_WaveFieldTypeData%WaveNmbr.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstSeaSt_WaveFieldTypeData%WaveNmbr = SrcSeaSt_WaveFieldTypeData%WaveNmbr
+   end if
    DstSeaSt_WaveFieldTypeData%hasCurrField = SrcSeaSt_WaveFieldTypeData%hasCurrField
    DstSeaSt_WaveFieldTypeData%CurrField => SrcSeaSt_WaveFieldTypeData%CurrField
    DstSeaSt_WaveFieldTypeData%WtrDpth = SrcSeaSt_WaveFieldTypeData%WtrDpth
@@ -450,6 +476,12 @@ subroutine SeaSt_WaveField_DestroySeaSt_WaveFieldType(SeaSt_WaveFieldTypeData, E
    if (allocated(SeaSt_WaveFieldTypeData%WaveDirArr)) then
       deallocate(SeaSt_WaveFieldTypeData%WaveDirArr)
    end if
+   if (allocated(SeaSt_WaveFieldTypeData%WaveOmegaI)) then
+      deallocate(SeaSt_WaveFieldTypeData%WaveOmegaI)
+   end if
+   if (allocated(SeaSt_WaveFieldTypeData%WaveNmbr)) then
+      deallocate(SeaSt_WaveFieldTypeData%WaveNmbr)
+   end if
    nullify(SeaSt_WaveFieldTypeData%CurrField)
    call Current_DestroyInitInput(SeaSt_WaveFieldTypeData%Current_InitInput, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
@@ -481,6 +513,8 @@ subroutine SeaSt_WaveField_PackSeaSt_WaveFieldType(RF, Indata)
    call RegPackAlloc(RF, InData%WaveElevC)
    call RegPackAlloc(RF, InData%WaveElevC0)
    call RegPackAlloc(RF, InData%WaveDirArr)
+   call RegPackAlloc(RF, InData%WaveOmegaI)
+   call RegPackAlloc(RF, InData%WaveNmbr)
    call RegPack(RF, InData%hasCurrField)
    call RegPack(RF, associated(InData%CurrField))
    if (associated(InData%CurrField)) then
@@ -544,6 +578,8 @@ subroutine SeaSt_WaveField_UnPackSeaSt_WaveFieldType(RF, OutData)
    call RegUnpackAlloc(RF, OutData%WaveElevC); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%WaveElevC0); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%WaveDirArr); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%WaveOmegaI); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%WaveNmbr); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%hasCurrField); if (RegCheckErr(RF, RoutineName)) return
    if (associated(OutData%CurrField)) deallocate(OutData%CurrField)
    call RegUnpack(RF, IsAllocAssoc); if (RegCheckErr(RF, RoutineName)) return

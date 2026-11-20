@@ -37,6 +37,7 @@ program SeaStateDriver
       real(ReKi)              :: WtrDens
       real(ReKi)              :: WtrDpth
       real(ReKi)              :: MSL2SWL
+      real(ReKi)              :: FrameSpd
       character(1024)         :: SeaStateInputFile
       character(1024)         :: OutRootName
       integer                 :: WrWvKinMod
@@ -156,6 +157,7 @@ program SeaStateDriver
    InitInData%defWtrDens   = drvrInitInp%WtrDens
    InitInData%defWtrDpth   = drvrInitInp%WtrDpth
    InitInData%defMSL2SWL   = drvrInitInp%MSL2SWL
+   InitInData%FrameSpd     = drvrInitInp%FrameSpd
    InitInData%UseInputFile = .TRUE. 
    InitInData%InputFile    = drvrInitInp%SeaStateInputFile
    InitInData%OutRootName  = drvrInitInp%OutRootName
@@ -471,6 +473,16 @@ SUBROUTINE ReadDriverInputFile( inputFile, InitInp, ErrStat, ErrMsg )
       ! MSL2SWL - Offset between still-water level and mean sea level.
       
    call ReadVar ( UnIn, FileName, InitInp%MSL2SWL, 'MSL2SWL', 'Offset between still-water level and mean sea level', ErrStat, ErrMsg, UnEchoLocal )
+
+      if ( ErrStat >= AbortErrLev ) then
+         if (InitInp%Echo .and. UnEchoLocal>0)  close(UnEchoLocal)
+         close( UnIn )
+         return
+      end if
+
+      ! FrameSpd - Speed of the simulation frame translating along global +X.
+
+   call ReadVar ( UnIn, FileName, InitInp%FrameSpd, 'FrameSpd', 'Speed of the simulation frame translating along global +X', ErrStat, ErrMsg, UnEchoLocal )
 
       if ( ErrStat >= AbortErrLev ) then
          if (InitInp%Echo .and. UnEchoLocal>0)  close(UnEchoLocal)

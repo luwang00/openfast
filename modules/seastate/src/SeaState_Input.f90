@@ -1044,6 +1044,29 @@ subroutine SeaStateInput_ProcessInitData( InitInp, p, InputFileData, ErrStat, Er
 
    end if
 
+   if ( .not. EqualRealNos( InitInp%FrameSpd, 0.0_ReKi ) ) then
+      if ( InitInp%FrameSpd < 0.0_ReKi ) &
+         call SetErrStat( ErrID_Fatal,'FrameSpd must not be negative.',ErrStat,ErrMsg,RoutineName)
+      if ( InputFileData%Current%CurrMod /= 0 .or. InitInp%hasCurrField ) &
+         call SetErrStat( ErrID_Fatal,'CurrMod must be 0 when FrameSpd /= 0.',ErrStat,ErrMsg,RoutineName)
+      if ( InputFileData%WaveMod == WaveMod_ExtFull ) &
+         call SetErrStat( ErrID_Fatal,'WaveMod cannot be 6 when FrameSpd /= 0.',ErrStat,ErrMsg,RoutineName)
+      if ( InputFileData%WaveMultiDir ) &
+         call SetErrStat( ErrID_Fatal,'Directional spreading cannot be used when FrameSpd /= 0. Set WaveDirMod = 0.',ErrStat,ErrMsg,RoutineName)
+      if ( InputFileData%Waves%ConstWaveMod /= ConstWaveMod_None ) &
+         call SetErrStat( ErrID_Fatal,'Constrained waves cannot be used when FrameSpd /= 0. Set ConstWaveMod = 0.',ErrStat,ErrMsg,RoutineName)
+      if ( InputFileData%Waves2%WvDiffQTFF .or. InputFileData%Waves2%WvSumQTFF ) &
+         call SetErrStat( ErrID_Fatal,'2nd-order wave kinematics cannot be used when FrameSpd /= 0. Set WvDiffQTF and WvSumQTF to FALSE.',ErrStat,ErrMsg,RoutineName)
+      if ( ErrStat >= AbortErrLev ) return
+
+      ! Apparent current -FrameSpd along X; Doppler kinematics then give the wave field at encounter frequency
+      InputFileData%Current%CurrMod   = 1
+      InputFileData%Current%CurrDIV   = InitInp%FrameSpd
+      InputFileData%Current%CurrDIDir = 180.0
+      InputFileData%Current%CurrNSRef = 1.0   ! avoids 0/0 in the unused near-surface profile
+      if ( InputFileData%WaveMod /= WaveMod_None ) InputFileData%WvCrntMod = WvCrntMod_Doppler
+   end if
+
    if ( InputFileData%Current%CurrMod == 0 .and. .not. InitInp%hasCurrField ) then  ! No current
       InputFileData%WvCrntMod = 0_IntKi
    end if
@@ -1095,6 +1118,7 @@ subroutine SeaStateInput_ProcessInitData( InitInp, p, InputFileData, ErrStat, Er
 
       ! Waves
       InputFileData%Waves%Gravity      = InitInp%Gravity
+      InputFileData%Waves%FrameSpd     = InitInp%FrameSpd
          ! For wave kinematic calculations, the effective water depth is the user input water depth (positive valued) + MSL2SWL (positive when SWL is above MSL).
 
 

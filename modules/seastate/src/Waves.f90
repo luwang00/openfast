@@ -864,7 +864,7 @@ SUBROUTINE VariousWaves_Init ( InitInp, InitOut, WaveField, ErrStat, ErrMsg )
                   bFirstNonzeroWaveComponent = .false.
                ELSE
                   IF ( .not. EqualRealNos( WaveField%WaveDir, WaveField%WaveDirArr(I) ) ) then ! Multidirectional waves
-                     CALL SetErrStat(ErrID_Fatal,' Multidirectional waves are not supported with WvCrntMod = 1 or 2. Set WvCrntMod to 0. ',ErrStat,ErrMsg,RoutineName)
+                     CALL SetErrStat(ErrID_Fatal,' Multidirectional waves are not supported with WvCrntMod = 1 or 2 or with FrameSpd /= 0. All wave components must have the same WaveDir. ',ErrStat,ErrMsg,RoutineName)
                      CALL CleanUp()
                      RETURN
                   END IF
@@ -882,6 +882,16 @@ SUBROUTINE VariousWaves_Init ( InitInp, InitOut, WaveField, ErrStat, ErrMsg )
    ELSE
       CurrVw0   = 0.0_ReKi
    ENDIF
+
+   IF ( .NOT. EqualRealNos( InitInp%FrameSpd, 0.0_ReKi ) ) THEN
+      ! Monotonic intrinsic-to-encounter mapping requires head-to-beam waves
+      IF ( COS( D2R*WaveField%WaveDir ) > 1.0E-6_ReKi ) THEN
+         CALL SetErrStat( ErrID_Fatal,'Only head-to-beam waves (90 <= |WaveDir| <= 180 deg) are supported when FrameSpd /= 0.',ErrStat,ErrMsg,RoutineName)
+         CALL CleanUp()
+         RETURN
+      END IF
+      CurrVw0 = MAX( CurrVw0, 0.0_ReKi )
+   END IF
 
    CurrV0 = SQRT( InitInp%CurrVxi0**2 + InitInp%CurrVyi0**2 )
    IF ( WaveField%WvCrntMod == WvCrntMod_Full .and. CurrV0 > 0.0_ReKi ) THEN  ! Check if waves and current are colinear
@@ -1006,7 +1016,12 @@ SUBROUTINE VariousWaves_Init ( InitInp, InitOut, WaveField, ErrStat, ErrMsg )
        OmegaArr(I) = I*WaveField%WaveDOmega
    END DO
 
-   call Get_1Spsd_and_WaveElevC0(InitInp, InitOut, WaveField, OmegaArr, WaveS1SddArr)
+   call Get_1Spsd_and_WaveElevC0(InitInp, InitOut, WaveField, OmegaArr, CurrVw0, WaveS1SddArr)
+
+   IF ( .NOT. EqualRealNos( InitInp%FrameSpd, 0.0_ReKi ) .AND. &
+        ( WaveField%WaveMod == WaveMod_ExtElev .OR. WaveField%WaveMod == WaveMod_UserFreq ) ) THEN
+      call MapComponentsToEncounterGrid(ErrStatTmp, ErrMsgTmp); if (Failed()) return;
+   END IF
 
    IF ( WaveField%WvCrntMod == WvCrntMod_Full ) THEN
       ! Scale wave spectrum and wave amplitudes to account for wave-current interaction
@@ -1101,6 +1116,8 @@ SUBROUTINE VariousWaves_Init ( InitInp, InitOut, WaveField, ErrStat, ErrMsg )
           RETURN
         END IF
       IF (OmegaI < 0.0_SiKi) EXIT
+      WaveField%WaveOmegaI(I) = OmegaI
+      WaveField%WaveNmbr  (I) = WaveNmbr
 
       ! Compute the frequency of this component and its imaginary value:
       ImagOmegaI = ImagNmbr*OmegaI
@@ -1518,6 +1535,52 @@ CONTAINS
       WaveElevAtXY(WaveField%NStepWave) = WaveElevAtXY(0)
 
    END SUBROUTINE WaveElevTimeSeriesAtXY
+
+!--------------------------------------------------------------------------------
+   !> Maps intrinsic input components (index m: m*WaveDOmega) to the nearest encounter-grid bin, keeping amplitude and phase.
+   SUBROUTINE MapComponentsToEncounterGrid( ErrStatLcl, ErrMsgLcl )
+      INTEGER(IntKi),   INTENT(  OUT)                 :: ErrStatLcl
+      CHARACTER(*),     INTENT(  OUT)                 :: ErrMsgLcl
+
+      REAL(SiKi), ALLOCATABLE                         :: ElevC0In(:,:)
+      REAL(SiKi)                                      :: WvNum, A2, VarTot, VarLost
+      INTEGER(IntKi)                                  :: m, n, AllocStat
+
+      ErrStatLcl = ErrID_None
+      ErrMsgLcl  = ""
+
+      ALLOCATE( ElevC0In(2,0:WaveField%NStepWave2), STAT=AllocStat )
+      IF ( AllocStat /= 0 ) THEN
+         CALL SetErrStat( ErrID_Fatal, 'Error allocating ElevC0In.', ErrStatLcl, ErrMsgLcl, 'MapComponentsToEncounterGrid' )
+         RETURN
+      END IF
+      ElevC0In             = WaveField%WaveElevC0
+      WaveField%WaveElevC0 = 0.0_SiKi
+      VarTot  = 0.0_SiKi
+      VarLost = 0.0_SiKi
+
+      DO m = 1,WaveField%NStepWave2-1
+         A2 = ElevC0In(1,m)**2 + ElevC0In(2,m)**2
+         IF ( A2 == 0.0_SiKi ) CYCLE
+         VarTot = VarTot + A2
+         WvNum = WaveNumber( m*WaveField%WaveDOmega, InitInp%Gravity, WaveField%EffWtrDpth )
+         n = NINT( ( m*WaveField%WaveDOmega + REAL(CurrVw0,SiKi)*WvNum ) / WaveField%WaveDOmega )
+         IF ( n >= WaveField%NStepWave2 ) THEN
+            VarLost = VarLost + A2
+         ELSE
+            WaveField%WaveElevC0(:,n) = WaveField%WaveElevC0(:,n) + ElevC0In(:,m)
+         END IF
+      END DO
+      WaveField%WaveDirArr = WaveField%WaveDir
+
+      IF ( VarLost > 0.0_SiKi ) THEN
+         CALL SetErrStat( ErrID_Warn, 'Wave components above the encounter Nyquist frequency were dropped ('// &
+                          TRIM(Num2LStr(100.0_SiKi*VarLost/VarTot))//'% of the elevation variance). Reduce WaveDT to retain them.', &
+                          ErrStatLcl, ErrMsgLcl, 'MapComponentsToEncounterGrid' )
+      END IF
+
+      DEALLOCATE( ElevC0In )
+   END SUBROUTINE MapComponentsToEncounterGrid
 
 !--------------------------------------------------------------------------------
    SUBROUTINE GetOmegaCritical( CurrVw0, Gravity, EffWtrDpth, Omega_Critical, Omega_i_Critical, ErrStat, ErrMsg )
@@ -2241,17 +2304,22 @@ contains
 END SUBROUTINE CalculateWaveSpreading
 !------------------------------------------------------------------------------------------------------------------------
 !> sets WaveS1SddArr(:) and InitOut%WaveElevC0
-SUBROUTINE Get_1Spsd_and_WaveElevC0(InitInp, InitOut, WaveField, OmegaArr, WaveS1SddArr)
+SUBROUTINE Get_1Spsd_and_WaveElevC0(InitInp, InitOut, WaveField, OmegaArr, CurrVw0, WaveS1SddArr)
 
    TYPE(Waves_InitInputType),       INTENT(IN   )  :: InitInp                                       ! Input data for initialization routine
    TYPE(Waves_InitOutputType),      INTENT(INOUT)  :: InitOut                                       ! Output data
    TYPE(SeaSt_WaveFieldType),       INTENT(INOUT)  :: WaveField
    REAL(SiKi),                      INTENT(IN   )  :: OmegaArr(0:WaveField%NStepWave2)                !< Array of all non-negative angular frequencies (rad/s)
+   REAL(ReKi),                      INTENT(IN   )  :: CurrVw0                                         !< Current velocity along the mean wave direction at MSL (m/s)
    REAL(SiKi),                      INTENT(  OUT)  :: WaveS1SddArr(0:WaveField%NStepWave2)            !< One-sided power spectral density of the wave spectrum at all non-negative frequencies (m^2/(rad/s))
 
    COMPLEX(SiKi)                                   :: WGNC(0:WaveField%NStepWave2)                    ! Discrete Fourier transform of the realization of a White Gaussian Noise (WGN) time series process with unit variance for the current frequency component (-)
    INTEGER                                         :: I                                             ! Loop counter
    INTEGER                                         :: I_WaveTp                                      ! The index of the frequency component nearest to WaveTp
+   LOGICAL                                         :: FrameMode                                     ! Inputs are intrinsic; the frequency grid is the encounter frequency
+   REAL(SiKi)                                      :: OmegaI, OmegaILo, OmegaIHi, WaveNmbr           ! Intrinsic frequencies (rad/s) and wavenumber (1/m)
+   INTEGER(IntKi)                                  :: ErrStatTmp
+   CHARACTER(ErrMsgLen)                            :: ErrMsgTmp
    REAL(SiKi)                                      :: SQRTNStepWave2                                ! SQRT( NStepWave/2 )
    COMPLEX(SiKi)                                   :: tmpComplex                                    ! A temporary varible to hold the complex value of the wave elevation before storing it into a REAL array
    REAL(SiKi)                                      :: WaveS2Sdd                                     ! Two-sided power spectral density of the wave spectrum per unit time for the current frequency component (m^2/(rad/s))
@@ -2275,6 +2343,7 @@ SUBROUTINE Get_1Spsd_and_WaveElevC0(InitInp, InitOut, WaveField, OmegaArr, WaveS
    
    
       I_WaveTp  = NINT ( TwoPi/(WaveField%WaveDOmega*InitInp%WaveTp) )        ! Compute the index of the frequency component nearest to WaveTp. Note, we don't check if it's a valid index into the arrays
+      FrameMode = .NOT. EqualRealNos( InitInp%FrameSpd, 0.0_ReKi )
    
       ! Compute the discrete Fourier transform of the realization of a White
       !   Gaussian Noise (WGN) time series process with unit variance:
@@ -2311,6 +2380,16 @@ SUBROUTINE Get_1Spsd_and_WaveElevC0(InitInp, InitOut, WaveField, OmegaArr, WaveS
       IF (WaveField%WaveMod == WaveMod_RegularUsrPh .or. WaveField%WaveMod == WaveMod_Regular) THEN !10 or 1
          WaveS1SddArr = 0.0
          
+         IF ( FrameMode ) THEN
+            ! WaveTp is intrinsic; snap its encounter frequency to the grid and report the intrinsic period used
+            OmegaI   = TwoPi/InitInp%WaveTp
+            WaveNmbr = WaveNumber( OmegaI, InitInp%Gravity, WaveField%EffWtrDpth )
+            I_WaveTp = NINT( ( OmegaI + REAL(CurrVw0,SiKi)*WaveNmbr ) / WaveField%WaveDOmega )
+            CALL WaveDispRel( I_WaveTp*WaveField%WaveDOmega, InitInp%Gravity, WaveField%EffWtrDpth, CurrVw0, -1.0_SiKi, -1.0_SiKi, OmegaI, WaveNmbr, ErrStatTmp, ErrMsgTmp )
+            IF ( OmegaI > 0.0_SiKi ) CALL WrScr( '  Regular wave: encounter period '//TRIM(Num2LStr(TwoPi/(I_WaveTp*WaveField%WaveDOmega)))// &
+                                                ' s, intrinsic period used '//TRIM(Num2LStr(TwoPi/OmegaI))//' s.' )
+         END IF
+         
          IF (I_WaveTp < WaveField%NStepWave2 .and. (I_WaveTp > 1 .or. I_WaveTp == 0) ) THEN
              
                ! This scaling of WGNC is used to ensure that the Box-Muller method is only providing a random phase,
@@ -2325,6 +2404,16 @@ SUBROUTINE Get_1Spsd_and_WaveElevC0(InitInp, InitOut, WaveField, OmegaArr, WaveS
               WaveS1SddArr(I_WaveTp) = 0.5_SiKi * (InitInp%WaveHs/2.0_SiKi)**2 / WaveField%WaveDOmega
               
          END IF
+      ELSEIF ( FrameMode ) THEN
+
+         ! Intrinsic spectrum integrated over the intrinsic interval of each encounter bin (variance conserving); cut-offs are intrinsic
+         OmegaILo = 0.0_SiKi
+         DO I = 0,WaveField%NStepWave2
+            CALL WaveDispRel( (I+0.5_SiKi)*WaveField%WaveDOmega, InitInp%Gravity, WaveField%EffWtrDpth, CurrVw0, -1.0_SiKi, -1.0_SiKi, OmegaIHi, WaveNmbr, ErrStatTmp, ErrMsgTmp )
+            WaveS1SddArr(I) = IntrinsicSpectrumIntegral( MAX(OmegaILo, WaveField%WvLowCOff), MIN(OmegaIHi, WaveField%WvHiCOff) ) / WaveField%WaveDOmega
+            OmegaILo = OmegaIHi
+         END DO
+
       ELSE
       
          DO I = 0,WaveField%NStepWave2
@@ -2378,7 +2467,42 @@ SUBROUTINE Get_1Spsd_and_WaveElevC0(InitInp, InitOut, WaveField, OmegaArr, WaveS
          WaveField%WaveElevC0     (2,I) = AIMAG(tmpComplex)
 
       END DO   ! I - The positive frequency components (including zero) of the discrete Fourier transforms
-      
+
+CONTAINS
+   !> Composite Simpson integral of the intrinsic one-sided spectrum over [OmLo, OmHi] (m^2)
+   REAL(SiKi) FUNCTION IntrinsicSpectrumIntegral( OmLo, OmHi )
+      REAL(SiKi), INTENT(IN)  :: OmLo, OmHi
+      INTEGER,    PARAMETER   :: NSub = 16
+      INTEGER                 :: J
+      REAL(SiKi)              :: dOm, Om, S, W
+
+      IntrinsicSpectrumIntegral = 0.0_SiKi
+      IF ( OmHi <= OmLo ) RETURN
+      dOm = ( OmHi - OmLo ) / NSub
+      DO J = 0,NSub
+         Om = OmLo + J*dOm
+         SELECT CASE ( WaveField%WaveMod )
+            CASE ( WaveMod_JONSWAP )
+               S = JONSWAP ( Om, InitInp%WaveHs, InitInp%WaveTp, InitInp%WavePkShp )
+            CASE ( WaveMod_WhiteNoise )
+               S = InitInp%WaveHs * InitInp%WaveHs / ( 16.0 * (WaveField%WvHiCOff - WaveField%WvLowCOff) )
+            CASE ( WaveMod_UserSpctrm )
+               CALL UserWaveSpctrm ( Om, WaveField%WaveDir, InitInp%DirRoot, S )
+            CASE DEFAULT
+               S = 0.0_SiKi
+         END SELECT
+         IF ( J == 0 .OR. J == NSub ) THEN
+            W = 1.0_SiKi
+         ELSEIF ( MOD(J,2) == 1 ) THEN
+            W = 4.0_SiKi
+         ELSE
+            W = 2.0_SiKi
+         END IF
+         IntrinsicSpectrumIntegral = IntrinsicSpectrumIntegral + W*S
+      END DO
+      IntrinsicSpectrumIntegral = IntrinsicSpectrumIntegral * dOm / 3.0_SiKi
+   END FUNCTION IntrinsicSpectrumIntegral
+
 END SUBROUTINE Get_1Spsd_and_WaveElevC0
 !------------------------------------------------------------------------------------------------------------------------
 SUBROUTINE WaveCurrentInteraction(CurrVw0, Gravity, WaveField, OmegaArr, WaveS1SddArr)

@@ -63,6 +63,8 @@ SUBROUTINE Initial_InitOut_Arrays(InitOut, WaveField, InitInp, WaveDT, ErrStat, 
       ALLOCATE ( WaveField%WaveTime   (   0:WaveField%NStepWave                 ) , STAT=ErrStat2 );  IF (ErrStat2 /= 0) CALL SetErrStat(ErrID_Fatal,'Cannot allocate array WaveField%WaveTime.',  ErrStat, ErrMsg, RoutineName)
       ALLOCATE ( WaveField%WaveElevC0 (2, 0:WaveField%NStepWave2                ) , STAT=ErrStat2 );  IF (ErrStat2 /= 0) CALL SetErrStat(ErrID_Fatal,'Cannot allocate array WaveField%WaveElevC0.',ErrStat, ErrMsg, RoutineName)
       ALLOCATE ( WaveField%WaveDirArr (   0:WaveField%NStepWave2                ) , STAT=ErrStat2 );  IF (ErrStat2 /= 0) CALL SetErrStat(ErrID_Fatal,'Cannot allocate array WaveField%WaveDirArr.',ErrStat, ErrMsg, RoutineName)
+      ALLOCATE ( WaveField%WaveOmegaI (   0:WaveField%NStepWave2                ) , STAT=ErrStat2 );  IF (ErrStat2 /= 0) CALL SetErrStat(ErrID_Fatal,'Cannot allocate array WaveField%WaveOmegaI.',ErrStat, ErrMsg, RoutineName)
+      ALLOCATE ( WaveField%WaveNmbr   (   0:WaveField%NStepWave2                ) , STAT=ErrStat2 );  IF (ErrStat2 /= 0) CALL SetErrStat(ErrID_Fatal,'Cannot allocate array WaveField%WaveNmbr.',  ErrStat, ErrMsg, RoutineName)
    
       ALLOCATE ( WaveField%WaveElev1(0:WaveField%NStepWave,InitInp%NGrid(1),InitInp%NGrid(2)                   ), STAT=ErrStat2 ); IF (ErrStat2 /= 0) CALL SetErrStat(ErrID_Fatal,'Cannot allocate array WaveField%WaveElev1.', ErrStat,ErrMsg,RoutineName)
       ALLOCATE ( WaveField%WaveDynP (0:WaveField%NStepWave,InitInp%NGrid(1),InitInp%NGrid(2),InitInp%NGrid(3)  ), STAT=ErrStat2 ); IF (ErrStat2 /= 0) CALL SetErrStat(ErrID_Fatal,'Cannot allocate array WaveField%WaveDynP.', ErrStat,ErrMsg,RoutineName)
@@ -91,6 +93,10 @@ SUBROUTINE Initial_InitOut_Arrays(InitOut, WaveField, InitInp, WaveDT, ErrStat, 
       WaveField%WaveVel    = 0.0
       WaveField%WaveAcc    = 0.0
       WaveField%WaveDirArr = 0.0
+      WaveField%WaveNmbr   = 0.0
+      DO I = 0,WaveField%NStepWave2
+         WaveField%WaveOmegaI(I) = I*WaveField%WaveDOmega
+      END DO
       
       ! scalars (adjusted later, if necessary)
       WaveField%WaveDirMin   = 0.0
