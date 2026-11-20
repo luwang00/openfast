@@ -210,6 +210,8 @@ SUBROUTINE HydroDyn_ParseInput( InputFileName, OutRootName, FileInfo_In, InputFi
    CALL AllocAry( InputFileData%FKMod        , InputFileData%NBody,     'FKMod'        , ErrStat2, ErrMsg2);   if (Failed())  return;
    CALL AllocAry( InputFileData%GeoFile      , InputFileData%NBody,     'GeoFile'      , ErrStat2, ErrMsg2);   if (Failed())  return;
    CALL AllocAry( InputFileData%FwdSpdMod    , InputFileData%NBody,     'FwdSpdMod'    , ErrStat2, ErrMsg2);   if (Failed())  return;
+   CALL AllocAry( InputFileData%VesselMod    , InputFileData%NBody,     'VesselMod'    , ErrStat2, ErrMsg2);   if (Failed())  return;
+   CALL AllocAry( InputFileData%VesselFile   , InputFileData%NBody,     'VesselFile'   , ErrStat2, ErrMsg2);   if (Failed())  return;
 
       ! PotFile - Root name of Potential flow data files (Could be WAMIT files or the FIT input file)
    call ParseAry( FileInfo_In, CurLine, 'PotFile', InputFileData%PotFile, InputFileData%nWAMITObj, ErrStat2, ErrMsg2, UnEc )
@@ -268,6 +270,14 @@ SUBROUTINE HydroDyn_ParseInput( InputFileName, OutRootName, FileInfo_In, InputFi
    if (InputFileData%NBodyMod==1) then
       InputFileData%FwdSpdMod(2:InputFileData%NBody) = InputFileData%FwdSpdMod(1)
    end if
+
+      ! VesselMod - Vessel (MMG) model of each potential-flow body {0: none, 1: MMG vessel} (switch)
+   call ParseAry( FileInfo_In, CurLine, 'VesselMod', InputFileData%VesselMod, InputFileData%NBody, ErrStat2, ErrMsg2, UnEc )
+      if (Failed())  return;
+
+      ! VesselFile - Vessel input file of each potential-flow body [only used when VesselMod=1]
+   call ParseAry( FileInfo_In, CurLine, 'VesselFile', InputFileData%VesselFile, InputFileData%NBody, ErrStat2, ErrMsg2, UnEc )
+      if (Failed())  return;
 
    !-------------------------------------------------------------------------------------------------
    ! Data section for 2nd order WAMIT forces
@@ -1619,6 +1629,26 @@ SUBROUTINE HydroDynInput_ProcessInitData( InitInp, Interval, InputFileData, ErrS
          CALL SetErrStat( ErrID_Warn,'FwdSpdMod = 0: the potential-flow radiation uses the zero-speed model without forward-speed corrections.',ErrStat,ErrMsg,RoutineName)
    ELSE
       InputFileData%FwdSpdMod = 0
+   END IF
+
+   IF ( InputFileData%PotMod == 1 ) THEN
+      do i = 1,InputFileData%NBody
+         IF ( InputFileData%VesselMod(i) /= 0 .AND. InputFileData%VesselMod(i) /= 1 ) THEN
+            CALL SetErrStat( ErrID_Fatal,'VesselMod must be 0 or 1 for all WAMIT bodies.',ErrStat,ErrMsg,RoutineName)
+            RETURN
+         END IF
+         IF ( InputFileData%VesselMod(i) == 0 ) CYCLE
+         IF ( LEN_TRIM( InputFileData%VesselFile(i) ) == 0 ) THEN
+            CALL SetErrStat( ErrID_Fatal,'VesselFile must not be an empty string when VesselMod = 1.',ErrStat,ErrMsg,RoutineName)
+            RETURN
+         END IF
+         IF ( PathIsRelative( InputFileData%VesselFile(i) ) ) THEN
+            CALL GetPath( TRIM(InitInp%InputFile), TmpPath )
+            InputFileData%VesselFile(i) = TRIM(TmpPath)//TRIM(InputFileData%VesselFile(i))
+         END IF
+      end do
+   ELSE
+      InputFileData%VesselMod = 0
    END IF
 
       ! RdtnTMax - Analysis time for wave radiation kernel calculations

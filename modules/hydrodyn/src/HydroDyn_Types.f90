@@ -37,6 +37,7 @@ USE SS_Excitation_Types
 USE WAMIT_Types
 USE WAMIT2_Types
 USE Morison_Types
+USE Vessel_Types
 USE NWTC_Library
 IMPLICIT NONE
     INTEGER(IntKi), PUBLIC, PARAMETER  :: MaxHDOutputs                     = 510      ! The maximum number of output channels supported by this module [-]
@@ -71,6 +72,8 @@ IMPLICIT NONE
     INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: FKMod      !< Mesh-based nonlinear Froude-Krylov and hydrostatic model (switch) [-]
     CHARACTER(1024) , DIMENSION(:), ALLOCATABLE  :: GeoFile      !< The name of the root potential flow body geometry file [-]
     INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: FwdSpdMod      !< Forward-speed O(U) correction of the potential-flow loads {0: none, 1: STF} [only used when FrameSpd /= 0] [-]
+    INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: VesselMod      !< Vessel (MMG) model of each potential-flow body {0: none, 1: MMG vessel} [-]
+    CHARACTER(1024) , DIMENSION(:), ALLOCATABLE  :: VesselFile      !< Vessel input file of each potential-flow body [only used when VesselMod=1] [-]
     TYPE(WAMIT_InitInputType)  :: WAMIT      !< Initialization data for WAMIT module [-]
     TYPE(WAMIT2_InitInputType)  :: WAMIT2      !< Initialization data for WAMIT2 module [-]
     TYPE(Morison_InitInputType)  :: Morison      !< Initialization data for Morison module [-]
@@ -128,6 +131,7 @@ IMPLICIT NONE
   TYPE, PUBLIC :: HydroDyn_ContinuousStateType
     TYPE(WAMIT_ContinuousStateType) , DIMENSION(:), ALLOCATABLE  :: WAMIT      !< continuous states from the wamit module [-]
     TYPE(Morison_ContinuousStateType)  :: Morison      !< continuous states from the Morison module [-]
+    TYPE(Vessel_ContinuousStateType) , DIMENSION(:), ALLOCATABLE  :: Vessel      !< continuous states of the Vessel instances [-]
   END TYPE HydroDyn_ContinuousStateType
 ! =======================
 ! =========  HydroDyn_DiscreteStateType  =======
@@ -159,6 +163,9 @@ IMPLICIT NONE
     LOGICAL  :: WAMIT2used = .FALSE.      !< Indicates when WAMIT2 is used.  Shortcuts some calculations [-]
     TYPE(Morison_ParameterType)  :: Morison      !< Parameter data for the Morison module [-]
     TYPE(NonlinearFK_ParameterType)  :: NonlinearFK      !< Parameter data for the nonlinear FK module [-]
+    INTEGER(IntKi)  :: NVessel = 0      !< Number of Vessel instances [-]
+    INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: VslBody      !< Potential-flow body of each Vessel instance [-]
+    TYPE(Vessel_ParameterType) , DIMENSION(:), ALLOCATABLE  :: Vessel      !< Parameter data of the Vessel instances [-]
     INTEGER(IntKi)  :: PotMod = 0_IntKi      !< 1 if using WAMIT model, 0 if no potential flow model, or 2 if FIT model [-]
     INTEGER(IntKi)  :: NBody = 0_IntKi      !< [>=1; only used when PotMod=1. If NBodyMod=1, the WAMIT data contains a vector of size 6*NBody x 1 and matrices of size 6*NBody x 6*NBody; if NBodyMod>1, there are NBody sets of WAMIT data each with a vector of size 6 x 1 and matrices of size 6 x 6] [-]
     INTEGER(IntKi)  :: NBodyMod = 0_IntKi      !< Body coupling model {1: include coupling terms between each body and NBody in HydroDyn equals NBODY in WAMIT, 2: neglect coupling terms between each body and NBODY=1 with XBODY=0 in WAMIT, 3: Neglect coupling terms between each body and NBODY=1 with XBODY=/0 in WAMIT} (switch) [only used when PotMod=1] [-]
@@ -230,30 +237,33 @@ IMPLICIT NONE
     TYPE(Morison_MiscVarType)  :: Morison      !< misc var information from the Morison module [-]
     TYPE(WAMIT_InputType) , DIMENSION(:), ALLOCATABLE  :: u_WAMIT      !< WAMIT module inputs [-]
     TYPE(NonlinearFK_MiscVarType)  :: NonlinearFK      !< misc var information from the nonlinear FK module [-]
+    TYPE(Vessel_MiscVarType) , DIMENSION(:), ALLOCATABLE  :: Vessel      !< misc var information of the Vessel instances [-]
+    TYPE(Vessel_InputType) , DIMENSION(:), ALLOCATABLE  :: u_Vessel      !< Inputs of the Vessel instances [-]
   END TYPE HydroDyn_MiscVarType
 ! =======================
    integer(IntKi), public, parameter :: HydroDyn_x_WAMIT_SS_Rdtn_x       =   1 ! HydroDyn%WAMIT(DL%i1)%SS_Rdtn%x
    integer(IntKi), public, parameter :: HydroDyn_x_WAMIT_SS_Exctn_x      =   2 ! HydroDyn%WAMIT(DL%i1)%SS_Exctn%x
    integer(IntKi), public, parameter :: HydroDyn_x_WAMIT_Conv_Rdtn_DummyContState =   3 ! HydroDyn%WAMIT(DL%i1)%Conv_Rdtn%DummyContState
    integer(IntKi), public, parameter :: HydroDyn_x_Morison_DummyContState =   4 ! HydroDyn%Morison%DummyContState
-   integer(IntKi), public, parameter :: HydroDyn_u_Morison_Mesh          =   5 ! HydroDyn%Morison%Mesh
-   integer(IntKi), public, parameter :: HydroDyn_u_Morison_PtfmRefY      =   6 ! HydroDyn%Morison%PtfmRefY
-   integer(IntKi), public, parameter :: HydroDyn_u_Morison_PtfmRefXY     =   7 ! HydroDyn%Morison%PtfmRefXY
-   integer(IntKi), public, parameter :: HydroDyn_u_Morison_PRP           =   8 ! HydroDyn%Morison%PRP
-   integer(IntKi), public, parameter :: HydroDyn_u_WAMITMesh             =   9 ! HydroDyn%WAMITMesh
-   integer(IntKi), public, parameter :: HydroDyn_u_PRPMesh               =  10 ! HydroDyn%PRPMesh
-   integer(IntKi), public, parameter :: HydroDyn_u_qAddDOF               =  11 ! HydroDyn%qAddDOF
-   integer(IntKi), public, parameter :: HydroDyn_u_qAddDOFDot            =  12 ! HydroDyn%qAddDOFDot
-   integer(IntKi), public, parameter :: HydroDyn_u_qAddDOFDotDot         =  13 ! HydroDyn%qAddDOFDotDot
-   integer(IntKi), public, parameter :: HydroDyn_y_WAMIT_Mesh            =  14 ! HydroDyn%WAMIT(DL%i1)%Mesh
-   integer(IntKi), public, parameter :: HydroDyn_y_WAMIT_FAddDOF         =  15 ! HydroDyn%WAMIT(DL%i1)%FAddDOF
-   integer(IntKi), public, parameter :: HydroDyn_y_WAMIT2_Mesh           =  16 ! HydroDyn%WAMIT2(DL%i1)%Mesh
-   integer(IntKi), public, parameter :: HydroDyn_y_Morison_Mesh          =  17 ! HydroDyn%Morison%Mesh
-   integer(IntKi), public, parameter :: HydroDyn_y_Morison_VisMesh       =  18 ! HydroDyn%Morison%VisMesh
-   integer(IntKi), public, parameter :: HydroDyn_y_Morison_WriteOutput   =  19 ! HydroDyn%Morison%WriteOutput
-   integer(IntKi), public, parameter :: HydroDyn_y_WAMITMesh             =  20 ! HydroDyn%WAMITMesh
-   integer(IntKi), public, parameter :: HydroDyn_y_WriteOutput           =  21 ! HydroDyn%WriteOutput
-   integer(IntKi), public, parameter :: HydroDyn_y_FAddDOF               =  22 ! HydroDyn%FAddDOF
+   integer(IntKi), public, parameter :: HydroDyn_x_Vessel_x              =   5 ! HydroDyn%Vessel(DL%i1)%x
+   integer(IntKi), public, parameter :: HydroDyn_u_Morison_Mesh          =   6 ! HydroDyn%Morison%Mesh
+   integer(IntKi), public, parameter :: HydroDyn_u_Morison_PtfmRefY      =   7 ! HydroDyn%Morison%PtfmRefY
+   integer(IntKi), public, parameter :: HydroDyn_u_Morison_PtfmRefXY     =   8 ! HydroDyn%Morison%PtfmRefXY
+   integer(IntKi), public, parameter :: HydroDyn_u_Morison_PRP           =   9 ! HydroDyn%Morison%PRP
+   integer(IntKi), public, parameter :: HydroDyn_u_WAMITMesh             =  10 ! HydroDyn%WAMITMesh
+   integer(IntKi), public, parameter :: HydroDyn_u_PRPMesh               =  11 ! HydroDyn%PRPMesh
+   integer(IntKi), public, parameter :: HydroDyn_u_qAddDOF               =  12 ! HydroDyn%qAddDOF
+   integer(IntKi), public, parameter :: HydroDyn_u_qAddDOFDot            =  13 ! HydroDyn%qAddDOFDot
+   integer(IntKi), public, parameter :: HydroDyn_u_qAddDOFDotDot         =  14 ! HydroDyn%qAddDOFDotDot
+   integer(IntKi), public, parameter :: HydroDyn_y_WAMIT_Mesh            =  15 ! HydroDyn%WAMIT(DL%i1)%Mesh
+   integer(IntKi), public, parameter :: HydroDyn_y_WAMIT_FAddDOF         =  16 ! HydroDyn%WAMIT(DL%i1)%FAddDOF
+   integer(IntKi), public, parameter :: HydroDyn_y_WAMIT2_Mesh           =  17 ! HydroDyn%WAMIT2(DL%i1)%Mesh
+   integer(IntKi), public, parameter :: HydroDyn_y_Morison_Mesh          =  18 ! HydroDyn%Morison%Mesh
+   integer(IntKi), public, parameter :: HydroDyn_y_Morison_VisMesh       =  19 ! HydroDyn%Morison%VisMesh
+   integer(IntKi), public, parameter :: HydroDyn_y_Morison_WriteOutput   =  20 ! HydroDyn%Morison%WriteOutput
+   integer(IntKi), public, parameter :: HydroDyn_y_WAMITMesh             =  21 ! HydroDyn%WAMITMesh
+   integer(IntKi), public, parameter :: HydroDyn_y_WriteOutput           =  22 ! HydroDyn%WriteOutput
+   integer(IntKi), public, parameter :: HydroDyn_y_FAddDOF               =  23 ! HydroDyn%FAddDOF
 
 contains
 
@@ -480,6 +490,30 @@ subroutine HydroDyn_CopyInputFile(SrcInputFileData, DstInputFileData, CtrlCode, 
       end if
       DstInputFileData%FwdSpdMod = SrcInputFileData%FwdSpdMod
    end if
+   if (allocated(SrcInputFileData%VesselMod)) then
+      LB(1:1) = lbound(SrcInputFileData%VesselMod)
+      UB(1:1) = ubound(SrcInputFileData%VesselMod)
+      if (.not. allocated(DstInputFileData%VesselMod)) then
+         allocate(DstInputFileData%VesselMod(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstInputFileData%VesselMod.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstInputFileData%VesselMod = SrcInputFileData%VesselMod
+   end if
+   if (allocated(SrcInputFileData%VesselFile)) then
+      LB(1:1) = lbound(SrcInputFileData%VesselFile)
+      UB(1:1) = ubound(SrcInputFileData%VesselFile)
+      if (.not. allocated(DstInputFileData%VesselFile)) then
+         allocate(DstInputFileData%VesselFile(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstInputFileData%VesselFile.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstInputFileData%VesselFile = SrcInputFileData%VesselFile
+   end if
    call WAMIT_CopyInitInput(SrcInputFileData%WAMIT, DstInputFileData%WAMIT, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
@@ -590,6 +624,12 @@ subroutine HydroDyn_DestroyInputFile(InputFileData, ErrStat, ErrMsg)
    if (allocated(InputFileData%FwdSpdMod)) then
       deallocate(InputFileData%FwdSpdMod)
    end if
+   if (allocated(InputFileData%VesselMod)) then
+      deallocate(InputFileData%VesselMod)
+   end if
+   if (allocated(InputFileData%VesselFile)) then
+      deallocate(InputFileData%VesselFile)
+   end if
    call WAMIT_DestroyInitInput(InputFileData%WAMIT, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    call WAMIT2_DestroyInitInput(InputFileData%WAMIT2, ErrStat2, ErrMsg2)
@@ -635,6 +675,8 @@ subroutine HydroDyn_PackInputFile(RF, Indata)
    call RegPackAlloc(RF, InData%FKMod)
    call RegPackAlloc(RF, InData%GeoFile)
    call RegPackAlloc(RF, InData%FwdSpdMod)
+   call RegPackAlloc(RF, InData%VesselMod)
+   call RegPackAlloc(RF, InData%VesselFile)
    call WAMIT_PackInitInput(RF, InData%WAMIT) 
    call WAMIT2_PackInitInput(RF, InData%WAMIT2) 
    call Morison_PackInitInput(RF, InData%Morison) 
@@ -688,6 +730,8 @@ subroutine HydroDyn_UnPackInputFile(RF, OutData)
    call RegUnpackAlloc(RF, OutData%FKMod); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%GeoFile); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%FwdSpdMod); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%VesselMod); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%VesselFile); if (RegCheckErr(RF, RoutineName)) return
    call WAMIT_UnpackInitInput(RF, OutData%WAMIT) ! WAMIT 
    call WAMIT2_UnpackInitInput(RF, OutData%WAMIT2) ! WAMIT2 
    call Morison_UnpackInitInput(RF, OutData%Morison) ! Morison 
@@ -1015,6 +1059,22 @@ subroutine HydroDyn_CopyContState(SrcContStateData, DstContStateData, CtrlCode, 
    call Morison_CopyContState(SrcContStateData%Morison, DstContStateData%Morison, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
+   if (allocated(SrcContStateData%Vessel)) then
+      LB(1:1) = lbound(SrcContStateData%Vessel)
+      UB(1:1) = ubound(SrcContStateData%Vessel)
+      if (.not. allocated(DstContStateData%Vessel)) then
+         allocate(DstContStateData%Vessel(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstContStateData%Vessel.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      do i1 = LB(1), UB(1)
+         call Vessel_CopyContState(SrcContStateData%Vessel(i1), DstContStateData%Vessel(i1), CtrlCode, ErrStat2, ErrMsg2)
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+         if (ErrStat >= AbortErrLev) return
+      end do
+   end if
 end subroutine
 
 subroutine HydroDyn_DestroyContState(ContStateData, ErrStat, ErrMsg)
@@ -1039,6 +1099,15 @@ subroutine HydroDyn_DestroyContState(ContStateData, ErrStat, ErrMsg)
    end if
    call Morison_DestroyContState(ContStateData%Morison, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (allocated(ContStateData%Vessel)) then
+      LB(1:1) = lbound(ContStateData%Vessel)
+      UB(1:1) = ubound(ContStateData%Vessel)
+      do i1 = LB(1), UB(1)
+         call Vessel_DestroyContState(ContStateData%Vessel(i1), ErrStat2, ErrMsg2)
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+      end do
+      deallocate(ContStateData%Vessel)
+   end if
 end subroutine
 
 subroutine HydroDyn_PackContState(RF, Indata)
@@ -1058,6 +1127,15 @@ subroutine HydroDyn_PackContState(RF, Indata)
       end do
    end if
    call Morison_PackContState(RF, InData%Morison) 
+   call RegPack(RF, allocated(InData%Vessel))
+   if (allocated(InData%Vessel)) then
+      call RegPackBounds(RF, 1, lbound(InData%Vessel), ubound(InData%Vessel))
+      LB(1:1) = lbound(InData%Vessel)
+      UB(1:1) = ubound(InData%Vessel)
+      do i1 = LB(1), UB(1)
+         call Vessel_PackContState(RF, InData%Vessel(i1)) 
+      end do
+   end if
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -1084,6 +1162,19 @@ subroutine HydroDyn_UnPackContState(RF, OutData)
       end do
    end if
    call Morison_UnpackContState(RF, OutData%Morison) ! Morison 
+   if (allocated(OutData%Vessel)) deallocate(OutData%Vessel)
+   call RegUnpack(RF, IsAllocAssoc); if (RegCheckErr(RF, RoutineName)) return
+   if (IsAllocAssoc) then
+      call RegUnpackBounds(RF, 1, LB, UB); if (RegCheckErr(RF, RoutineName)) return
+      allocate(OutData%Vessel(LB(1):UB(1)),stat=stat)
+      if (stat /= 0) then 
+         call SetErrStat(ErrID_Fatal, 'Error allocating OutData%Vessel.', RF%ErrStat, RF%ErrMsg, RoutineName)
+         return
+      end if
+      do i1 = LB(1), UB(1)
+         call Vessel_UnpackContState(RF, OutData%Vessel(i1)) ! Vessel 
+      end do
+   end if
 end subroutine
 
 subroutine HydroDyn_CopyDiscState(SrcDiscStateData, DstDiscStateData, CtrlCode, ErrStat, ErrMsg)
@@ -1419,6 +1510,35 @@ subroutine HydroDyn_CopyParam(SrcParamData, DstParamData, CtrlCode, ErrStat, Err
    call NonlinearFK_CopyParam(SrcParamData%NonlinearFK, DstParamData%NonlinearFK, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
+   DstParamData%NVessel = SrcParamData%NVessel
+   if (allocated(SrcParamData%VslBody)) then
+      LB(1:1) = lbound(SrcParamData%VslBody)
+      UB(1:1) = ubound(SrcParamData%VslBody)
+      if (.not. allocated(DstParamData%VslBody)) then
+         allocate(DstParamData%VslBody(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstParamData%VslBody.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstParamData%VslBody = SrcParamData%VslBody
+   end if
+   if (allocated(SrcParamData%Vessel)) then
+      LB(1:1) = lbound(SrcParamData%Vessel)
+      UB(1:1) = ubound(SrcParamData%Vessel)
+      if (.not. allocated(DstParamData%Vessel)) then
+         allocate(DstParamData%Vessel(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstParamData%Vessel.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      do i1 = LB(1), UB(1)
+         call Vessel_CopyParam(SrcParamData%Vessel(i1), DstParamData%Vessel(i1), CtrlCode, ErrStat2, ErrMsg2)
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+         if (ErrStat >= AbortErrLev) return
+      end do
+   end if
    DstParamData%PotMod = SrcParamData%PotMod
    DstParamData%NBody = SrcParamData%NBody
    DstParamData%NBodyMod = SrcParamData%NBodyMod
@@ -1565,6 +1685,18 @@ subroutine HydroDyn_DestroyParam(ParamData, ErrStat, ErrMsg)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    call NonlinearFK_DestroyParam(ParamData%NonlinearFK, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (allocated(ParamData%VslBody)) then
+      deallocate(ParamData%VslBody)
+   end if
+   if (allocated(ParamData%Vessel)) then
+      LB(1:1) = lbound(ParamData%Vessel)
+      UB(1:1) = ubound(ParamData%Vessel)
+      do i1 = LB(1), UB(1)
+         call Vessel_DestroyParam(ParamData%Vessel(i1), ErrStat2, ErrMsg2)
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+      end do
+      deallocate(ParamData%Vessel)
+   end if
    if (allocated(ParamData%NAddDOF)) then
       deallocate(ParamData%NAddDOF)
    end if
@@ -1626,6 +1758,17 @@ subroutine HydroDyn_PackParam(RF, Indata)
    call RegPack(RF, InData%WAMIT2used)
    call Morison_PackParam(RF, InData%Morison) 
    call NonlinearFK_PackParam(RF, InData%NonlinearFK) 
+   call RegPack(RF, InData%NVessel)
+   call RegPackAlloc(RF, InData%VslBody)
+   call RegPack(RF, allocated(InData%Vessel))
+   if (allocated(InData%Vessel)) then
+      call RegPackBounds(RF, 1, lbound(InData%Vessel), ubound(InData%Vessel))
+      LB(1:1) = lbound(InData%Vessel)
+      UB(1:1) = ubound(InData%Vessel)
+      do i1 = LB(1), UB(1)
+         call Vessel_PackParam(RF, InData%Vessel(i1)) 
+      end do
+   end if
    call RegPack(RF, InData%PotMod)
    call RegPack(RF, InData%NBody)
    call RegPack(RF, InData%NBodyMod)
@@ -1715,6 +1858,21 @@ subroutine HydroDyn_UnPackParam(RF, OutData)
    call RegUnpack(RF, OutData%WAMIT2used); if (RegCheckErr(RF, RoutineName)) return
    call Morison_UnpackParam(RF, OutData%Morison) ! Morison 
    call NonlinearFK_UnpackParam(RF, OutData%NonlinearFK) ! NonlinearFK 
+   call RegUnpack(RF, OutData%NVessel); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%VslBody); if (RegCheckErr(RF, RoutineName)) return
+   if (allocated(OutData%Vessel)) deallocate(OutData%Vessel)
+   call RegUnpack(RF, IsAllocAssoc); if (RegCheckErr(RF, RoutineName)) return
+   if (IsAllocAssoc) then
+      call RegUnpackBounds(RF, 1, LB, UB); if (RegCheckErr(RF, RoutineName)) return
+      allocate(OutData%Vessel(LB(1):UB(1)),stat=stat)
+      if (stat /= 0) then 
+         call SetErrStat(ErrID_Fatal, 'Error allocating OutData%Vessel.', RF%ErrStat, RF%ErrMsg, RoutineName)
+         return
+      end if
+      do i1 = LB(1), UB(1)
+         call Vessel_UnpackParam(RF, OutData%Vessel(i1)) ! Vessel 
+      end do
+   end if
    call RegUnpack(RF, OutData%PotMod); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NBody); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NBodyMod); if (RegCheckErr(RF, RoutineName)) return
@@ -2197,6 +2355,38 @@ subroutine HydroDyn_CopyMisc(SrcMiscData, DstMiscData, CtrlCode, ErrStat, ErrMsg
    call NonlinearFK_CopyMisc(SrcMiscData%NonlinearFK, DstMiscData%NonlinearFK, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
+   if (allocated(SrcMiscData%Vessel)) then
+      LB(1:1) = lbound(SrcMiscData%Vessel)
+      UB(1:1) = ubound(SrcMiscData%Vessel)
+      if (.not. allocated(DstMiscData%Vessel)) then
+         allocate(DstMiscData%Vessel(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstMiscData%Vessel.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      do i1 = LB(1), UB(1)
+         call Vessel_CopyMisc(SrcMiscData%Vessel(i1), DstMiscData%Vessel(i1), CtrlCode, ErrStat2, ErrMsg2)
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+         if (ErrStat >= AbortErrLev) return
+      end do
+   end if
+   if (allocated(SrcMiscData%u_Vessel)) then
+      LB(1:1) = lbound(SrcMiscData%u_Vessel)
+      UB(1:1) = ubound(SrcMiscData%u_Vessel)
+      if (.not. allocated(DstMiscData%u_Vessel)) then
+         allocate(DstMiscData%u_Vessel(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstMiscData%u_Vessel.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      do i1 = LB(1), UB(1)
+         call Vessel_CopyInput(SrcMiscData%u_Vessel(i1), DstMiscData%u_Vessel(i1), CtrlCode, ErrStat2, ErrMsg2)
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+         if (ErrStat >= AbortErrLev) return
+      end do
+   end if
 end subroutine
 
 subroutine HydroDyn_DestroyMisc(MiscData, ErrStat, ErrMsg)
@@ -2261,6 +2451,24 @@ subroutine HydroDyn_DestroyMisc(MiscData, ErrStat, ErrMsg)
    end if
    call NonlinearFK_DestroyMisc(MiscData%NonlinearFK, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+   if (allocated(MiscData%Vessel)) then
+      LB(1:1) = lbound(MiscData%Vessel)
+      UB(1:1) = ubound(MiscData%Vessel)
+      do i1 = LB(1), UB(1)
+         call Vessel_DestroyMisc(MiscData%Vessel(i1), ErrStat2, ErrMsg2)
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+      end do
+      deallocate(MiscData%Vessel)
+   end if
+   if (allocated(MiscData%u_Vessel)) then
+      LB(1:1) = lbound(MiscData%u_Vessel)
+      UB(1:1) = ubound(MiscData%u_Vessel)
+      do i1 = LB(1), UB(1)
+         call Vessel_DestroyInput(MiscData%u_Vessel(i1), ErrStat2, ErrMsg2)
+         call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+      end do
+      deallocate(MiscData%u_Vessel)
+   end if
 end subroutine
 
 subroutine HydroDyn_PackMisc(RF, Indata)
@@ -2311,6 +2519,24 @@ subroutine HydroDyn_PackMisc(RF, Indata)
       end do
    end if
    call NonlinearFK_PackMisc(RF, InData%NonlinearFK) 
+   call RegPack(RF, allocated(InData%Vessel))
+   if (allocated(InData%Vessel)) then
+      call RegPackBounds(RF, 1, lbound(InData%Vessel), ubound(InData%Vessel))
+      LB(1:1) = lbound(InData%Vessel)
+      UB(1:1) = ubound(InData%Vessel)
+      do i1 = LB(1), UB(1)
+         call Vessel_PackMisc(RF, InData%Vessel(i1)) 
+      end do
+   end if
+   call RegPack(RF, allocated(InData%u_Vessel))
+   if (allocated(InData%u_Vessel)) then
+      call RegPackBounds(RF, 1, lbound(InData%u_Vessel), ubound(InData%u_Vessel))
+      LB(1:1) = lbound(InData%u_Vessel)
+      UB(1:1) = ubound(InData%u_Vessel)
+      do i1 = LB(1), UB(1)
+         call Vessel_PackInput(RF, InData%u_Vessel(i1)) 
+      end do
+   end if
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -2376,6 +2602,32 @@ subroutine HydroDyn_UnPackMisc(RF, OutData)
       end do
    end if
    call NonlinearFK_UnpackMisc(RF, OutData%NonlinearFK) ! NonlinearFK 
+   if (allocated(OutData%Vessel)) deallocate(OutData%Vessel)
+   call RegUnpack(RF, IsAllocAssoc); if (RegCheckErr(RF, RoutineName)) return
+   if (IsAllocAssoc) then
+      call RegUnpackBounds(RF, 1, LB, UB); if (RegCheckErr(RF, RoutineName)) return
+      allocate(OutData%Vessel(LB(1):UB(1)),stat=stat)
+      if (stat /= 0) then 
+         call SetErrStat(ErrID_Fatal, 'Error allocating OutData%Vessel.', RF%ErrStat, RF%ErrMsg, RoutineName)
+         return
+      end if
+      do i1 = LB(1), UB(1)
+         call Vessel_UnpackMisc(RF, OutData%Vessel(i1)) ! Vessel 
+      end do
+   end if
+   if (allocated(OutData%u_Vessel)) deallocate(OutData%u_Vessel)
+   call RegUnpack(RF, IsAllocAssoc); if (RegCheckErr(RF, RoutineName)) return
+   if (IsAllocAssoc) then
+      call RegUnpackBounds(RF, 1, LB, UB); if (RegCheckErr(RF, RoutineName)) return
+      allocate(OutData%u_Vessel(LB(1):UB(1)),stat=stat)
+      if (stat /= 0) then 
+         call SetErrStat(ErrID_Fatal, 'Error allocating OutData%u_Vessel.', RF%ErrStat, RF%ErrMsg, RoutineName)
+         return
+      end if
+      do i1 = LB(1), UB(1)
+         call Vessel_UnpackInput(RF, OutData%u_Vessel(i1)) ! u_Vessel 
+      end do
+   end if
 end subroutine
 
 subroutine HydroDyn_Input_ExtrapInterp(u, t, u_out, t_out, ErrStat, ErrMsg)
@@ -2822,6 +3074,8 @@ subroutine HydroDyn_VarPackContState(V, x, ValAry)
          VarVals(1) = x%WAMIT(DL%i1)%Conv_Rdtn%DummyContState                 ! Scalar
       case (HydroDyn_x_Morison_DummyContState)
          VarVals(1) = x%Morison%DummyContState                                ! Scalar
+      case (HydroDyn_x_Vessel_x)
+         VarVals = x%Vessel(DL%i1)%x(V%iLB:V%iUB)                             ! Rank 1 Array
       case default
          VarVals = 0.0_R8Ki
       end select
@@ -2852,6 +3106,8 @@ subroutine HydroDyn_VarUnpackContState(V, ValAry, x)
          x%WAMIT(DL%i1)%Conv_Rdtn%DummyContState = VarVals(1)                 ! Scalar
       case (HydroDyn_x_Morison_DummyContState)
          x%Morison%DummyContState = VarVals(1)                                ! Scalar
+      case (HydroDyn_x_Vessel_x)
+         x%Vessel(DL%i1)%x(V%iLB:V%iUB) = VarVals                             ! Rank 1 Array
       end select
    end associate
 end subroutine
@@ -2868,6 +3124,8 @@ function HydroDyn_ContinuousStateFieldName(DL) result(Name)
        Name = "x%WAMIT("//trim(Num2LStr(DL%i1))//")%Conv_Rdtn%DummyContState"
    case (HydroDyn_x_Morison_DummyContState)
        Name = "x%Morison%DummyContState"
+   case (HydroDyn_x_Vessel_x)
+       Name = "x%Vessel("//trim(Num2LStr(DL%i1))//")%x"
    case default
        Name = "Unknown Field"
    end select
@@ -2897,6 +3155,8 @@ subroutine HydroDyn_VarPackContStateDeriv(V, x, ValAry)
          VarVals(1) = x%WAMIT(DL%i1)%Conv_Rdtn%DummyContState                 ! Scalar
       case (HydroDyn_x_Morison_DummyContState)
          VarVals(1) = x%Morison%DummyContState                                ! Scalar
+      case (HydroDyn_x_Vessel_x)
+         VarVals = x%Vessel(DL%i1)%x(V%iLB:V%iUB)                             ! Rank 1 Array
       case default
          VarVals = 0.0_R8Ki
       end select

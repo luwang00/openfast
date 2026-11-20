@@ -2010,6 +2010,10 @@ class InputReader_OpenFAST(object):
             self.fst_vt['HydroDyn']['FwdSpdMod'] = int_read(f.readline().split()[0])
         else:
             self.fst_vt['HydroDyn']['FwdSpdMod'] = read_array(f,self.fst_vt['HydroDyn']['NBody'], array_type=int)
+        self.fst_vt['HydroDyn']['VesselMod']     = read_array(f,self.fst_vt['HydroDyn']['NBody'], array_type=int)
+        vsl_strings = read_array(f,self.fst_vt['HydroDyn']['NBody'],str)
+        vsl_strings = [os.path.normpath(os.path.join(os.path.split(hd_file)[0],vs)) for vs in vsl_strings]  # make relative to hd_file
+        self.fst_vt['HydroDyn']['VesselFile']    = vsl_strings
 
         # 2ND-ORDER FLOATING PLATFORM FORCES
         f.readline()

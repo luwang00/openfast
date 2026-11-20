@@ -1,0 +1,166 @@
+###################################################################################################################################
+# Registry for Vessel (MMG ship maneuvering submodule of HydroDyn) in the FAST Modularization Framework
+# This Registry file is used to create MODULE Vessel_Types, which contains all of the user-defined types needed in Vessel.
+# It also contains copy, destroy, pack, and unpack routines associated with each defined data types.
+# See NWTC Programmer's Handbook for further information on the format/contents of this file.
+#
+# Entries are of the form
+# <keyword>         <ModuleName/ModName>          <TypeName>          <FieldType>         <FieldName>         <Dims>    <IO>      <DNAME>   <DESCRIP> <UNITS>
+#
+# Use ^ as a shortcut for the value in the same column from the previous line.
+###################################################################################################################################
+
+# ...... Include files (definitions from NWTC Library) ............................................................................
+include   Registry_NWTC_Library.txt
+usefrom   SeaSt_WaveField.txt
+usefrom   GridInterp.txt
+
+# ..... Tables .....................................................................................................................
+typedef   Vessel/Vessel                 OWTableType                ReKi                  J                           {:}             -        -         "Advance ratio" -
+typedef   ^                             OWTableType                ReKi                  KT                          {:}             -        -         "Thrust coefficient" -
+typedef   ^                             OWTableType                ReKi                  KQ                          {:}             -        -         "Torque coefficient" -
+typedef   ^                             RudTableType               ReKi                  Alpha                       {:}             -        -         "Rudder angle of attack" rad
+typedef   ^                             RudTableType               ReKi                  Cl                          {:}             -        -         "Lift coefficient" -
+typedef   ^                             RudTableType               ReKi                  Cd                          {:}             -        -         "Drag coefficient" -
+
+# ..... Initialization input .......................................................................................................
+typedef   ^                             InitInputType              CHARACTER(1024)       InputFile                    -              -        -         "Name of the Vessel input file" -
+typedef   ^                             InitInputType              CHARACTER(1024)       OutRootName                  -              -        -         "Root name for the echo file" -
+typedef   ^                             InitInputType              IntKi                 BodyID                       -              -        -         "Potential-flow body number of this instance" -
+typedef   ^                             InitInputType              ReKi                  FrameSpd                     -              0        -         "Speed of the simulation frame translating along global +X" m/s
+typedef   ^                             InitInputType              ReKi                  BodyRefPos                  {3}             -        -         "Undisplaced position of the body reference point" m
+typedef   ^                             InitInputType              ReKi                  PlatformPos                 {6}             -        -         "Initial platform position (6 DOFs)" -
+typedef   ^                             InitInputType              ReKi                  A0Surge                      -              -        -         "Zero-frequency surge added mass of the body" kg
+typedef   ^                             InitInputType              ReKi                  A0Sway                       -              -        -         "Zero-frequency sway added mass of the body" kg
+typedef   ^                             InitInputType              R8Ki                  PtfmRefztRot                 -              -        -         "Rotation of the potential-flow body frame about zt" rad
+typedef   ^                             InitInputType              DbKi                  DT                           -              -        -         "HydroDyn time step" s
+typedef   ^                             InitInputType              IntKi                 UnSum                        -             -1        -         "HydroDyn summary file unit (-1: none)" -
+typedef   ^                             InitInputType              SeaSt_WaveFieldType  *WaveField                    -              -        -         "Pointer to SeaState wave field" -
+
+# ..... Continuous states ...........................................................................................................
+typedef   ^                             ContinuousStateType        R8Ki                  x                           {:}             -        -         "[T(1:NProp), delta(1:NRud), xi_x, xi_y, xi_psi, wave-filtered controller inputs(1:6) if CtrlWaveFc > 0]; see Vessel.f90 header" -
+
+# ..... Parameters .................................................................................................................
+typedef   ^                             ParameterType              IntKi                 BodyID                       -              -        -         "Potential-flow body number of this instance" -
+typedef   ^                             ^                          DbKi                  DT                           -              -        -         "Time step for the integration of the states" s
+typedef   ^                             ^                          ReKi                  FrameSpd                     -              -        -         "Speed of the simulation frame translating along global +X" m/s
+typedef   ^                             ^                          ReKi                  RhoW                         -              -        -         "Water density" kg/m^3
+typedef   ^                             ^                          SeaSt_WaveFieldType  *WaveField                    -              -        -         "Pointer to SeaState wave field" -
+typedef   ^                             ^                          LOGICAL               HasWaves                     -              -        -         "Wave orbital velocity and elevation are evaluated" -
+typedef   ^                             ^                          ReKi                  HullRef                     {3}             -        -         "Hull reference point (midship, waterline) relative to the body reference point, body axes" m
+typedef   ^                             ^                          ReKi                  Lpp                          -              -        -         "Length between perpendiculars" m
+typedef   ^                             ^                          ReKi                  Breadth                      -              -        -         "Breadth" m
+typedef   ^                             ^                          ReKi                  Draft                        -              -        -         "Draft" m
+typedef   ^                             ^                          ReKi                  zH                           -              -        -         "Height of the hull force center relative to the hull reference point, positive up" m
+typedef   ^                             ^                          ReKi                  UMin                         -              -        -         "Regularization speed in the denominators of v' and r'" m/s
+typedef   ^                             ^                          IntKi                 ResMod                       -              -        -         "Calm-water resistance model {1: R0', 2: table}" -
+typedef   ^                             ^                          ReKi                  R0                           -              -        -         "Nondimensional resistance coefficient" -
+typedef   ^                             ^                          ReKi                  ResU                        {:}             -        -         "Speeds of the resistance table" m/s
+typedef   ^                             ^                          ReKi                  ResR                        {:}             -        -         "Resistance of the resistance table" N
+typedef   ^                             ^                          ReKi                  XDer                        {4}             -        -         "X'_vv, X'_vr, X'_rr, X'_vvvv" -
+typedef   ^                             ^                          ReKi                  YDer                        {6}             -        -         "Y'_v, Y'_r, Y'_vvv, Y'_vvr, Y'_vrr, Y'_rrr" -
+typedef   ^                             ^                          ReKi                  NDer                        {6}             -        -         "N'_v, N'_r, N'_vvv, N'_vvr, N'_vrr, N'_rrr" -
+typedef   ^                             ^                          ReKi                  mx                           -              -        -         "MMG surge added mass used in the Coriolis term" kg
+typedef   ^                             ^                          ReKi                  my                           -              -        -         "MMG sway added mass used in the Coriolis term" kg
+typedef   ^                             ^                          IntKi                 NProp                        -              -        -         "Number of propellers" -
+typedef   ^                             ^                          ReKi                  PropPos                     {:}{:}          -        -         "Propeller disk centers relative to the body reference point, body axes" m
+typedef   ^                             ^                          ReKi                  PropD                       {:}             -        -         "Propeller diameters" m
+typedef   ^                             ^                          ReKi                  tP                          {:}             -        -         "Thrust deduction factors" -
+typedef   ^                             ^                          ReKi                  wP0                         {:}             -        -         "Wake fractions in straight motion" -
+typedef   ^                             ^                          ReKi                  C1                          {:}             -        -         "Wake-change coefficient C1" -
+typedef   ^                             ^                          ReKi                  C2Pos                       {:}             -        -         "Wake-change coefficient C2 for beta_P > 0" -
+typedef   ^                             ^                          ReKi                  C2Neg                       {:}             -        -         "Wake-change coefficient C2 for beta_P <= 0" -
+typedef   ^                             ^                          ReKi                  ThrShr                      {:}             -        -         "Thrust shares" -
+typedef   ^                             ^                          IntKi                 PropOWMod                   {:}             -        -         "Open-water data model {0: none, 1: quadratic, 2: table}" -
+typedef   ^                             ^                          ReKi                  KTPoly                      {:}{:}          -        -         "Quadratic K_T coefficients k0, k1, k2" -
+typedef   ^                             ^                          ReKi                  KQPoly                      {:}{:}          -        -         "Quadratic K_Q coefficients q0, q1, q2" -
+typedef   ^                             ^                          OWTableType           OWTbl                       {:}             -        -         "Open-water tables" -
+typedef   ^                             ^                          LOGICAL               HasKQ                       {:}             -        -         "Torque coefficient available" -
+typedef   ^                             ^                          ReKi                  J0                          {:}             -        -         "Zero-thrust advance ratio" -
+typedef   ^                             ^                          ReKi                  RotDir                      {:}             -        -         "Rotation direction {+1: right-handed, -1: left-handed}" -
+typedef   ^                             ^                          ReKi                  EtaR                        {:}             -        -         "Relative rotative efficiency" -
+typedef   ^                             ^                          IntKi                 RudFlag                     {:}             -        -         "Rudder behind the propeller {0: no, 1: yes}" -
+typedef   ^                             ^                          IntKi                 iRudState                   {:}             -        -         "State index of the rudder angle (0: no rudder)" -
+typedef   ^                             ^                          ReKi                  RudPos                      {:}{:}          -        -         "Rudder centers of effort relative to the body reference point, body axes" m
+typedef   ^                             ^                          ReKi                  RudHPos                     {:}{:}          -        -         "Hull-rudder interaction points relative to the body reference point, body axes" m
+typedef   ^                             ^                          ReKi                  RudAR                       {:}             -        -         "Rudder areas" m^2
+typedef   ^                             ^                          ReKi                  RudHR                       {:}             -        -         "Rudder spans" m
+typedef   ^                             ^                          ReKi                  tR                          {:}             -        -         "Rudder steering resistance deduction factors" -
+typedef   ^                             ^                          ReKi                  aH                          {:}             -        -         "Hull-rudder interaction factors" -
+typedef   ^                             ^                          ReKi                  GamRPos                     {:}             -        -         "Flow straightening coefficient for beta_R > 0" -
+typedef   ^                             ^                          ReKi                  GamRNeg                     {:}             -        -         "Flow straightening coefficient for beta_R <= 0" -
+typedef   ^                             ^                          ReKi                  lRnd                        {:}             -        -         "Nondimensional effective longitudinal rudder position l'_R" -
+typedef   ^                             ^                          ReKi                  Eps                         {:}             -        -         "Wake ratio epsilon = (1 - w_R)/(1 - w_P)" -
+typedef   ^                             ^                          ReKi                  Kappa                       {:}             -        -         "Propeller wash coefficient kappa" -
+typedef   ^                             ^                          IntKi                 RudLiftMod                  {:}             -        -         "Rudder force model {1: Fujii, 2: table}" -
+typedef   ^                             ^                          ReKi                  FAlpha                      {:}             -        -         "Rudder lift gradient coefficient" -
+typedef   ^                             ^                          ReKi                  StallAng                    {:}             -        -         "Stall cap of the angle of attack in Fujii mode (0: none)" rad
+typedef   ^                             ^                          RudTableType          RudTbl                      {:}             -        -         "Rudder lift/drag tables" -
+typedef   ^                             ^                          IntKi                 SpdCtrlMod                   -              -        -         "Speed control {0: fixed thrust, 1: x-position hold}" -
+typedef   ^                             ^                          ReKi                  T0                           -              -        -         "Feed-forward total thrust" N
+typedef   ^                             ^                          ReKi                  KPx                          -              -        -         "Proportional gain on x error" N/m
+typedef   ^                             ^                          ReKi                  KIx                          -              -        -         "Integral gain on x error" N/(m.s)
+typedef   ^                             ^                          ReKi                  KDx                          -              -        -         "Derivative gain on x velocity" N/(m/s)
+typedef   ^                             ^                          ReKi                  TauT                         -              -        -         "Thrust lag time constant" s
+typedef   ^                             ^                          ReKi                  TMin                         -              -        -         "Minimum thrust per propeller" N
+typedef   ^                             ^                          ReKi                  TMax                         -              -        -         "Maximum thrust per propeller" N
+typedef   ^                             ^                          IntKi                 AutoPilotMod                 -              -        -         "Steering {0: fixed rudder, 1: heading keeping, 2: track keeping}" -
+typedef   ^                             ^                          ReKi                  Delta0                       -              -        -         "Fixed rudder angle, MMG sign" rad
+typedef   ^                             ^                          ReKi                  PsiRef                       -              -        -         "Heading command" rad
+typedef   ^                             ^                          ReKi                  KPy                          -              -        -         "Track loop proportional gain" rad/m
+typedef   ^                             ^                          ReKi                  KIy                          -              -        -         "Track loop integral gain" rad/(m.s)
+typedef   ^                             ^                          ReKi                  KDy                          -              -        -         "Track loop derivative gain" rad/(m/s)
+typedef   ^                             ^                          ReKi                  PsiCmdMax                    -              -        -         "Heading command limit" rad
+typedef   ^                             ^                          ReKi                  KPpsi                        -              -        -         "Heading loop proportional gain" -
+typedef   ^                             ^                          ReKi                  KIpsi                        -              -        -         "Heading loop integral gain" 1/s
+typedef   ^                             ^                          ReKi                  KDpsi                        -              -        -         "Heading loop yaw-rate gain" s
+typedef   ^                             ^                          ReKi                  TauDelta                     -              -        -         "Rudder actuator time constant" s
+typedef   ^                             ^                          ReKi                  DeltaRateMax                 -              -        -         "Rudder rate limit" rad/s
+typedef   ^                             ^                          ReKi                  DeltaMax                     -              -        -         "Rudder angle limit" rad
+typedef   ^                             ^                          ReKi                  EtaD                         -              -        -         "Propulsive efficiency for delivered power without K_Q data" -
+typedef   ^                             ^                          ReKi                  CtrlWaveFc                   -              -        -         "Cutoff of the first-order wave filter on controller inputs (0: off)" rad/s
+typedef   ^                             ^                          ReKi                  XYH0                        {2}             -        -         "Initial global x,y position of the hull reference point" m
+typedef   ^                             ^                          IntKi                 NRud                         -              -        -         "Number of rudders" -
+typedef   ^                             ^                          IntKi                 iXi                          -              -        -         "State index offset of the controller integrators" -
+typedef   ^                             ^                          IntKi                 iFlt                         -              -        -         "State index offset of the wave-filter states (only used when CtrlWaveFc > 0)" -
+typedef   ^                             ^                          IntKi                 NStates                      -              -        -         "Number of continuous states" -
+
+# ..... Inputs .....................................................................................................................
+typedef   ^                             InputType                  MeshType              Mesh                         -              -        -         "Motion of the body reference point in the inertial frame" -
+
+# ..... Misc/optimization variables (computed in CalcOutput, kept for output channels) ............................................
+typedef   ^                             MiscVarType                GridInterp_MiscVarType WaveField_m                 -              -        -         "Wave field interpolation data" -
+typedef   ^                             ^                          LOGICAL               FirstWarn_Astern             -           .true.      -         "Astern-inflow warning not yet issued" -
+typedef   ^                             ^                          LOGICAL               FirstWarn_Emerged            -           .true.      -         "Emergence warning not yet issued" -
+typedef   ^                             ^                          ReKi                  U                            -              -        -         "Surge velocity relative to the mean current (MMG)" m/s
+typedef   ^                             ^                          ReKi                  Vm                           -              -        -         "Sway velocity relative to the mean current (MMG)" m/s
+typedef   ^                             ^                          ReKi                  R                            -              -        -         "Yaw rate (MMG)" rad/s
+typedef   ^                             ^                          ReKi                  Beta                         -              -        -         "Drift angle" rad
+typedef   ^                             ^                          ReKi                  Hdg                          -              -        -         "Heading (OpenFAST convention)" rad
+typedef   ^                             ^                          ReKi                  XErr                         -              -        -         "x error of the hull reference point" m
+typedef   ^                             ^                          ReKi                  YErr                         -              -        -         "y error of the hull reference point" m
+typedef   ^                             ^                          ReKi                  PsiCmd                       -              -        -         "Heading command" rad
+typedef   ^                             ^                          ReKi                  FHull                       {6}             -        -         "Hull loads about the body reference point, global axes" N,N-m
+typedef   ^                             ^                          ReKi                  FCor                        {6}             -        -         "MMG Coriolis loads about the body reference point, global axes" N,N-m
+typedef   ^                             ^                          ReKi                  FTot                        {6}             -        -         "Total Vessel loads about the body reference point, global axes" N,N-m
+typedef   ^                             ^                          ReKi                  PwrE                         -              -        -         "Effective power" W
+typedef   ^                             ^                          ReKi                  PwrD                         -              -        -         "Delivered power" W
+typedef   ^                             ^                          ReKi                  PrpThr                      {:}             -        -         "Propeller thrust" N
+typedef   ^                             ^                          ReKi                  PrpTCmd                     {:}             -        -         "Propeller thrust command" N
+typedef   ^                             ^                          ReKi                  PrpUA                       {:}             -        -         "Propeller advance speed" m/s
+typedef   ^                             ^                          ReKi                  PrpWP                       {:}             -        -         "Propeller effective wake fraction" -
+typedef   ^                             ^                          ReKi                  PrpPwrT                     {:}             -        -         "Thrust power" W
+typedef   ^                             ^                          ReKi                  PrpPwrIdl                   {:}             -        -         "Ideal actuator-disk power" W
+typedef   ^                             ^                          ReKi                  PrpImm                      {:}             -        -         "Propeller tip immersion" m
+typedef   ^                             ^                          ReKi                  PrpJ                        {:}             -        -         "Advance ratio" -
+typedef   ^                             ^                          ReKi                  PrpRPM                      {:}             -        -         "Shaft speed" rpm
+typedef   ^                             ^                          ReKi                  PrpTrq                      {:}             -        -         "Propeller torque" N-m
+typedef   ^                             ^                          ReKi                  PrpPwrD                     {:}             -        -         "Delivered power" W
+typedef   ^                             ^                          ReKi                  RudAng                      {:}             -        -         "Rudder angle (MMG sign)" rad
+typedef   ^                             ^                          ReKi                  RudCmd                      {:}             -        -         "Rudder angle command (MMG sign)" rad
+typedef   ^                             ^                          ReKi                  RudUR                       {:}             -        -         "Rudder longitudinal inflow" m/s
+typedef   ^                             ^                          ReKi                  RudVR                       {:}             -        -         "Rudder lateral inflow" m/s
+typedef   ^                             ^                          ReKi                  RudAoA                      {:}             -        -         "Rudder angle of attack" rad
+typedef   ^                             ^                          ReKi                  RudFN                       {:}             -        -         "Rudder normal force" N
+typedef   ^                             ^                          ReKi                  RudFT                       {:}             -        -         "Rudder tangential force" N
+typedef   ^                             ^                          ReKi                  RudImm                      {:}             -        -         "Rudder top immersion" m

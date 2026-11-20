@@ -1116,6 +1116,13 @@ end if
          !   added mass matrix, HdroAdMsI, based on the highest frequency available:
       p%HdroAdMsI = HdroAddMs(NInpFreq,:,:)
 
+      if ( allocated( InitInp%VesselMod ) ) then
+         if ( any( InitInp%VesselMod(1:p%NBody) == 1 ) ) then
+            call AllocAry( p%HdroAdMs0, p%NDOF, p%NDOF, 'p%HdroAdMs0', ErrStat2, ErrMsg2 ); if (Failed()) return
+            p%HdroAdMs0 = HdroAddMs(1,:,:)
+         end if
+      end if
+
       if ( FwdSpd ) then
             ! The forward-speed instantaneous terms are gyroscopic only for a symmetric A_inf
          p%HdroAdMsI = 0.5_SiKi*( p%HdroAdMsI + transpose( p%HdroAdMsI ) )

@@ -140,6 +140,7 @@ IMPLICIT NONE
     REAL(SiKi) , DIMENSION(:,:,:,:,:), ALLOCATABLE  :: WaveExctnGrid      !< WaveExctnGrid dimensions are: 1st: wavetime, 2nd: X, 3rd: Y, 4th: PRP Yaw, 5th: Force component for eac WAMIT Body [-]
     REAL(SiKi) , DIMENSION(:,:,:,:,:), ALLOCATABLE  :: WaveExctnFspGrid      !< Forward-speed diffraction correction on the WaveExctnGrid grid [allocated only when used] [-]
     REAL(ReKi) , DIMENSION(:,:), ALLOCATABLE  :: DU      !< Forward-speed instantaneous left-factor matrix incl. the planar quasi-steady subtraction, applied to the body-axis radiation input [allocated only when used] [-]
+    REAL(SiKi) , DIMENSION(:,:), ALLOCATABLE  :: HdroAdMs0      !< Zero-frequency added mass, used by the Vessel submodule [allocated only when a body has VesselMod=1] [-]
     TYPE(Conv_Rdtn_ParameterType)  :: Conv_Rdtn      !<  [-]
     TYPE(SS_Rad_ParameterType)  :: SS_Rdtn      !<  [-]
     TYPE(SS_Exc_ParameterType)  :: SS_Exctn      !<  [-]
@@ -1087,6 +1088,18 @@ subroutine WAMIT_CopyParam(SrcParamData, DstParamData, CtrlCode, ErrStat, ErrMsg
       end if
       DstParamData%DU = SrcParamData%DU
    end if
+   if (allocated(SrcParamData%HdroAdMs0)) then
+      LB(1:2) = lbound(SrcParamData%HdroAdMs0)
+      UB(1:2) = ubound(SrcParamData%HdroAdMs0)
+      if (.not. allocated(DstParamData%HdroAdMs0)) then
+         allocate(DstParamData%HdroAdMs0(LB(1):UB(1),LB(2):UB(2)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstParamData%HdroAdMs0.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstParamData%HdroAdMs0 = SrcParamData%HdroAdMs0
+   end if
    call Conv_Rdtn_CopyParam(SrcParamData%Conv_Rdtn, DstParamData%Conv_Rdtn, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
@@ -1165,6 +1178,9 @@ subroutine WAMIT_DestroyParam(ParamData, ErrStat, ErrMsg)
    if (allocated(ParamData%DU)) then
       deallocate(ParamData%DU)
    end if
+   if (allocated(ParamData%HdroAdMs0)) then
+      deallocate(ParamData%HdroAdMs0)
+   end if
    call Conv_Rdtn_DestroyParam(ParamData%Conv_Rdtn, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    call SS_Rad_DestroyParam(ParamData%SS_Rdtn, ErrStat2, ErrMsg2)
@@ -1207,6 +1223,7 @@ subroutine WAMIT_PackParam(RF, Indata)
    call RegPackAlloc(RF, InData%WaveExctnGrid)
    call RegPackAlloc(RF, InData%WaveExctnFspGrid)
    call RegPackAlloc(RF, InData%DU)
+   call RegPackAlloc(RF, InData%HdroAdMs0)
    call Conv_Rdtn_PackParam(RF, InData%Conv_Rdtn) 
    call SS_Rad_PackParam(RF, InData%SS_Rdtn) 
    call SS_Exc_PackParam(RF, InData%SS_Exctn) 
@@ -1255,6 +1272,7 @@ subroutine WAMIT_UnPackParam(RF, OutData)
    call RegUnpackAlloc(RF, OutData%WaveExctnGrid); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%WaveExctnFspGrid); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%DU); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%HdroAdMs0); if (RegCheckErr(RF, RoutineName)) return
    call Conv_Rdtn_UnpackParam(RF, OutData%Conv_Rdtn) ! Conv_Rdtn 
    call SS_Rad_UnpackParam(RF, OutData%SS_Rdtn) ! SS_Rdtn 
    call SS_Exc_UnpackParam(RF, OutData%SS_Exctn) ! SS_Exctn 

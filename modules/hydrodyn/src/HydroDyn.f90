@@ -35,6 +35,7 @@ MODULE HydroDyn
    USE HydroDyn_Output
    USE YawOffset
    USE NonlinearFK
+   USE Vessel
 
 #ifdef USE_FIT
    USE FIT_MODULES
@@ -320,6 +321,7 @@ SUBROUTINE HydroDyn_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, I
                call AllocAry( InputFileData%WAMIT%NAddDOF     , InputFileData%NBody, "NAddDOF"     , ErrStat2, ErrMsg2 ); call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
                CALL AllocAry( InputFileData%WAMIT%FKMod       , InputFileData%NBody, 'FKMod'       , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
                CALL AllocAry( InputFileData%WAMIT%FwdSpdMod   , InputFileData%NBody, 'FwdSpdMod'   , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+               CALL AllocAry( InputFileData%WAMIT%VesselMod   , InputFileData%NBody, 'VesselMod'   , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
                allocate( p%WAMIT(         1), stat = ErrStat2 ); if (ErrStat2 /=0) call SetErrStat( ErrID_Fatal, 'Failed to allocate array p%WAMIT.', ErrStat, ErrMsg, RoutineName )
                allocate( x%WAMIT(         1), stat = ErrStat2 ); if (ErrStat2 /=0) call SetErrStat( ErrID_Fatal, 'Failed to allocate array x%WAMIT.', ErrStat, ErrMsg, RoutineName )
                allocate( xd%WAMIT(        1), stat = ErrStat2 ); if (ErrStat2 /=0) call SetErrStat( ErrID_Fatal, 'Failed to allocate array xd%WAMIT.', ErrStat, ErrMsg, RoutineName )
@@ -339,6 +341,7 @@ SUBROUTINE HydroDyn_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, I
                InputFileData%WAMIT%NAddDOF        = InputFileData%NAddDOF
                InputFileData%WAMIT%FKMod          = InputFileData%FKMod
                InputFileData%WAMIT%FwdSpdMod      = InputFileData%FwdSpdMod
+               InputFileData%WAMIT%VesselMod      = InputFileData%VesselMod
             else
                InputFileData%WAMIT%NBody    = 1    ! Each WAMIT object will only contain one of the NBody WAMIT bodies
 
@@ -353,6 +356,7 @@ SUBROUTINE HydroDyn_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, I
                call AllocAry( InputFileData%WAMIT%NAddDOF     , 1, "NAddDOF"     , ErrStat2, ErrMsg2 ); call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
                CALL AllocAry( InputFileData%WAMIT%FKMod       , 1, 'FKMod'       , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
                CALL AllocAry( InputFileData%WAMIT%FwdSpdMod   , 1, 'FwdSpdMod'   , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+               CALL AllocAry( InputFileData%WAMIT%VesselMod   , 1, 'VesselMod'   , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
                allocate( p%WAMIT(         InputFileData%NBody), stat = ErrStat2 ); if (ErrStat2 /=0) call SetErrStat( ErrID_Fatal, 'Failed to allocate array p%WAMIT.', ErrStat, ErrMsg, RoutineName )
                allocate( x%WAMIT(         InputFileData%NBody), stat = ErrStat2 ); if (ErrStat2 /=0) call SetErrStat( ErrID_Fatal, 'Failed to allocate array x%WAMIT.', ErrStat, ErrMsg, RoutineName )
                allocate( xd%WAMIT(        InputFileData%NBody), stat = ErrStat2 ); if (ErrStat2 /=0) call SetErrStat( ErrID_Fatal, 'Failed to allocate array xd%WAMIT.', ErrStat, ErrMsg, RoutineName )
@@ -371,6 +375,7 @@ SUBROUTINE HydroDyn_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, I
                InputFileData%WAMIT%NAddDOF     (1)  = InputFileData%NAddDOF     (1)
                InputFileData%WAMIT%FKMod       (1)  = InputFileData%FKMod       (1)
                InputFileData%WAMIT%FwdSpdMod   (1)  = InputFileData%FwdSpdMod   (1)
+               InputFileData%WAMIT%VesselMod   (1)  = InputFileData%VesselMod   (1)
             end if
             
             if ( ErrStat >= AbortErrLev ) then
@@ -404,6 +409,7 @@ SUBROUTINE HydroDyn_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, I
                 InputFileData%WAMIT%NAddDOF     (1)  = InputFileData%NAddDOF     (i)
                 InputFileData%WAMIT%FKMod       (1)  = InputFileData%FKMod       (i)
                 InputFileData%WAMIT%FwdSpdMod   (1)  = InputFileData%FwdSpdMod   (i)
+                InputFileData%WAMIT%VesselMod   (1)  = InputFileData%VesselMod   (i)
  
                 CALL WAMIT_Init(InputFileData%WAMIT, m%u_WAMIT(i), p%WAMIT(i), x%WAMIT(i), xd%WAMIT(i), z%WAMIT, OtherState%WAMIT(i), &
                                         y%WAMIT(i), m%WAMIT(i), Interval, ErrStat2, ErrMsg2 )
@@ -590,6 +596,8 @@ SUBROUTINE HydroDyn_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, I
                     end select
                 end do
             END IF
+
+            call InitVessels(); if ( ErrStat >= AbortErrLev ) return
 
 #ifdef USE_FIT 
          ELSE IF ( InputFileData%PotMod == 2  ) THEN  ! FIT 
@@ -937,6 +945,60 @@ SUBROUTINE HydroDyn_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, I
          
 CONTAINS
 !................................
+   !> One independent Vessel instance per potential-flow body with VesselMod=1
+   SUBROUTINE InitVessels()
+      TYPE(Vessel_InitInputType) :: VslInitInp
+      INTEGER(IntKi)             :: iVsl, iObj, iDOF
+
+      p%NVessel = count( InputFileData%VesselMod(1:p%NBody) == 1 )
+      if ( p%NVessel == 0 ) return
+      allocate( p%Vessel(p%NVessel), x%Vessel(p%NVessel), m%Vessel(p%NVessel), m%u_Vessel(p%NVessel), stat = ErrStat2 )
+      if ( ErrStat2 /= 0 ) then
+         call SetErrStat( ErrID_Fatal, 'Failed to allocate the Vessel arrays.', ErrStat, ErrMsg, RoutineName )
+         call CleanUp()
+         return
+      end if
+      call AllocAry( p%VslBody, p%NVessel, 'p%VslBody', ErrStat2, ErrMsg2 ); call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+      if ( ErrStat >= AbortErrLev ) then
+         call CleanUp()
+         return
+      end if
+
+      VslInitInp%OutRootName =  InitInp%OutRootName
+      VslInitInp%FrameSpd    =  InitInp%FrameSpd
+      VslInitInp%PlatformPos =  InitInp%PlatformPos
+      VslInitInp%DT          =  p%DT
+      VslInitInp%UnSum       =  InputFileData%UnSum
+      VslInitInp%WaveField   => InitInp%WaveField
+      iVsl = 0
+      do iBody = 1, p%NBody
+         if ( InputFileData%VesselMod(iBody) /= 1 ) cycle
+         iVsl = iVsl + 1
+         p%VslBody(iVsl) = iBody
+            ! Zero-frequency added mass of this body (its diagonal block when NBodyMod=1)
+         if ( p%NBodyMod == 1 ) then
+            iObj = 1
+            iDOF = p%WAMIT(1)%BDOFStrt(iBody) - 1
+         else
+            iObj = iBody
+            iDOF = 0
+         end if
+         VslInitInp%InputFile    = InputFileData%VesselFile(iBody)
+         VslInitInp%BodyID       = iBody
+         VslInitInp%BodyRefPos   = (/ InputFileData%PtfmRefxt(iBody), InputFileData%PtfmRefyt(iBody), InputFileData%PtfmRefzt(iBody) /)
+         VslInitInp%PtfmRefztRot = InputFileData%PtfmRefztRot(iBody)
+         VslInitInp%A0Surge      = p%WAMIT(iObj)%HdroAdMs0(iDOF+1,iDOF+1)
+         VslInitInp%A0Sway       = p%WAMIT(iObj)%HdroAdMs0(iDOF+2,iDOF+2)
+         call Vessel_Init( VslInitInp, m%u_Vessel(iVsl), p%Vessel(iVsl), x%Vessel(iVsl), m%Vessel(iVsl), ErrStat2, ErrMsg2 )
+         call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+         if ( ErrStat >= AbortErrLev ) then
+            call CleanUp()
+            return
+         end if
+      end do
+      nullify( VslInitInp%WaveField )
+   END SUBROUTINE InitVessels
+!................................
    SUBROUTINE CleanUp()
       ! Use DEALLOCATEpointers = .false.
       ! NOTE: All of the pointer data originated in SeaState, and SeaState is responsible for deallocating the data
@@ -1036,6 +1098,9 @@ subroutine HydroDyn_InitVars(Vars, u, p, x, y, m, InitOut, InputFileData, Linear
    character(10)                 :: BodyDesc
    character(10), parameter      :: dofLabels(6) = &
       ['PtfmSg', 'PtfmSw', 'PtfmHv', 'PtfmR ', 'PtfmP ', 'PtfmY ']
+   real(R8Ki),    parameter      :: FltPerturb(6) = [1.0e-2_R8Ki, 1.0e-2_R8Ki, 1.0e-2_R8Ki, 1.0e-2_R8Ki, 1.0e-3_R8Ki, 1.0e-4_R8Ki]
+   character(24), parameter      :: FltNames(6) = [character(24) :: &
+      'VslFltXErr, m', 'VslFltXVel, m/s', 'VslFltYErr, m', 'VslFltYVel, m/s', 'VslFltHdg, rad', 'VslFltYawRate, rad/s']
 
    ErrStat = ErrID_None
    ErrMsg = ""
@@ -1077,6 +1142,35 @@ subroutine HydroDyn_InitVars(Vars, u, p, x, y, m, InitOut, InputFileData, Linear
                      Num=p%WAMIT(k)%SS_Rdtn%numStates, &
                      Perturb=2.0_R8Ki * D2R_D , &
                      LinNames=[((MV_LinName(trim(BodyDesc)//'Rdtn'//trim(dofLabels(j))//Num2LStr(i)), i = 1, p%WAMIT(k)%SS_Rdtn%spDOF(j)), j = 1, 6)])
+   end do
+
+   ! Vessel thrust, rudder angle, controller integrator and wave-filter states
+   do k = 1, p%NVessel
+      associate( pV => p%Vessel(k) )
+      BodyDesc = 'B'//trim(Num2LStr(p%VslBody(k)))
+      call MV_AddVar(Vars%x, "Vessel("//trim(Num2LStr(k))//")%Thrust", FieldScalar, DatLoc(HydroDyn_x_Vessel_x, k), &
+                     Flags=VF_DerivOrder1, Num=pV%NProp, iAry=1, Perturb=1.0e-3_R8Ki*max(real(pV%TMax,R8Ki),1.0_R8Ki), &
+                     LinNames=[(MV_LinName(trim(BodyDesc)//'Prp'//trim(Num2LStr(i))//'Thr, N'), i = 1, pV%NProp)])
+      call MV_AddVar(Vars%x, "Vessel("//trim(Num2LStr(k))//")%Rudder", FieldScalar, DatLoc(HydroDyn_x_Vessel_x, k), &
+                     Flags=VF_DerivOrder1, Num=pV%NRud, iAry=pV%NProp+1, Perturb=0.2_R8Ki*D2R_D, &
+                     LinNames=[(MV_LinName(trim(BodyDesc)//'Rud'//trim(Num2LStr(RudderIndex(pV, i)))//'Ang, rad'), i = 1, pV%NRud)])
+      call MV_AddVar(Vars%x, "Vessel("//trim(Num2LStr(k))//")%XiX", FieldScalar, DatLoc(HydroDyn_x_Vessel_x, k), &
+                     Flags=VF_DerivOrder1, Num=1, iAry=pV%iXi+1, Perturb=0.1_R8Ki, &
+                     LinNames=[MV_LinName(trim(BodyDesc)//'VslXiX, m-s')])
+      call MV_AddVar(Vars%x, "Vessel("//trim(Num2LStr(k))//")%XiY", FieldScalar, DatLoc(HydroDyn_x_Vessel_x, k), &
+                     Flags=VF_DerivOrder1, Num=1, iAry=pV%iXi+2, Perturb=0.1_R8Ki, &
+                     LinNames=[MV_LinName(trim(BodyDesc)//'VslXiY, m-s')])
+      call MV_AddVar(Vars%x, "Vessel("//trim(Num2LStr(k))//")%XiPsi", FieldScalar, DatLoc(HydroDyn_x_Vessel_x, k), &
+                     Flags=VF_DerivOrder1, Num=1, iAry=pV%iXi+3, Perturb=1.0e-3_R8Ki, &
+                     LinNames=[MV_LinName(trim(BodyDesc)//'VslXiPsi, rad-s')])
+      if ( pV%CtrlWaveFc > 0.0_ReKi ) then
+         do i = 1, 6
+            call MV_AddVar(Vars%x, "Vessel("//trim(Num2LStr(k))//")%Filter"//trim(Num2LStr(i)), FieldScalar, DatLoc(HydroDyn_x_Vessel_x, k), &
+                           Flags=VF_DerivOrder1, Num=1, iAry=pV%iFlt+i, Perturb=FltPerturb(i), &
+                           LinNames=[MV_LinName(trim(BodyDesc)//trim(FltNames(i)))])
+         end do
+      end if
+      end associate
    end do
 
    !----------------------------------------------------------------------------
@@ -1180,6 +1274,16 @@ contains
       integer(IntKi), intent(in) :: idx
       WriteOutputLinName = trim(InitOut%WriteOutputHdr(idx))//', '//trim(InitOut%WriteOutputUnt(idx))
    end function
+   !> Propeller index of the iRud-th rudder state
+   integer(IntKi) function RudderIndex(pV, iRud)
+      type(Vessel_ParameterType), intent(in) :: pV
+      integer(IntKi),             intent(in) :: iRud
+      integer(IntKi)                         :: iProp
+      RudderIndex = 0
+      do iProp = 1, pV%NProp
+         if (pV%iRudState(iProp) == pV%NProp + iRud) RudderIndex = iProp
+      end do
+   end function
    logical function Failed()
       call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName) 
       Failed =  ErrStat >= AbortErrLev
@@ -1211,6 +1315,7 @@ SUBROUTINE HydroDyn_UpdateStates( t, n, Inputs, InputTimes, p, x, xd, z, OtherSt
 
          ! Local variables
       INTEGER                                            :: I, iWAMIT       ! Generic loop counters
+      INTEGER                                            :: iVsl, iBody
       INTEGER                                            :: AddDOFCntr
       INTEGER(IntKi)                                     :: ErrStat2        ! Error status of the operation (secondary error)
       CHARACTER(ErrMsgLen)                               :: ErrMsg2         ! Error message if ErrStat2 /= ErrID_None
@@ -1218,6 +1323,7 @@ SUBROUTINE HydroDyn_UpdateStates( t, n, Inputs, InputTimes, p, x, xd, z, OtherSt
 
       REAL(R8Ki)                                         :: PRPRotation(3)
 
+      TYPE(Vessel_InputType), ALLOCATABLE                :: Inputs_Vessel(:)
       TYPE(WAMIT_InputType), ALLOCATABLE                 :: Inputs_WAMIT(:)  
       TYPE(Morison_InputType), ALLOCATABLE               :: Inputs_Morison(:)  
       TYPE(Morison_InputType)                            :: u_Morison
@@ -1416,6 +1522,34 @@ SUBROUTINE HydroDyn_UpdateStates( t, n, Inputs, InputTimes, p, x, xd, z, OtherSt
          
          end if
 
+            ! Vessel controller and actuator states (RK4 over the interval, re-entrant)
+         do iVsl = 1, p%NVessel
+            iBody = p%VslBody(iVsl)
+            ALLOCATE( Inputs_Vessel(nTime), STAT = ErrStat2 )
+            IF (ErrStat2 /=0) THEN
+               CALL SetErrStat( ErrID_Fatal, 'Failed to allocate array Inputs_Vessel.', ErrStat, ErrMsg, RoutineName )
+               RETURN
+            END IF
+            do I=1,nTime
+               call MeshCopy( m%u_Vessel(iVsl)%Mesh, Inputs_Vessel(I)%Mesh, MESH_NEWCOPY, ErrStat2, ErrMsg2 )
+                  call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+               if (ErrStat >= AbortErrLev) exit
+               Inputs_Vessel(I)%Mesh%TranslationDisp(:,1)  = Inputs(I)%WAMITMesh%TranslationDisp(:,iBody)
+               Inputs_Vessel(I)%Mesh%Orientation    (:,:,1)= Inputs(I)%WAMITMesh%Orientation    (:,:,iBody)
+               Inputs_Vessel(I)%Mesh%TranslationVel (:,1)  = Inputs(I)%WAMITMesh%TranslationVel (:,iBody)
+               Inputs_Vessel(I)%Mesh%RotationVel    (:,1)  = Inputs(I)%WAMITMesh%RotationVel    (:,iBody)
+            end do
+            if (ErrStat < AbortErrLev) then
+               call Vessel_UpdateStates( t, Inputs_Vessel, InputTimes, p%Vessel(iVsl), x%Vessel(iVsl), ErrStat2, ErrMsg2 )
+                  call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+            end if
+            do I=1,nTime
+               call Vessel_DestroyInput( Inputs_Vessel(I), ErrStat2, ErrMsg2 )
+            end do
+            deallocate(Inputs_Vessel)
+            if (ErrStat >= AbortErrLev) return
+         end do
+
 #ifdef USE_FIT      
    ELSE IF ( p%PotMod == 2 ) THEN  ! FIT
       
@@ -1528,6 +1662,8 @@ SUBROUTINE HydroDyn_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat,
 
       REAL(ReKi)                           :: NLFKForce(3,p%NBody)
       REAL(ReKi)                           :: NLFKMoment(3,p%NBody)
+      REAL(ReKi)                           :: VslForce(3), VslMoment(3)
+      INTEGER(IntKi)                       :: iVsl
 
       CHARACTER(*),    PARAMETER           :: RoutineName = 'HydroDyn_CalcOutput'
       REAL(ReKi),      PARAMETER           :: LrgAngle = 0.261799387799149            ! Threshold for platform roll and pitch rotation (15 deg). This is consistent with the ElastoDyn check.
@@ -1859,6 +1995,16 @@ SUBROUTINE HydroDyn_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat,
             end do
          end if
 
+         ! Vessel (MMG) hull, propeller and rudder loads at the reference point of their body
+         do iVsl = 1, p%NVessel
+            iBody = p%VslBody(iVsl)
+            call SetVesselInput( u, iBody, m%u_Vessel(iVsl) )
+            call Vessel_CalcOutput( Time, m%u_Vessel(iVsl), p%Vessel(iVsl), x%Vessel(iVsl), m%Vessel(iVsl), VslForce, VslMoment, ErrStat2, ErrMsg2 )
+            if (Failed()) return
+            y%WAMITMesh%Force (:,iBody) = y%WAMITMesh%Force (:,iBody) + VslForce
+            y%WAMITMesh%Moment(:,iBody) = y%WAMITMesh%Moment(:,iBody) + VslMoment
+         end do
+
 #ifdef USE_FIT          
       ELSE IF ( p%PotMod ==2 ) THEN !FIT
          Inputs_FIT%roll     = rotdisp(1)
@@ -1941,6 +2087,7 @@ SUBROUTINE HydroDyn_CalcContStateDeriv( Time, u, p, x, xd, z, OtherState, m, dxd
       INTEGER(IntKi),                     INTENT(  OUT)  :: ErrStat     !< Error status of the operation     
       CHARACTER(*),                       INTENT(  OUT)  :: ErrMsg      !< Error message if ErrStat /= ErrID_None
       integer(IntKi)             :: iWAMIT        ! loop counter
+      integer(IntKi)             :: iVsl
       CHARACTER(*), PARAMETER    :: RoutineName = 'HydroDyn_CalcContStateDeriv'
                
          ! Initialize ErrStat
@@ -1983,8 +2130,28 @@ SUBROUTINE HydroDyn_CalcContStateDeriv( Time, u, p, x, xd, z, OtherState, m, dxd
       end do
          
    end if
+
+   if ( ErrStat >= AbortErrLev ) return
+   do iVsl = 1, p%NVessel
+      call SetVesselInput( u, p%VslBody(iVsl), m%u_Vessel(iVsl) )
+      call Vessel_CalcContStateDeriv( m%u_Vessel(iVsl), p%Vessel(iVsl), x%Vessel(iVsl), dxdt%Vessel(iVsl), ErrStat, ErrMsg )
+      if ( ErrStat >= AbortErrLev ) return
+   end do
    
 END SUBROUTINE HydroDyn_CalcContStateDeriv
+
+!----------------------------------------------------------------------------------------------------------------------------------
+!> Copies the motion of potential-flow body iBody into the one-node input mesh of a Vessel instance.
+SUBROUTINE SetVesselInput( u, iBody, u_Vessel )
+   TYPE(HydroDyn_InputType), INTENT(IN   ) :: u
+   INTEGER(IntKi),           INTENT(IN   ) :: iBody
+   TYPE(Vessel_InputType),   INTENT(INOUT) :: u_Vessel
+
+   u_Vessel%Mesh%TranslationDisp(:,1)   = u%WAMITMesh%TranslationDisp(:,iBody)
+   u_Vessel%Mesh%Orientation    (:,:,1) = u%WAMITMesh%Orientation    (:,:,iBody)
+   u_Vessel%Mesh%TranslationVel (:,1)   = u%WAMITMesh%TranslationVel (:,iBody)
+   u_Vessel%Mesh%RotationVel    (:,1)   = u%WAMITMesh%RotationVel    (:,iBody)
+END SUBROUTINE SetVesselInput
 
 
 
@@ -2216,12 +2383,13 @@ SUBROUTINE HD_JacobianPInput(Vars, t, u, p, x, xd, z, OtherState, y, m, ErrStat,
       offsetI = 0
       dXdu = 0.0_R8Ki
 
-      FrameFD = .false.
-      if ( p%totalRdtnStates > 0 ) FrameFD = .not. EqualRealNos( p%WAMIT(1)%FrameSpd, 0.0_ReKi )
+      FrameFD = p%NVessel > 0
+      if ( p%totalRdtnStates > 0 ) FrameFD = FrameFD .or. .not. EqualRealNos( p%WAMIT(1)%FrameSpd, 0.0_ReKi )
 
       if ( FrameFD ) then
 
-         ! Radiation input depends on body orientation and on velocity relative to the stream: central differences
+         ! Radiation input depends on body orientation and on velocity relative to the stream, and Vessel states on the
+         !   body motion: central differences
          do i = 1, size(Vars%u)
             if (MV_HasFlagsAll(Vars%u(i), VF_ExtLin)) cycle
             do j = 1, Vars%u(i)%Num
@@ -2238,6 +2406,14 @@ SUBROUTINE HD_JacobianPInput(Vars, t, u, p, x, xd, z, OtherState, y, m, ErrStat,
                col = Vars%u(i)%iLoc(1) + j - 1
                dXdu(:,col) = (m%Jac%x_pos - m%Jac%x_neg) / (2.0_R8Ki * Vars%u(i)%Perturb)
             end do
+         end do
+
+         ! State-space excitation is driven by the extended wave-elevation input only
+         do j = 1,p%nWAMITObj
+            do i = 1,p%WAMIT(j)%SS_Exctn%numStates
+               dXdu(offsetI+i,m%Jac%Nu) = p%WAMIT(j)%SS_Exctn%B(i)
+            end do
+            offsetI = offsetI + p%WAMIT(j)%SS_Exctn%numStates
          end do
 
       else
@@ -2453,6 +2629,25 @@ SUBROUTINE HD_JacobianPContState(Vars, t, u, p, x, xd, z, OtherState, y, m, ErrS
             sOffset = sOffset + p%WAMIT(k)%SS_Rdtn%numStates
          end do
       end if
+
+      ! Vessel states: central differences (they do not couple with the state-space states)
+      do i = 1, size(Vars%x)
+         if ( Vars%x(i)%DL%Num /= HydroDyn_x_Vessel_x ) cycle
+         do j = 1, Vars%x(i)%Num
+            call MV_Perturb(Vars%x(i), j, 1, m%Jac%x, m%Jac%x_perturb)
+            call HydroDyn_VarsUnpackContState(Vars, m%Jac%x_perturb, m%x_perturb)
+            call HydroDyn_CalcContStateDeriv(t, u, p, m%x_perturb, xd, z, OtherState, m, m%dxdt_lin, ErrStat2, ErrMsg2); if (Failed()) return
+            call HydroDyn_VarsPackContStateDeriv(Vars, m%dxdt_lin, m%Jac%x_pos)
+
+            call MV_Perturb(Vars%x(i), j, -1, m%Jac%x, m%Jac%x_perturb)
+            call HydroDyn_VarsUnpackContState(Vars, m%Jac%x_perturb, m%x_perturb)
+            call HydroDyn_CalcContStateDeriv(t, u, p, m%x_perturb, xd, z, OtherState, m, m%dxdt_lin, ErrStat2, ErrMsg2); if (Failed()) return
+            call HydroDyn_VarsPackContStateDeriv(Vars, m%dxdt_lin, m%Jac%x_neg)
+
+            col = Vars%x(i)%iLoc(1) + j - 1
+            dXdx(:,col) = (m%Jac%x_pos - m%Jac%x_neg) / (2.0_R8Ki * Vars%x(i)%Perturb)
+         end do
+      end do
       
    END IF
 
