@@ -29,6 +29,7 @@ MODULE WAMIT
    USE SS_Radiation
    USE SS_Excitation
    USE NWTC_FFTPACK
+   USE NWTC_LAPACK
    USE YawOffset
    
    IMPLICIT NONE
@@ -293,6 +294,10 @@ SUBROUTINE WAMIT_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, ErrS
       character(*), parameter                :: RoutineName = 'WAMIT_Init'
 
       character(4)                           :: dot3ext
+      REAL(SiKi), ALLOCATABLE                :: UPt(:,:)                             ! FrameSpd times the transposed steady-stream operator P (block diagonal over bodies with FwdSpdMod=1)
+      COMPLEX(SiKi), ALLOCATABLE             :: HdroExctnD(:,:,:)                    ! Scattering-only excitation per unit wave amplitude, used by the forward-speed diffraction correction
+      LOGICAL                                :: FwdSpd                               ! Forward-speed O(U) corrections active for at least one body
+      LOGICAL                                :: FspExctn                             ! Forward-speed diffraction correction active
 
          ! Initialize data
          
@@ -370,12 +375,30 @@ SUBROUTINE WAMIT_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, ErrS
          return
       end if
 
+      FwdSpd   = .false.
+      FspExctn = .false.
+      if ( .not. EqualRealNos( p%FrameSpd, 0.0_ReKi ) .and. allocated( InitInp%FwdSpdMod ) ) FwdSpd = any( InitInp%FwdSpdMod(1:p%NBody) == 1 )
+      if ( FwdSpd ) then
+         call AllocAry( UPt, p%NDOF, p%NDOF, 'UPt', ErrStat2, ErrMsg2 ); if (Failed()) return
+         UPt = 0.0_SiKi
+         do iBody = 1, p%NBody
+            if ( InitInp%FwdSpdMod(iBody) /= 1 ) cycle
+            iDOF = p%BDOFStrt(iBody) - 1
+            UPt(iDOF+5,iDOF+3) =  p%FrameSpd   ! P35 = +1
+            UPt(iDOF+6,iDOF+2) = -p%FrameSpd   ! P26 = -1
+            if ( .not. EqualRealNos( InitInp%PtfmRefztRot(iBody), 0.0_R8Ki ) ) &
+               call SetErrStat( ErrID_Warn, 'FwdSpdMod=1 assumes the potential-flow body is aligned with the frame motion (+X), but PtfmRefztRot is nonzero.', ErrStat, ErrMsg, RoutineName )
+         end do
+      end if
+
          ! Allocate misc var and parameter vectors/matrices
       call AllocAry( p%F_HS_Moment_Offset,  6, p%NBody, 'p%F_HS_Moment_Offset', ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
       call AllocAry( m%F_HS              ,  p%NDOF, 'm%F_HS'              , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
       call AllocAry( m%F_Waves1          ,  p%NDOF, 'm%F_Waves1'          , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
       call AllocAry( m%F_Rdtn            ,  p%NDOF, 'm%F_Rdtn'            , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
       call AllocAry( m%F_PtfmAM          ,  p%NDOF, 'm%F_PtfmAM'          , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+      call AllocAry( m%F_Fsp             ,  p%NDOF, 'm%F_Fsp'             , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
+      if (allocated(m%F_Fsp)) m%F_Fsp = 0.0_ReKi
       call AllocAry( p%HdroAdMsI,    p%NDOF,p%NDOF, 'p%HdroAdMsI'         , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
       call AllocAry( p%HdroSttc ,    p%NDOF,p%NDOF, 'p%HdroSttc'          , ErrStat2, ErrMsg2 ); CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
 
@@ -1048,6 +1071,26 @@ end if
 
       END DO                   ! I - All input frequency components
 
+         ! The forward-speed diffraction correction needs the scattering-only excitation: the .3sc data, either as the
+         !   excitation itself (FKMod=1) or from <WAMITFile>.3sc alongside the .3 total (FKMod=0)
+      if ( FwdSpd .and. p%ExctnMod == 1 .and. p%WaveField%WaveMod /= WaveMod_None ) then
+         if ( p%FKMod(1) == FKMod_full ) then
+            FspExctn = .true.
+         else
+            inquire( file=TRIM(InitInp%WAMITFile)//'.3sc', exist=FspExctn )
+            if ( FspExctn ) then
+               call ReadScatteringExctn()
+               if ( ErrStat >= AbortErrLev ) then
+                  call Cleanup()
+                  return
+               end if
+            else
+               call SetErrStat( ErrID_Warn, 'FwdSpdMod=1 with FKMod=0, but "'//TRIM(InitInp%WAMITFile)//'.3sc" was not found: the forward-speed '// &
+                                'diffraction correction is skipped (the pitch and yaw wave excitation lack their O(U) diffraction terms).', ErrStat, ErrMsg, RoutineName )
+            end if
+         end if
+      end if
+
 
       
             ! Tell our nice users what is about to happen that may take a while:
@@ -1070,6 +1113,24 @@ end if
          ! Set the infinite-frequency limit of the frequency-dependent hydrodynamic
          !   added mass matrix, HdroAdMsI, based on the highest frequency available:
       p%HdroAdMsI = HdroAddMs(NInpFreq,:,:)
+
+      if ( FwdSpd ) then
+            ! The forward-speed instantaneous terms are gyroscopic only for a symmetric A_inf
+         p%HdroAdMsI = 0.5_SiKi*( p%HdroAdMsI + transpose( p%HdroAdMsI ) )
+
+            ! D_U = U P^T A_inf minus, for bodies with a Vessel model, the planar quasi-steady left factor of the port-starboard
+            !   symmetric zero-frequency block (yaw row only; the asymmetric A0_21 term is retained)
+         call AllocAry( p%DU, p%NDOF, p%NDOF, 'p%DU', ErrStat2, ErrMsg2 ); if (Failed()) return
+         p%DU = matmul( UPt, p%HdroAdMsI )
+         if ( allocated( InitInp%VesselMod ) ) then
+            do iBody = 1, p%NBody
+               if ( InitInp%FwdSpdMod(iBody) /= 1 .or. InitInp%VesselMod(iBody) /= 1 ) cycle
+               iDOF = p%BDOFStrt(iBody) - 1
+               p%DU(iDOF+6,iDOF+2) = p%DU(iDOF+6,iDOF+2) + p%FrameSpd*HdroAddMs(1,iDOF+2,iDOF+2)
+               p%DU(iDOF+6,iDOF+6) = p%DU(iDOF+6,iDOF+6) + p%FrameSpd*HdroAddMs(1,iDOF+2,iDOF+6)
+            end do
+         end if
+      end if
 
       if ( ( p%ExctnMod == 0 ) ) then
          
@@ -1202,58 +1263,18 @@ end if
                !====================================
                
                if ( p%NBodyMod == 2 ) then
-                  
                   ! Since NBodyMod = 2, then NBody = 1 for this WAMIT object (this requirement is encoded at the HydroDyn module level)
                   ! HdroWvDir from WAMIT is effectively in the body-local coordinate system. Need to offset HdroWvDir to be back in the global frame
                   HdroWvDir = HdroWvDir + InitInp%PtfmRefztRot(1)*R2D
+               end if
 
-                  ! Now apply rotation and phase shift
-                  do J = 1, NInpWvDir  
-                     do I = 1, NInpFreq
-                        ! Fxy = exp(-j * k(w) * ( X*cos(Beta(w)) + Y*sin(Beta(w)) )
-                        WaveNmbr   = WaveNumber ( HdroFreq(I), InitInp%Gravity, p%WaveField%EffWtrDpth )
-                        tmpAngle   = WaveNmbr * ( InitInp%PtfmRefxt(1)*cos(HdroWvDir(J)*D2R) + InitInp%PtfmRefyt(1)*sin(HdroWvDir(J)*D2R) )
-                        TmpRe =  cos(tmpAngle)
-                        TmpIm = -sin(tmpAngle)
-                        Fxy   = CMPLX( TmpRe, TmpIm )
-
-                        Ctmp1 = Fxy*( HdroExctn(I,J,1)*cos(InitInp%PtfmRefztRot(1)) -  HdroExctn(I,J,2)*sin(InitInp%PtfmRefztRot(1)) )
-                        Ctmp2 = Fxy*( HdroExctn(I,J,1)*sin(InitInp%PtfmRefztRot(1)) +  HdroExctn(I,J,2)*cos(InitInp%PtfmRefztRot(1)) )
-                        Ctmp4 = Fxy*( HdroExctn(I,J,4)*cos(InitInp%PtfmRefztRot(1)) -  HdroExctn(I,J,5)*sin(InitInp%PtfmRefztRot(1)) )
-                        Ctmp5 = Fxy*( HdroExctn(I,J,4)*sin(InitInp%PtfmRefztRot(1)) +  HdroExctn(I,J,5)*cos(InitInp%PtfmRefztRot(1)) )
-
-                        HdroExctn(I,J,1) = Ctmp1
-                        HdroExctn(I,J,2) = Ctmp2
-                        HdroExctn(I,J,4) = Ctmp4
-                        HdroExctn(I,J,5) = Ctmp5
-
-                        HdroExctn(I,J,3) = Fxy*( HdroExctn(I,J,3) )
-                        HdroExctn(I,J,6) = Fxy*( HdroExctn(I,J,6) )
-                        HdroExctn(I,J,7:p%NDOF) = Fxy*HdroExctn(I,J,7:p%NDOF)
-
-                     end do
-                  end do  
-
-               else
-                  
-                     ! Apply rotation only for NBodyMod = 1,3
-                  do J = 1, NInpWvDir  
-                     do I = 1, NInpFreq
-                        do iBody = 1, p%NBody
-                           K = p%BDOFStrt(iBody) - 1_IntKi
-                           Ctmp1 = ( HdroExctn(I,J,K+1)*cos(InitInp%PtfmRefztRot(iBody)) ) - ( HdroExctn(I,J,K+2)*sin(InitInp%PtfmRefztRot(iBody)) )
-                           Ctmp2 = ( HdroExctn(I,J,K+1)*sin(InitInp%PtfmRefztRot(iBody)) ) + ( HdroExctn(I,J,K+2)*cos(InitInp%PtfmRefztRot(iBody)) )
-                           Ctmp4 = ( HdroExctn(I,J,K+4)*cos(InitInp%PtfmRefztRot(iBody)) ) - ( HdroExctn(I,J,K+5)*sin(InitInp%PtfmRefztRot(iBody)) )
-                           Ctmp5 = ( HdroExctn(I,J,K+4)*sin(InitInp%PtfmRefztRot(iBody)) ) + ( HdroExctn(I,J,K+5)*cos(InitInp%PtfmRefztRot(iBody)) )
-
-                           HdroExctn(I,J,K+1) = Ctmp1
-                           HdroExctn(I,J,K+2) = Ctmp2
-                           HdroExctn(I,J,K+4) = Ctmp4
-                           HdroExctn(I,J,K+5) = Ctmp5
-                        end do
-                     end do
-                  end do  
-                  
+               call RotateExctn( HdroExctn )
+               if ( FspExctn ) then
+                  if ( p%FKMod(1) == FKMod_full ) then
+                     HdroExctnD = HdroExctn
+                  else
+                     call RotateExctn( HdroExctnD )
+                  end if
                end if
 
              if (p%ExctnDisp == 0 ) then  
@@ -1420,6 +1441,14 @@ end if
                END DO
 
             end if
+
+            if ( FspExctn ) then
+               call ComputeFspExctnGrid()
+               if ( ErrStat >= AbortErrLev ) then
+                  call Cleanup()
+                  return
+               end if
+            end if
             
 
             else if ( p%ExctnMod == 2 ) then
@@ -1548,6 +1577,7 @@ end if
             Conv_Rdtn_InitInp%HighFreq            = HighFreq
             Conv_Rdtn_InitInp%WAMITFile           = InitInp%WAMITFile
             Conv_Rdtn_InitInp%NInpFreq            = NInpFreq
+            if ( FwdSpd ) CALL MOVE_ALLOC( UPt, Conv_Rdtn_InitInp%UPt )
 
             CALL Conv_Rdtn_Init(Conv_Rdtn_InitInp, m%Conv_Rdtn_u, p%Conv_Rdtn, x%Conv_Rdtn, xd%Conv_Rdtn, z%Conv_Rdtn, OtherState%Conv_Rdtn, &
                                    m%Conv_Rdtn_y, m%Conv_Rdtn, Conv_Rdtn_InitOut, ErrStat2, ErrMsg2); IF (Failed()) RETURN
@@ -1575,6 +1605,14 @@ end if
             SS_Rdtn_InitInp%PtfmRefztRot = InitInp%PtfmRefztRot
             CALL SS_Rad_Init(SS_Rdtn_InitInp, m%SS_Rdtn_u, p%SS_Rdtn, x%SS_Rdtn, xd%SS_Rdtn, z%SS_Rdtn, OtherState%SS_Rdtn, &
                                    m%SS_Rdtn_y, m%SS_Rdtn, Interval_Sub, SS_Rdtn_InitOut, ErrStat2, ErrMsg2); IF (Failed()) RETURN
+
+            IF ( FwdSpd ) THEN
+               CALL SS_FwdSpdOutputMatrix()
+               IF ( ErrStat >= AbortErrLev ) THEN
+                  CALL Cleanup()
+                  RETURN
+               END IF
+            END IF
             
          END IF
          
@@ -1703,9 +1741,238 @@ CONTAINS
       IF ( ALLOCATED( WAMITWvDir  ) ) DEALLOCATE(WAMITWvDir  )
       IF ( ALLOCATED( SortFreqInd ) ) DEALLOCATE(SortFreqInd )
       IF ( ALLOCATED( SortWvDirInd) ) DEALLOCATE(SortWvDirInd)
+      IF ( ALLOCATED( HdroExctnD  ) ) DEALLOCATE(HdroExctnD  )
+      IF ( ALLOCATED( UPt         ) ) DEALLOCATE(UPt         )
    
    
    END SUBROUTINE Cleanup
+
+   !> Rotates excitation coefficients from the WAMIT body frame by PtfmRefztRot (with the body-offset phase shift for NBodyMod=2).
+   SUBROUTINE RotateExctn( X )
+      COMPLEX(SiKi), INTENT(INOUT) :: X(:,:,:)       ! Excitation per unit wave amplitude (frequency, heading, DOF)
+
+      INTEGER(IntKi)               :: I, J, K, iBody
+      REAL(ReKi)                   :: kWave, Angle
+      COMPLEX(SiKi)                :: Fxy, C1, C2, C4, C5
+
+      if ( p%NBodyMod == 2 ) then
+         do J = 1, NInpWvDir
+            do I = 1, NInpFreq
+               ! Fxy = exp(-j * k(w) * ( X*cos(Beta(w)) + Y*sin(Beta(w)) )
+               kWave = WaveNumber ( HdroFreq(I), InitInp%Gravity, p%WaveField%EffWtrDpth )
+               Angle = kWave * ( InitInp%PtfmRefxt(1)*cos(HdroWvDir(J)*D2R) + InitInp%PtfmRefyt(1)*sin(HdroWvDir(J)*D2R) )
+               Fxy   = CMPLX( cos(Angle), -sin(Angle) )
+
+               C1 = Fxy*( X(I,J,1)*cos(InitInp%PtfmRefztRot(1)) -  X(I,J,2)*sin(InitInp%PtfmRefztRot(1)) )
+               C2 = Fxy*( X(I,J,1)*sin(InitInp%PtfmRefztRot(1)) +  X(I,J,2)*cos(InitInp%PtfmRefztRot(1)) )
+               C4 = Fxy*( X(I,J,4)*cos(InitInp%PtfmRefztRot(1)) -  X(I,J,5)*sin(InitInp%PtfmRefztRot(1)) )
+               C5 = Fxy*( X(I,J,4)*sin(InitInp%PtfmRefztRot(1)) +  X(I,J,5)*cos(InitInp%PtfmRefztRot(1)) )
+
+               X(I,J,1) = C1
+               X(I,J,2) = C2
+               X(I,J,4) = C4
+               X(I,J,5) = C5
+
+               X(I,J,3) = Fxy*( X(I,J,3) )
+               X(I,J,6) = Fxy*( X(I,J,6) )
+               X(I,J,7:p%NDOF) = Fxy*X(I,J,7:p%NDOF)
+            end do
+         end do
+      else
+         ! Apply rotation only for NBodyMod = 1,3
+         do J = 1, NInpWvDir
+            do I = 1, NInpFreq
+               do iBody = 1, p%NBody
+                  K = p%BDOFStrt(iBody) - 1_IntKi
+                  C1 = ( X(I,J,K+1)*cos(InitInp%PtfmRefztRot(iBody)) ) - ( X(I,J,K+2)*sin(InitInp%PtfmRefztRot(iBody)) )
+                  C2 = ( X(I,J,K+1)*sin(InitInp%PtfmRefztRot(iBody)) ) + ( X(I,J,K+2)*cos(InitInp%PtfmRefztRot(iBody)) )
+                  C4 = ( X(I,J,K+4)*cos(InitInp%PtfmRefztRot(iBody)) ) - ( X(I,J,K+5)*sin(InitInp%PtfmRefztRot(iBody)) )
+                  C5 = ( X(I,J,K+4)*sin(InitInp%PtfmRefztRot(iBody)) ) + ( X(I,J,K+5)*cos(InitInp%PtfmRefztRot(iBody)) )
+
+                  X(I,J,K+1) = C1
+                  X(I,J,K+2) = C2
+                  X(I,J,K+4) = C4
+                  X(I,J,K+5) = C5
+               end do
+            end do
+         end do
+      end if
+   END SUBROUTINE RotateExctn
+
+   !> Reads the scattering-only excitation <WAMITFile>.3sc into HdroExctnD on the frequency and heading grid of the .3 data.
+   SUBROUTINE ReadScatteringExctn()
+      LOGICAL, ALLOCATABLE         :: Found(:,:)     ! Frequency/heading pairs present in the file
+      INTEGER(IntKi)               :: I, J, K, iFreq, iDir
+
+      ALLOCATE ( HdroExctnD(NInpFreq,NInpWvDir,p%NDOF), Found(NInpFreq,NInpWvDir), STAT=ErrStat2 )
+      IF ( ErrStat2 /= 0 ) THEN
+         CALL SetErrStat( ErrID_Fatal, 'Error allocating space for the scattering excitation.', ErrStat, ErrMsg, RoutineName )
+         RETURN
+      END IF
+      HdroExctnD = 0.0
+      Found      = .FALSE.
+
+      CALL OpenFInpFile ( UnW3, TRIM(InitInp%WAMITFile)//'.3sc', ErrStat2, ErrMsg2 )
+      CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+      IF ( ErrStat >= AbortErrLev ) RETURN
+
+      DO
+         READ (UnW3,'(A)',IOSTAT=Sttus)  Line
+         IF ( Sttus /= 0 ) EXIT
+         IF ( LEN_TRIM(Line) == 0 ) CYCLE
+
+         READ (Line,*,IOSTAT=Sttus)  TmpPer, TmpDir, I, TmpData1, TmpData2, TmpRe, TmpIm
+         IF ( Sttus /= 0 .OR. I < 1 .OR. I > p%NDOF ) THEN
+            CALL SetErrStat( ErrID_Fatal, 'Invalid line in "'//TRIM(InitInp%WAMITFile)//'.3sc": "'//TRIM(Line)//'".', ErrStat, ErrMsg, RoutineName )
+            EXIT
+         END IF
+
+         iFreq = 0
+         DO K = 1, NInpFreq
+            IF ( WAMITPer(K) > 0.0 ) THEN
+               IF ( ABS(TmpPer - WAMITPer(K)) <= 1.0e-4_ReKi*WAMITPer(K) ) THEN
+                  iFreq = SortFreqInd(K)
+                  EXIT
+               END IF
+            END IF
+         END DO
+         iDir = 0
+         DO J = 1, NInpWvDir
+            IF ( ABS( TmpDir - HdroWvDir(J) ) <= WvDirTol ) THEN
+               iDir = J
+               EXIT
+            END IF
+         END DO
+         IF ( iFreq == 0 .OR. iDir == 0 ) THEN
+            CALL SetErrStat( ErrID_Fatal, '"'//TRIM(InitInp%WAMITFile)//'.3sc" must contain the same periods and wave headings as "'// &
+                             TRIM(InitInp%WAMITFile)//trim(dot3ext)//'".', ErrStat, ErrMsg, RoutineName )
+            EXIT
+         END IF
+
+         IF ( p%HasAddDOF ) THEN
+            HdroExctnD(iFreq,iDir,I) = CMPLX( TmpRe, TmpIm )*DffrctDimAdd
+         ELSE
+            HdroExctnD(iFreq,iDir,I) = CMPLX( TmpRe, TmpIm )*DffrctDim(mod(I-1,6)+1)
+         END IF
+         Found(iFreq,iDir) = .TRUE.
+      END DO
+      CLOSE ( UnW3 )
+      IF ( ErrStat >= AbortErrLev ) RETURN
+
+      DO K = 1, NInpFreq
+         IF ( WAMITPer(K) > 0.0 ) THEN
+            IF ( .NOT. ALL( Found(SortFreqInd(K),:) ) ) THEN
+               CALL SetErrStat( ErrID_Fatal, '"'//TRIM(InitInp%WAMITFile)//'.3sc" must contain the same periods and wave headings as "'// &
+                                TRIM(InitInp%WAMITFile)//trim(dot3ext)//'".', ErrStat, ErrMsg, RoutineName )
+               RETURN
+            END IF
+         END IF
+      END DO
+
+         ! Zero-frequency limit from the lowest nonzero frequency, as for the .3 data
+      DO I = 1,NInpFreq
+         IF ( HdroFreq(I) > 0.0 )  THEN
+            DO J = I-1,1,-1
+               HdroExctnD(J,:,:) = HdroExctnD(I,:,:)
+            END DO
+            EXIT
+         END IF
+      END DO
+   END SUBROUTINE ReadScatteringExctn
+
+   !> Time series of the forward-speed diffraction correction -U P^T int F_D dt on the excitation grid (PtfmYMod=0, PtfmRefY=0).
+   SUBROUTINE ComputeFspExctnGrid()
+      COMPLEX(SiKi), ALLOCATABLE   :: Coef(:,:)      ! Correction per unit wave amplitude for each wave component and DOF
+      COMPLEX(SiKi), ALLOCATABLE   :: FspC(:)        ! Fourier components of the correction at one grid point
+      COMPLEX(SiKi)                :: Xd, Elev
+      REAL(SiKi)                   :: OmegaE         ! Encounter frequency (rad/s)
+      INTEGER(IntKi)               :: I, J, iBody, iDOF0, iGrid, iX, iY, nGrid, NStep2
+
+      NStep2 = p%WaveField%NStepWave2
+      nGrid  = p%ExctnGridParams%n(2)*p%ExctnGridParams%n(3)
+      ALLOCATE ( Coef(0:NStep2,p%NDOF), FspC(0:NStep2), &
+                 p%WaveExctnFspGrid(0:p%WaveField%NStepWave,p%ExctnGridParams%n(2),p%ExctnGridParams%n(3),p%ExctnGridParams%n(4),p%NDOF), STAT=ErrStat2 )
+      IF ( ErrStat2 /= 0 ) THEN
+         CALL SetErrStat( ErrID_Fatal, 'Error allocating memory for the forward-speed diffraction correction.', ErrStat, ErrMsg, RoutineName )
+         RETURN
+      END IF
+      Coef = 0.0
+      p%WaveExctnFspGrid = 0.0
+
+         ! -U/(i omega_e) P^T F_D with time dependence e^{+i omega t}; the zero and Nyquist components stay zero
+      DO I = 1, NStep2-1
+         OmegaE      = I*p%WaveField%WaveDOmega
+         TmpCoord(1) = p%WaveField%WaveOmegaI(I)
+         TmpCoord(2) = p%WaveField%WaveDirArr(I) - InitInp%PtfmRefY*R2D
+         dirInRange  = GetAngleInRange( TmpCoord(2), HdroWvDir(1), HdroWvDir(NInpWvDir), tmpDir2 ); TmpCoord(2) = tmpDir2
+         DO iBody = 1, p%NBody
+            IF ( InitInp%FwdSpdMod(iBody) /= 1 ) CYCLE
+            iDOF0 = p%BDOFStrt(iBody) - 1
+            CALL WAMIT_Interp2D_Cplx( TmpCoord, HdroExctnD(:,:,iDOF0+3), HdroFreq, HdroWvDir, LastInd2, Xd, ErrStat2, ErrMsg2 )
+            CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName ); IF ( ErrStat >= AbortErrLev ) RETURN
+            Coef(I,iDOF0+5) =  CMPLX( 0.0_SiKi, p%FrameSpd/OmegaE, SiKi )*Xd
+            CALL WAMIT_Interp2D_Cplx( TmpCoord, HdroExctnD(:,:,iDOF0+2), HdroFreq, HdroWvDir, LastInd2, Xd, ErrStat2, ErrMsg2 )
+            CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName ); IF ( ErrStat >= AbortErrLev ) RETURN
+            Coef(I,iDOF0+6) = -CMPLX( 0.0_SiKi, p%FrameSpd/OmegaE, SiKi )*Xd
+         END DO
+      END DO
+
+      CALL InitFFT ( p%WaveField%NStepWave, FFT_Data, .TRUE., ErrStat2 )
+      CALL SetErrStat( ErrStat2, 'Error in call to InitFFT.', ErrStat, ErrMsg, RoutineName ); IF ( ErrStat >= AbortErrLev ) RETURN
+      DO iGrid = 1, nGrid
+         iX = mod(iGrid-1, p%ExctnGridParams%n(2)) + 1
+         iY = (iGrid-1) / p%ExctnGridParams%n(2) + 1
+         DO J = 1, p%NDOF
+            IF ( ALL( Coef(:,J) == (0.0_SiKi,0.0_SiKi) ) ) CYCLE
+            DO I = 0, NStep2
+               IF ( p%ExctnDisp == 0 ) THEN
+                  Elev = CMPLX( p%WaveField%WaveElevC0(1,I), p%WaveField%WaveElevC0(2,I) )
+               ELSE
+                  Elev = CMPLX( p%WaveField%WaveElevC(1,I,iGrid), p%WaveField%WaveElevC(2,I,iGrid) )
+               END IF
+               FspC(I) = Coef(I,J)*Elev
+            END DO
+            CALL ApplyFFT_cx ( p%WaveExctnFspGrid(0:p%WaveField%NStepWave-1,iX,iY,1,J), FspC, FFT_Data, ErrStat2 )
+            CALL SetErrStat( ErrStat2, ' An error occurred while applying an FFT to the forward-speed diffraction correction.', ErrStat, ErrMsg, RoutineName )
+            IF ( ErrStat >= AbortErrLev ) EXIT
+            p%WaveExctnFspGrid(p%WaveField%NStepWave,iX,iY,1,J) = p%WaveExctnFspGrid(0,iX,iY,1,J)
+         END DO
+         IF ( ErrStat >= AbortErrLev ) EXIT
+      END DO
+      CALL ExitFFT( FFT_Data, ErrStat2 )
+      CALL SetErrStat( ErrStat2, 'Error in call to ExitFFT.', ErrStat, ErrMsg, RoutineName )
+   END SUBROUTINE ComputeFspExctnGrid
+
+   !> Merges the forward-speed memory term into the state-space output matrix: C~ = C - U P^T C A^-1, so that the
+   !! radiation memory load is C~ x (the G(0) int nu part of H*nu is dropped and checked to be small).
+   SUBROUTINE SS_FwdSpdOutputMatrix()
+      REAL(R8Ki), ALLOCATABLE      :: AT(:,:)        ! Transposed state matrix (factorized in place)
+      REAL(R8Ki), ALLOCATABLE      :: CAinvT(:,:)    ! (C A^-1)^T
+      INTEGER,    ALLOCATABLE      :: IPIV(:)
+      REAL(R8Ki)                   :: G0Max, B0Max
+      INTEGER(IntKi)               :: nx
+
+      nx = p%SS_Rdtn%numStates
+      IF ( nx < 1 ) RETURN
+      ALLOCATE ( AT(nx,nx), CAinvT(nx,SIZE(p%SS_Rdtn%C,1)), IPIV(nx), STAT=ErrStat2 )
+      IF ( ErrStat2 /= 0 ) THEN
+         CALL SetErrStat( ErrID_Fatal, 'Error allocating memory for the forward-speed state-space output matrix.', ErrStat, ErrMsg, RoutineName )
+         RETURN
+      END IF
+      AT     = TRANSPOSE( REAL( p%SS_Rdtn%A, R8Ki ) )
+      CAinvT = TRANSPOSE( REAL( p%SS_Rdtn%C, R8Ki ) )
+      CALL LAPACK_gesv( nx, AT, IPIV, CAinvT, ErrStat2, ErrMsg2 )
+      CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName ); IF ( ErrStat >= AbortErrLev ) RETURN
+
+      G0Max = MAXVAL( ABS( MATMUL( TRANSPOSE(CAinvT), REAL( p%SS_Rdtn%B, R8Ki ) ) ) )
+      B0Max = MAXVAL( ABS( REAL( HdroDmpng, R8Ki ) ) )
+      IF ( B0Max > 0.0_R8Ki .AND. G0Max > 0.05_R8Ki*B0Max ) THEN
+         CALL SetErrStat( ErrID_Warn, 'The state-space radiation model in "'//TRIM(InitInp%WAMITFile)//'.ss" does not vanish at zero frequency (|G(0)| is '// &
+                          TRIM(Num2LStr(REAL(100.0_R8Ki*G0Max/B0Max,ReKi)))//'% of the peak damping); the forward-speed memory term may be inaccurate.', ErrStat, ErrMsg, RoutineName )
+      END IF
+
+      p%SS_Rdtn%C = p%SS_Rdtn%C - REAL( MATMUL( REAL(UPt,R8Ki), TRANSPOSE(CAinvT) ), ReKi )
+   END SUBROUTINE SS_FwdSpdOutputMatrix
             
 END SUBROUTINE WAMIT_Init
 !----------------------------------------------------------------------------------------------------------------------------------
@@ -2028,6 +2295,11 @@ SUBROUTINE WAMIT_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat, Er
                ! WaveExctnGrid dimensions are: 1st: wavetime, 2nd: X, 3rd: Y, 4th: PRP yaw offset, 5th: Force component for each WAMIT Body
                m%F_Waves1(indxStart:indxEnd) = WAMIT_ForceWaves_Interp( 6+p%NAddDOF(iBody), Time, bodyPosition, p%WaveExctnGrid(:,:,:,:,indxStart:indxEnd), p%ExctnGridParams, m%WaveField_m, ErrStat2, ErrMsg2 )
                   call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+               if ( allocated( p%WaveExctnFspGrid ) ) then
+                  m%F_Fsp(indxStart:indxEnd) = WAMIT_ForceWaves_Interp( 6+p%NAddDOF(iBody), Time, bodyPosition, p%WaveExctnFspGrid(:,:,:,:,indxStart:indxEnd), p%ExctnGridParams, m%WaveField_m, ErrStat2, ErrMsg2 )
+                     call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+                  m%F_Waves1(indxStart:indxEnd) = m%F_Waves1(indxStart:indxEnd) + m%F_Fsp(indxStart:indxEnd)
+               end if
             END DO
 
          else ! p%ExctnDisp > 0; we are using the displaced x,y location of the WAMIT bodies to determine the wave exication force
@@ -2054,6 +2326,11 @@ SUBROUTINE WAMIT_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat, Er
                ! WaveExctnGrid dimensions are: 1st: wavetime, 2nd: X, 3rd: Y, 4th: PRP yaw offset, 5th: Force component for each WAMIT Body
                m%F_Waves1(indxStart:indxEnd) = WAMIT_ForceWaves_Interp( 6+p%NAddDOF(iBody), Time, bodyPosition, p%WaveExctnGrid(:,:,:,:,indxStart:indxEnd), p%ExctnGridParams, m%WaveField_m, ErrStat2, ErrMsg2 )
                   call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+               if ( allocated( p%WaveExctnFspGrid ) ) then
+                  m%F_Fsp(indxStart:indxEnd) = WAMIT_ForceWaves_Interp( 6+p%NAddDOF(iBody), Time, bodyPosition, p%WaveExctnFspGrid(:,:,:,:,indxStart:indxEnd), p%ExctnGridParams, m%WaveField_m, ErrStat2, ErrMsg2 )
+                     call SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName )
+                  m%F_Waves1(indxStart:indxEnd) = m%F_Waves1(indxStart:indxEnd) + m%F_Fsp(indxStart:indxEnd)
+               end if
             END DO
 
          end if
@@ -2170,6 +2447,9 @@ SUBROUTINE WAMIT_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat, Er
          m%F_Rdtn        (:) = 0.0
 
       END IF       
+
+         ! Forward-speed left factor (instantaneous part), on the body-axis radiation input
+      if ( allocated( p%DU ) ) m%F_Rdtn = m%F_Rdtn + matmul( p%DU, qdot )
       
       do iBody = 1, p%NBody
          indxStart = p%BDOFStrt(iBody)

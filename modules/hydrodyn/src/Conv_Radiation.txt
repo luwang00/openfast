@@ -29,6 +29,7 @@ typedef   ^                            ^                             SiKi       
 typedef   ^                            ^                             SiKi             HdroDmpng                {:}{:}{:}  -        -         ""    -
 typedef   ^                            ^                             INTEGER          NInpFreq                 -          -        -         ""    -
 typedef   ^                            ^                             DbKi             RdtnTMax                 -          -        -         ""    -
+typedef   ^                            ^                             SiKi             UPt                      {:}{:}     -        -         "FrameSpd times the transposed steady-stream operator P; the kernel becomes K - UPt*H with H = int K [unallocated: no forward-speed term]"    -
 #
 #
 # Define outputs from the initialization routine here:

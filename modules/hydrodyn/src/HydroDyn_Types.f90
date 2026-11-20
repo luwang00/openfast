@@ -70,6 +70,7 @@ IMPLICIT NONE
     INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: NAddDOF      !< Number of additional generalized degrees of freedom [-]
     INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: FKMod      !< Mesh-based nonlinear Froude-Krylov and hydrostatic model (switch) [-]
     CHARACTER(1024) , DIMENSION(:), ALLOCATABLE  :: GeoFile      !< The name of the root potential flow body geometry file [-]
+    INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: FwdSpdMod      !< Forward-speed O(U) correction of the potential-flow loads {0: none, 1: STF} [only used when FrameSpd /= 0] [-]
     TYPE(WAMIT_InitInputType)  :: WAMIT      !< Initialization data for WAMIT module [-]
     TYPE(WAMIT2_InitInputType)  :: WAMIT2      !< Initialization data for WAMIT2 module [-]
     TYPE(Morison_InitInputType)  :: Morison      !< Initialization data for Morison module [-]
@@ -467,6 +468,18 @@ subroutine HydroDyn_CopyInputFile(SrcInputFileData, DstInputFileData, CtrlCode, 
       end if
       DstInputFileData%GeoFile = SrcInputFileData%GeoFile
    end if
+   if (allocated(SrcInputFileData%FwdSpdMod)) then
+      LB(1:1) = lbound(SrcInputFileData%FwdSpdMod)
+      UB(1:1) = ubound(SrcInputFileData%FwdSpdMod)
+      if (.not. allocated(DstInputFileData%FwdSpdMod)) then
+         allocate(DstInputFileData%FwdSpdMod(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstInputFileData%FwdSpdMod.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstInputFileData%FwdSpdMod = SrcInputFileData%FwdSpdMod
+   end if
    call WAMIT_CopyInitInput(SrcInputFileData%WAMIT, DstInputFileData%WAMIT, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
@@ -574,6 +587,9 @@ subroutine HydroDyn_DestroyInputFile(InputFileData, ErrStat, ErrMsg)
    if (allocated(InputFileData%GeoFile)) then
       deallocate(InputFileData%GeoFile)
    end if
+   if (allocated(InputFileData%FwdSpdMod)) then
+      deallocate(InputFileData%FwdSpdMod)
+   end if
    call WAMIT_DestroyInitInput(InputFileData%WAMIT, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    call WAMIT2_DestroyInitInput(InputFileData%WAMIT2, ErrStat2, ErrMsg2)
@@ -618,6 +634,7 @@ subroutine HydroDyn_PackInputFile(RF, Indata)
    call RegPackAlloc(RF, InData%NAddDOF)
    call RegPackAlloc(RF, InData%FKMod)
    call RegPackAlloc(RF, InData%GeoFile)
+   call RegPackAlloc(RF, InData%FwdSpdMod)
    call WAMIT_PackInitInput(RF, InData%WAMIT) 
    call WAMIT2_PackInitInput(RF, InData%WAMIT2) 
    call Morison_PackInitInput(RF, InData%Morison) 
@@ -670,6 +687,7 @@ subroutine HydroDyn_UnPackInputFile(RF, OutData)
    call RegUnpackAlloc(RF, OutData%NAddDOF); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%FKMod); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%GeoFile); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%FwdSpdMod); if (RegCheckErr(RF, RoutineName)) return
    call WAMIT_UnpackInitInput(RF, OutData%WAMIT) ! WAMIT 
    call WAMIT2_UnpackInitInput(RF, OutData%WAMIT2) ! WAMIT2 
    call Morison_UnpackInitInput(RF, OutData%Morison) ! Morison 

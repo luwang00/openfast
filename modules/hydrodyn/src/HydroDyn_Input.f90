@@ -209,6 +209,7 @@ SUBROUTINE HydroDyn_ParseInput( InputFileName, OutRootName, FileInfo_In, InputFi
    CALL AllocAry( InputFileData%NAddDOF      , InputFileData%NBody,     'NAddDOF'      , ErrStat2, ErrMsg2);   if (Failed())  return;
    CALL AllocAry( InputFileData%FKMod        , InputFileData%NBody,     'FKMod'        , ErrStat2, ErrMsg2);   if (Failed())  return;
    CALL AllocAry( InputFileData%GeoFile      , InputFileData%NBody,     'GeoFile'      , ErrStat2, ErrMsg2);   if (Failed())  return;
+   CALL AllocAry( InputFileData%FwdSpdMod    , InputFileData%NBody,     'FwdSpdMod'    , ErrStat2, ErrMsg2);   if (Failed())  return;
 
       ! PotFile - Root name of Potential flow data files (Could be WAMIT files or the FIT input file)
    call ParseAry( FileInfo_In, CurLine, 'PotFile', InputFileData%PotFile, InputFileData%nWAMITObj, ErrStat2, ErrMsg2, UnEc )
@@ -260,6 +261,13 @@ SUBROUTINE HydroDyn_ParseInput( InputFileName, OutRootName, FileInfo_In, InputFi
       ! GeoFile - Root name of Potential flow body geometry file
    call ParseAry( FileInfo_In, CurLine, 'GeoFile', InputFileData%GeoFile, InputFileData%NBody, ErrStat2, ErrMsg2, UnEc )
       if (Failed())  return;
+
+      ! FwdSpdMod - Forward-speed O(U) correction of the potential-flow loads {0: none, 1: STF} (switch) [only used when FrameSpd /= 0]
+   call ParseAry( FileInfo_In, CurLine, 'FwdSpdMod', InputFileData%FwdSpdMod(1:InputFileData%nWAMITObj), InputFileData%nWAMITObj, ErrStat2, ErrMsg2, UnEc )
+      if (Failed())  return;
+   if (InputFileData%NBodyMod==1) then
+      InputFileData%FwdSpdMod(2:InputFileData%NBody) = InputFileData%FwdSpdMod(1)
+   end if
 
    !-------------------------------------------------------------------------------------------------
    ! Data section for 2nd order WAMIT forces
@@ -1600,6 +1608,17 @@ SUBROUTINE HydroDynInput_ProcessInitData( InitInp, Interval, InputFileData, ErrS
             InputFileData%GeoFile(i)            = TRIM(TmpPath)//TRIM(InputFileData%GeoFile(i))
          END IF
       end do
+   END IF
+
+   IF ( InputFileData%PotMod == 1 .AND. .NOT. EqualRealNos( InitInp%FrameSpd, 0.0_ReKi ) ) THEN
+      IF ( ANY( InputFileData%FwdSpdMod /= 0 .AND. InputFileData%FwdSpdMod /= 1 ) ) THEN
+         CALL SetErrStat( ErrID_Fatal,'FwdSpdMod must be 0 or 1 for all WAMIT bodies.',ErrStat,ErrMsg,RoutineName)
+         RETURN
+      END IF
+      IF ( ANY( InputFileData%FwdSpdMod == 0 ) ) &
+         CALL SetErrStat( ErrID_Warn,'FwdSpdMod = 0: the forward-speed O(U) corrections of the potential-flow loads are disabled (intended for verification only).',ErrStat,ErrMsg,RoutineName)
+   ELSE
+      InputFileData%FwdSpdMod = 0
    END IF
 
       ! RdtnTMax - Analysis time for wave radiation kernel calculations

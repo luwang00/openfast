@@ -46,6 +46,7 @@ IMPLICIT NONE
     REAL(SiKi) , DIMENSION(:,:,:), ALLOCATABLE  :: HdroDmpng      !<  [-]
     INTEGER(IntKi)  :: NInpFreq = 0_IntKi      !<  [-]
     REAL(DbKi)  :: RdtnTMax = 0.0_R8Ki      !<  [-]
+    REAL(SiKi) , DIMENSION(:,:), ALLOCATABLE  :: UPt      !< FrameSpd times the transposed steady-stream operator P; the kernel becomes K - UPt*H with H = int K [unallocated: no forward-speed term] [-]
   END TYPE Conv_Rdtn_InitInputType
 ! =======================
 ! =========  Conv_Rdtn_InitOutputType  =======
@@ -161,6 +162,18 @@ subroutine Conv_Rdtn_CopyInitInput(SrcInitInputData, DstInitInputData, CtrlCode,
    end if
    DstInitInputData%NInpFreq = SrcInitInputData%NInpFreq
    DstInitInputData%RdtnTMax = SrcInitInputData%RdtnTMax
+   if (allocated(SrcInitInputData%UPt)) then
+      LB(1:2) = lbound(SrcInitInputData%UPt)
+      UB(1:2) = ubound(SrcInitInputData%UPt)
+      if (.not. allocated(DstInitInputData%UPt)) then
+         allocate(DstInitInputData%UPt(LB(1):UB(1),LB(2):UB(2)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstInitInputData%UPt.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstInitInputData%UPt = SrcInitInputData%UPt
+   end if
 end subroutine
 
 subroutine Conv_Rdtn_DestroyInitInput(InitInputData, ErrStat, ErrMsg)
@@ -178,6 +191,9 @@ subroutine Conv_Rdtn_DestroyInitInput(InitInputData, ErrStat, ErrMsg)
    end if
    if (allocated(InitInputData%HdroDmpng)) then
       deallocate(InitInputData%HdroDmpng)
+   end if
+   if (allocated(InitInputData%UPt)) then
+      deallocate(InitInputData%UPt)
    end if
 end subroutine
 
@@ -197,6 +213,7 @@ subroutine Conv_Rdtn_PackInitInput(RF, Indata)
    call RegPackAlloc(RF, InData%HdroDmpng)
    call RegPack(RF, InData%NInpFreq)
    call RegPack(RF, InData%RdtnTMax)
+   call RegPackAlloc(RF, InData%UPt)
    if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
@@ -219,6 +236,7 @@ subroutine Conv_Rdtn_UnPackInitInput(RF, OutData)
    call RegUnpackAlloc(RF, OutData%HdroDmpng); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NInpFreq); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%RdtnTMax); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%UPt); if (RegCheckErr(RF, RoutineName)) return
 end subroutine
 
 subroutine Conv_Rdtn_CopyInitOutput(SrcInitOutputData, DstInitOutputData, CtrlCode, ErrStat, ErrMsg)

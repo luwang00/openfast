@@ -2006,6 +2006,10 @@ class InputReader_OpenFAST(object):
         geo_strings = read_array(f,self.fst_vt['HydroDyn']['NBody'],str) #re.split(',| ',f.readline().strip())
         geo_strings = [os.path.normpath(os.path.join(os.path.split(hd_file)[0],gs)) for gs in geo_strings]  # make relative to hd_file
         self.fst_vt['HydroDyn']['GeoFile']       = geo_strings
+        if self.fst_vt['HydroDyn']['NBodyMod'] == 1:
+            self.fst_vt['HydroDyn']['FwdSpdMod'] = int_read(f.readline().split()[0])
+        else:
+            self.fst_vt['HydroDyn']['FwdSpdMod'] = read_array(f,self.fst_vt['HydroDyn']['NBody'], array_type=int)
 
         # 2ND-ORDER FLOATING PLATFORM FORCES
         f.readline()

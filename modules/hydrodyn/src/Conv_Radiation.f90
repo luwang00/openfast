@@ -56,6 +56,99 @@ MODULE Conv_Radiation
 CONTAINS
 
 
+!----------------------------------------------------------------------------------------------------------------------------------
+!> Merges the forward-speed left-factor memory term into the radiation kernel: K~ = K - U P^T H with H(t) = int_0^t K.
+!! H is the sine transform of B(omega)/omega on the grids of K.
+SUBROUTINE Conv_Rdtn_FwdSpdKernel( InitInp, p, RdtnDOmega, ErrStat, ErrMsg )
+
+      TYPE(Conv_Rdtn_InitInputType),       INTENT(IN   )  :: InitInp     !< Input data for initialization routine
+      TYPE(Conv_Rdtn_ParameterType),       INTENT(INOUT)  :: p           !< Parameters (RdtnKrnl is modified)
+      REAL(ReKi),                          INTENT(IN   )  :: RdtnDOmega  !< Frequency step of the transforms (rad/s)
+      INTEGER(IntKi),                      INTENT(  OUT)  :: ErrStat     !< Error status of the operation
+      CHARACTER(*),                        INTENT(  OUT)  :: ErrMsg      !< Error message if ErrStat /= ErrID_None
+
+      REAL(SiKi), ALLOCATABLE                :: H(:,:,:)                             ! Integral of the radiation kernel
+      REAL(SiKi)                             :: Omega                                ! Frequency (rad/s)
+      REAL(R8Ki)                             :: HInt, HRef                           ! Integral of H over time and its expected value A(0) - A(inf)
+      REAL(R8Ki)                             :: IntErr, IntRef, HMax, HEnd           ! Check values
+      LOGICAL                                :: UsedRow(p%NDOF)                      ! Rows of H that enter U P^T H
+      INTEGER                                :: I, J, K, LastInd
+      TYPE(FFT_DataType)                     :: FFT_Data
+      INTEGER(IntKi)                         :: ErrStat2
+      CHARACTER(*), PARAMETER                :: RoutineName = 'Conv_Rdtn_FwdSpdKernel'
+
+      ErrStat = ErrID_None
+      ErrMsg  = ""
+
+      ALLOCATE ( H(p%NDOF,p%NDOF,0:p%NStepRdtn-1), STAT=ErrStat2 )
+      IF ( ErrStat2 /= 0 ) THEN
+         CALL SetErrStat( ErrID_Fatal, 'Error allocating memory for the forward-speed kernel.', ErrStat, ErrMsg, RoutineName )
+         RETURN
+      END IF
+
+         ! The end samples stay zero: sin(0) = 0, and the sine transform requires a zero last sample
+      H = 0.0_SiKi
+      LastInd = 1
+      DO I = 1,p%NStepRdtn-2
+         Omega = I*RdtnDOmega
+         DO J = 1,p%NDOF
+            DO K = 1,p%NDOF
+               H(J,K,I) = InterpStp( Omega, InitInp%HdroFreq(:), InitInp%HdroDmpng(:,J,K), LastInd, InitInp%NInpFreq ) / ( Omega*REAL(p%RdtnDT,SiKi) )
+            END DO
+         END DO
+      END DO
+
+      CALL InitSINT ( p%NStepRdtn, FFT_Data, .TRUE., ErrStat2 )
+      IF ( ErrStat2 /= ErrID_None ) THEN
+         CALL SetErrStat( ErrID_Fatal, 'Error initializing sine transforms.', ErrStat, ErrMsg, RoutineName )
+         RETURN
+      END IF
+      DO J = 1,p%NDOF
+         DO K = 1,p%NDOF
+            CALL ApplySINT( H(J,K,:), FFT_Data, ErrStat2 )
+            IF ( ErrStat2 /= ErrID_None ) THEN
+               CALL SetErrStat( ErrID_Fatal, 'Error applying sine transform.', ErrStat, ErrMsg, RoutineName )
+               RETURN
+            END IF
+         END DO
+      END DO
+      CALL ExitSINT( FFT_Data, ErrStat2 )
+
+         ! Checks on the rows of H that are used: int H dt = A(0) - A(inf), and decay within RdtnTMax
+      DO K = 1,p%NDOF
+         UsedRow(K) = ANY( InitInp%UPt(:,K) /= 0.0_SiKi )
+      END DO
+      IntErr = 0.0_R8Ki
+      IntRef = 0.0_R8Ki
+      HMax   = 0.0_R8Ki
+      HEnd   = 0.0_R8Ki
+      DO J = 1,p%NDOF
+         IF ( .NOT. UsedRow(J) ) CYCLE
+         DO K = 1,p%NDOF
+            HInt   = p%RdtnDT*SUM( REAL(H(J,K,:),R8Ki) )
+            HRef   = REAL( InitInp%HdroAddMs(1,J,K), R8Ki ) - REAL( InitInp%HdroAddMs(InitInp%NInpFreq,J,K), R8Ki )
+            IntErr = MAX( IntErr, ABS( HInt - HRef ) )
+            IntRef = MAX( IntRef, ABS( HRef ) )
+            HMax   = MAX( HMax, MAXVAL( ABS( REAL(H(J,K,:),R8Ki) ) ) )
+            HEnd   = MAX( HEnd, ABS( REAL(H(J,K,p%NStepRdtn-2),R8Ki) ) )
+         END DO
+      END DO
+      IF ( InitInp%HdroFreq(1) == 0.0_SiKi .AND. IntRef > 0.0_R8Ki .AND. IntErr > 0.1_R8Ki*IntRef ) THEN
+         CALL SetErrStat( ErrID_Warn, 'The time integral of the forward-speed kernel H differs from A(0) - A(inf) by up to '// &
+                          TRIM(Num2LStr(REAL(100.0_R8Ki*IntErr/IntRef,ReKi)))//'% of its magnitude. The lowest nonzero frequency in "'// &
+                          TRIM(InitInp%WAMITFile)//'.1" may be too high, or its damping and added mass are inconsistent.', ErrStat, ErrMsg, RoutineName )
+      END IF
+      IF ( HEnd > 0.05_R8Ki*HMax ) THEN
+         CALL SetErrStat( ErrID_Warn, 'The forward-speed kernel H has not decayed within RdtnTMax (final value '// &
+                          TRIM(Num2LStr(REAL(100.0_R8Ki*HEnd/HMax,ReKi)))//'% of its peak). Consider increasing RdtnTMax.', ErrStat, ErrMsg, RoutineName )
+      END IF
+
+      DO I = 0,p%NStepRdtn-1
+         p%RdtnKrnl(:,:,I) = p%RdtnKrnl(:,:,I) - MATMUL( InitInp%UPt, H(:,:,I) )
+      END DO
+
+END SUBROUTINE Conv_Rdtn_FwdSpdKernel
+
 
 !----------------------------------------------------------------------------------------------------------------------------------
 !> This routine is called at the start of the simulation to perform initialization steps.
@@ -332,6 +425,12 @@ SUBROUTINE Conv_Rdtn_Init( InitInp, u, p, x, xd, z, OtherState, y, m, InitOut, E
          END IF
 
 
+      END IF
+
+      IF ( ALLOCATED( InitInp%UPt ) ) THEN
+         CALL Conv_Rdtn_FwdSpdKernel( InitInp, p, RdtnDOmega, ErrStat2, ErrMsg2 )
+         CALL SetErrStat( ErrStat2, ErrMsg2, ErrStat, ErrMsg, 'Conv_Rdtn_Init' )
+         IF ( ErrStat >= AbortErrLev ) RETURN
       END IF
 
 
