@@ -1616,7 +1616,7 @@ SUBROUTINE HydroDynInput_ProcessInitData( InitInp, Interval, InputFileData, ErrS
          RETURN
       END IF
       IF ( ANY( InputFileData%FwdSpdMod == 0 ) ) &
-         CALL SetErrStat( ErrID_Warn,'FwdSpdMod = 0: the forward-speed O(U) corrections of the potential-flow loads are disabled (intended for verification only).',ErrStat,ErrMsg,RoutineName)
+         CALL SetErrStat( ErrID_Warn,'FwdSpdMod = 0: the potential-flow radiation uses the zero-speed model without forward-speed corrections.',ErrStat,ErrMsg,RoutineName)
    ELSE
       InputFileData%FwdSpdMod = 0
    END IF

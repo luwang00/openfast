@@ -146,7 +146,8 @@ IMPLICIT NONE
     REAL(DbKi)  :: DT = 0.0_R8Ki      !<  [-]
     TYPE(SeaSt_WaveFieldType) , POINTER :: WaveField => NULL()      !< Pointer to wave field [-]
     INTEGER(IntKi)  :: PtfmYMod = 0_IntKi      !< Large yaw model [-]
-    REAL(ReKi)  :: FrameSpd = 0      !< Speed of the simulation frame translating along global +X; radiation uses body-axis motion relative to the stream when nonzero [m/s]
+    REAL(ReKi)  :: FrameSpd = 0      !< Speed of the simulation frame translating along global +X [m/s]
+    INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: FwdSpdMod      !< Forward-speed model of each body; radiation uses body-axis motion relative to the stream when 1 [0 when FrameSpd = 0] [-]
     TYPE(GridInterp_ParameterType)  :: ExctnGridParams      !< Parameters of WaveExctnGrid [-]
     INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: FKMod      !< Body nonlinear Froude-Krylov and hydrostatic model (switch) [-]
   END TYPE WAMIT_ParameterType
@@ -1099,6 +1100,18 @@ subroutine WAMIT_CopyParam(SrcParamData, DstParamData, CtrlCode, ErrStat, ErrMsg
    DstParamData%WaveField => SrcParamData%WaveField
    DstParamData%PtfmYMod = SrcParamData%PtfmYMod
    DstParamData%FrameSpd = SrcParamData%FrameSpd
+   if (allocated(SrcParamData%FwdSpdMod)) then
+      LB(1:1) = lbound(SrcParamData%FwdSpdMod)
+      UB(1:1) = ubound(SrcParamData%FwdSpdMod)
+      if (.not. allocated(DstParamData%FwdSpdMod)) then
+         allocate(DstParamData%FwdSpdMod(LB(1):UB(1)), stat=ErrStat2)
+         if (ErrStat2 /= 0) then
+            call SetErrStat(ErrID_Fatal, 'Error allocating DstParamData%FwdSpdMod.', ErrStat, ErrMsg, RoutineName)
+            return
+         end if
+      end if
+      DstParamData%FwdSpdMod = SrcParamData%FwdSpdMod
+   end if
    call GridInterp_CopyParam(SrcParamData%ExctnGridParams, DstParamData%ExctnGridParams, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
@@ -1159,6 +1172,9 @@ subroutine WAMIT_DestroyParam(ParamData, ErrStat, ErrMsg)
    call SS_Exc_DestroyParam(ParamData%SS_Exctn, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    nullify(ParamData%WaveField)
+   if (allocated(ParamData%FwdSpdMod)) then
+      deallocate(ParamData%FwdSpdMod)
+   end if
    call GridInterp_DestroyParam(ParamData%ExctnGridParams, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (allocated(ParamData%FKMod)) then
@@ -1204,6 +1220,7 @@ subroutine WAMIT_PackParam(RF, Indata)
    end if
    call RegPack(RF, InData%PtfmYMod)
    call RegPack(RF, InData%FrameSpd)
+   call RegPackAlloc(RF, InData%FwdSpdMod)
    call GridInterp_PackParam(RF, InData%ExctnGridParams) 
    call RegPackAlloc(RF, InData%FKMod)
    if (RegCheckErr(RF, RoutineName)) return
@@ -1262,6 +1279,7 @@ subroutine WAMIT_UnPackParam(RF, OutData)
    end if
    call RegUnpack(RF, OutData%PtfmYMod); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%FrameSpd); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpackAlloc(RF, OutData%FwdSpdMod); if (RegCheckErr(RF, RoutineName)) return
    call GridInterp_UnpackParam(RF, OutData%ExctnGridParams) ! ExctnGridParams 
    call RegUnpackAlloc(RF, OutData%FKMod); if (RegCheckErr(RF, RoutineName)) return
 end subroutine

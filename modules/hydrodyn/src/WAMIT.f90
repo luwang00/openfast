@@ -120,7 +120,7 @@ CONTAINS
 
 !----------------------------------------------------------------------------------------------------------------------------------
 !> Rigid-body velocity (and optionally acceleration) input of the radiation operator for one body: heading-frame motion, or with
-!! FrameSpd /= 0 the body-axis velocity relative to the steady stream and its body-frame derivative (no centripetal term).
+!! FwdSpdMod = 1 the body-axis velocity relative to the steady stream and its body-frame derivative (no centripetal term).
    subroutine RdtnKinematics( p, u, iBody, nu, nuDot )
       TYPE(WAMIT_ParameterType),   intent(in   ) :: p
       TYPE(WAMIT_InputType),       intent(in   ) :: u
@@ -132,7 +132,7 @@ CONTAINS
       integer(IntKi)                             :: ErrStat2
       character(ErrMsgLen)                       :: ErrMsg2
 
-      if ( EqualRealNos( p%FrameSpd, 0.0_ReKi ) ) then
+      if ( p%FwdSpdMod(iBody) /= 1 ) then
          call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%TranslationVel(:,iBody), nu(1:3), ErrStat2, ErrMsg2 )
          call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%RotationVel(:,iBody),    nu(4:6), ErrStat2, ErrMsg2 )
          if ( present(nuDot) ) then
@@ -165,7 +165,7 @@ CONTAINS
       integer(IntKi)                             :: ErrStat2
       character(ErrMsgLen)                       :: ErrMsg2
 
-      if ( EqualRealNos( p%FrameSpd, 0.0_ReKi ) ) then
+      if ( p%FwdSpdMod(iBody) /= 1 ) then
          call hiFrameTransform( h2i, u%PtfmRefY, F(1:3), tmpVec3, ErrStat2, ErrMsg2 );  F(1:3) = tmpVec3
          call hiFrameTransform( h2i, u%PtfmRefY, F(4:6), tmpVec3, ErrStat2, ErrMsg2 );  F(4:6) = tmpVec3
       else
@@ -375,9 +375,11 @@ SUBROUTINE WAMIT_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, ErrS
          return
       end if
 
-      FwdSpd   = .false.
+      call AllocAry( p%FwdSpdMod, p%NBody, 'p%FwdSpdMod', ErrStat2, ErrMsg2 ); if (Failed()) return
+      p%FwdSpdMod = 0_IntKi
+      if ( .not. EqualRealNos( p%FrameSpd, 0.0_ReKi ) .and. allocated( InitInp%FwdSpdMod ) ) p%FwdSpdMod = InitInp%FwdSpdMod(1:p%NBody)
+      FwdSpd   = any( p%FwdSpdMod == 1 )
       FspExctn = .false.
-      if ( .not. EqualRealNos( p%FrameSpd, 0.0_ReKi ) .and. allocated( InitInp%FwdSpdMod ) ) FwdSpd = any( InitInp%FwdSpdMod(1:p%NBody) == 1 )
       if ( FwdSpd ) then
          call AllocAry( UPt, p%NDOF, p%NDOF, 'UPt', ErrStat2, ErrMsg2 ); if (Failed()) return
          UPt = 0.0_SiKi
@@ -1582,10 +1584,11 @@ end if
             CALL Conv_Rdtn_Init(Conv_Rdtn_InitInp, m%Conv_Rdtn_u, p%Conv_Rdtn, x%Conv_Rdtn, xd%Conv_Rdtn, z%Conv_Rdtn, OtherState%Conv_Rdtn, &
                                    m%Conv_Rdtn_y, m%Conv_Rdtn, Conv_Rdtn_InitOut, ErrStat2, ErrMsg2); IF (Failed()) RETURN
 
-            IF ( .NOT. EqualRealNos( p%FrameSpd, 0.0_ReKi ) ) THEN
+            IF ( FwdSpd ) THEN
                ! Start the history from the steady stream relative to the initial orientation (no start-up transient from a heading offset)
                orientation = EulerConstructZYX( InitInp%PlatformPos(4:6) )
                DO iBody = 1, p%NBody
+                  IF ( p%FwdSpdMod(iBody) /= 1 ) CYCLE
                   iDOF = p%BDOFStrt(iBody) - 1
                   xd%Conv_Rdtn%XDHistory(iDOF+1,:) = REAL( p%FrameSpd*( orientation(1,1) - 1.0_R8Ki ), SiKi )
                   xd%Conv_Rdtn%XDHistory(iDOF+2,:) = REAL( p%FrameSpd*orientation(2,1), SiKi )
@@ -2376,7 +2379,7 @@ SUBROUTINE WAMIT_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat, Er
          ! Displacement with Tait-Bryan angles following the intrinsic Z-Y-X convention
          q(indxStart:indxEnd) = reshape((/real(u%Mesh%TranslationDisp(:,iBody),ReKi),rotdisp(:)/),(/6/))
 
-         ! Get velocity and acceleration in the heading frame (body axes relative to the stream when FrameSpd /= 0)
+         ! Get velocity and acceleration in the heading frame (body axes relative to the stream when FwdSpdMod = 1)
          call RdtnKinematics( p, u, iBody, qdot(indxStart:indxEnd), qdotdot(indxStart:indxEnd) )
 
          if ( p%NAddDOF(iBody) > 0_IntKi ) then
@@ -2464,7 +2467,7 @@ SUBROUTINE WAMIT_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat, Er
          
          !added mass:
 
-      m%F_PtfmAM     =   -matmul(p%HdroAdMsI, qdotdot) ! In h-frame (body axes when FrameSpd /= 0)
+      m%F_PtfmAM     =   -matmul(p%HdroAdMsI, qdotdot) ! In h-frame (body axes when FwdSpdMod = 1)
       do iBody = 1, p%NBody
          indxStart = p%BDOFStrt(iBody)
          call RdtnLoadToGlobal( p, u, iBody, m%F_PtfmAM(indxStart:indxStart+5) )

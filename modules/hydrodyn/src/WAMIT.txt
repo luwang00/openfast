@@ -134,7 +134,8 @@ typedef   ^                            ^                             SS_Exc_Para
 typedef   ^                            ^                             DbKi                     DT                       -          -         -         ""        -
 typedef   ^                            ^                             SeaSt_WaveFieldType     *WaveField                -          -         -         "Pointer to wave field"
 typedef   ^                            ^                             INTEGER                  PtfmYMod                 -          -         -         "Large yaw model" -
-typedef   ^                            ^                             ReKi                     FrameSpd                 -          0         -         "Speed of the simulation frame translating along global +X; radiation uses body-axis motion relative to the stream when nonzero"  "m/s"
+typedef   ^                            ^                             ReKi                     FrameSpd                 -          0         -         "Speed of the simulation frame translating along global +X"  "m/s"
+typedef   ^                            ^                             INTEGER                  FwdSpdMod                {:}        -         -         "Forward-speed model of each body; radiation uses body-axis motion relative to the stream when 1 [0 when FrameSpd = 0]" -
 typedef   ^                            ^                             GridInterp_ParameterType ExctnGridParams          -          -         -         "Parameters of WaveExctnGrid" -
 typedef   ^                            ^                             INTEGER                  FKMod                    {:}        -         -         "Body nonlinear Froude-Krylov and hydrostatic model (switch)" -
 #
