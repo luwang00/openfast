@@ -1436,6 +1436,17 @@ SUBROUTINE HydroDynInput_ProcessInitData( InitInp, Interval, InputFileData, ErrS
          RETURN
    END IF
 
+   IF ( .NOT. EqualRealNos( InitInp%FrameSpd, 0.0_ReKi ) ) THEN
+      IF ( InputFileData%PtfmYMod /= 0 .OR. .NOT. EqualRealNos( InputFileData%PtfmRefY, 0.0_ReKi ) ) &
+         CALL SetErrStat( ErrID_Fatal,'PtfmYMod and PtfmRefY must be 0 when FrameSpd /= 0 (+X is the mean course).',ErrStat,ErrMsg,RoutineName)
+      IF ( InputFileData%PotMod == 1 .AND. InputFileData%WAMIT%ExctnMod == 2 ) &
+         CALL SetErrStat( ErrID_Fatal,'State-space wave excitation (ExctnMod=2) cannot be used when FrameSpd /= 0.',ErrStat,ErrMsg,RoutineName)
+      IF ( InputFileData%WAMIT2%MnDrift /= 0 .OR. InputFileData%WAMIT2%NewmanApp /= 0 .OR. &
+           InputFileData%WAMIT2%DiffQTF /= 0 .OR. InputFileData%WAMIT2%SumQTF    /= 0 ) &
+         CALL SetErrStat( ErrID_Fatal,'Second-order wave loads (MnDrift, NewmanApp, DiffQTF, SumQTF) must be 0 when FrameSpd /= 0.',ErrStat,ErrMsg,RoutineName)
+      IF ( ErrStat >= AbortErrLev ) RETURN
+   END IF
+
       ! Linearization Checks
    ! LIN-TODO:
    !errors if:

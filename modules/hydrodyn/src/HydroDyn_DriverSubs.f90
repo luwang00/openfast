@@ -71,6 +71,7 @@ MODULE HydroDynDriverSubs
       REAL(ReKi)                       :: WtrDens
       REAL(ReKi)                       :: WtrDpth
       REAL(ReKi)                       :: MSL2SWL
+      REAL(ReKi)                       :: FrameSpd
       CHARACTER(1024)                  :: HDInputFile
       CHARACTER(1024)                  :: SeaStateInputFile
       CHARACTER(1024)                  :: OutRootName
@@ -205,6 +206,10 @@ SUBROUTINE ReadDriverInputFile( FileName, drvrData, ErrStat, ErrMsg )
 
       ! MSL2SWL - Offset between still-water level and mean sea level.
    CALL ReadVar ( UnIn, FileName, drvrData%MSL2SWL, 'MSL2SWL', 'Offset between still-water level and mean sea level', ErrStat2, ErrMsg2, UnEchoLocal )
+   if (Failed()) return
+
+      ! FrameSpd - Speed of the simulation frame translating along global +X.
+   CALL ReadVar ( UnIn, FileName, drvrData%FrameSpd, 'FrameSpd', 'Speed of the simulation frame translating along global +X', ErrStat2, ErrMsg2, UnEchoLocal )
    if (Failed()) return
    
    !-------------------------------------------------------------------------------------------------

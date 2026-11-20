@@ -42,6 +42,7 @@ IMPLICIT NONE
     INTEGER(IntKi)  :: NBody = 0_IntKi      !< [>=1; only used when PotMod=1. If NBodyMod=1, the WAMIT data contains a vector of size 6*NBody x 1 and matrices of size 6*NBody x 6*NBody; if NBodyMod>1, there are NBody sets of WAMIT data each with a vector of size 6 x 1 and matrices of size 6 x 6] [-]
     INTEGER(IntKi)  :: NBodyMod = 0_IntKi      !< Body coupling model {1: include coupling terms between each body and NBody in HydroDyn equals NBODY in WAMIT, 2: neglect coupling terms between each body and NBODY=1 with XBODY=0 in WAMIT, 3: Neglect coupling terms between each body and NBODY=1 with XBODY=/0 in WAMIT} (switch) [only used when PotMod=1] [-]
     REAL(ReKi)  :: Gravity = 0.0_ReKi      !< Supplied by Driver:  Gravitational acceleration [(m/s^2)]
+    REAL(ReKi)  :: FrameSpd = 0      !< Speed of the simulation frame translating along global +X [m/s]
     REAL(ReKi) , DIMENSION(:), ALLOCATABLE  :: PtfmVol0      !<  [-]
     LOGICAL  :: HasWAMIT = .false.      !< .TRUE. if using WAMIT model, .FALSE. otherwise [-]
     REAL(ReKi)  :: WAMITULEN = 0.0_ReKi      !<  [-]
@@ -140,6 +141,7 @@ IMPLICIT NONE
     REAL(DbKi)  :: DT = 0.0_R8Ki      !<  [-]
     TYPE(SeaSt_WaveFieldType) , POINTER :: WaveField => NULL()      !< Pointer to wave field [-]
     INTEGER(IntKi)  :: PtfmYMod = 0_IntKi      !< Large yaw model [-]
+    REAL(ReKi)  :: FrameSpd = 0      !< Speed of the simulation frame translating along global +X; radiation uses body-axis motion relative to the stream when nonzero [m/s]
     TYPE(GridInterp_ParameterType)  :: ExctnGridParams      !< Parameters of WaveExctnGrid [-]
     INTEGER(IntKi) , DIMENSION(:), ALLOCATABLE  :: FKMod      !< Body nonlinear Froude-Krylov and hydrostatic model (switch) [-]
   END TYPE WAMIT_ParameterType
@@ -187,6 +189,7 @@ subroutine WAMIT_CopyInitInput(SrcInitInputData, DstInitInputData, CtrlCode, Err
    DstInitInputData%NBody = SrcInitInputData%NBody
    DstInitInputData%NBodyMod = SrcInitInputData%NBodyMod
    DstInitInputData%Gravity = SrcInitInputData%Gravity
+   DstInitInputData%FrameSpd = SrcInitInputData%FrameSpd
    if (allocated(SrcInitInputData%PtfmVol0)) then
       LB(1:1) = lbound(SrcInitInputData%PtfmVol0)
       UB(1:1) = ubound(SrcInitInputData%PtfmVol0)
@@ -363,6 +366,7 @@ subroutine WAMIT_PackInitInput(RF, Indata)
    call RegPack(RF, InData%NBody)
    call RegPack(RF, InData%NBodyMod)
    call RegPack(RF, InData%Gravity)
+   call RegPack(RF, InData%FrameSpd)
    call RegPackAlloc(RF, InData%PtfmVol0)
    call RegPack(RF, InData%HasWAMIT)
    call RegPack(RF, InData%WAMITULEN)
@@ -408,6 +412,7 @@ subroutine WAMIT_UnPackInitInput(RF, OutData)
    call RegUnpack(RF, OutData%NBody); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%NBodyMod); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%Gravity); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%FrameSpd); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpackAlloc(RF, OutData%PtfmVol0); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%HasWAMIT); if (RegCheckErr(RF, RoutineName)) return
    call RegUnpack(RF, OutData%WAMITULEN); if (RegCheckErr(RF, RoutineName)) return
@@ -1013,6 +1018,7 @@ subroutine WAMIT_CopyParam(SrcParamData, DstParamData, CtrlCode, ErrStat, ErrMsg
    DstParamData%DT = SrcParamData%DT
    DstParamData%WaveField => SrcParamData%WaveField
    DstParamData%PtfmYMod = SrcParamData%PtfmYMod
+   DstParamData%FrameSpd = SrcParamData%FrameSpd
    call GridInterp_CopyParam(SrcParamData%ExctnGridParams, DstParamData%ExctnGridParams, CtrlCode, ErrStat2, ErrMsg2)
    call SetErrStat(ErrStat2, ErrMsg2, ErrStat, ErrMsg, RoutineName)
    if (ErrStat >= AbortErrLev) return
@@ -1109,6 +1115,7 @@ subroutine WAMIT_PackParam(RF, Indata)
       end if
    end if
    call RegPack(RF, InData%PtfmYMod)
+   call RegPack(RF, InData%FrameSpd)
    call GridInterp_PackParam(RF, InData%ExctnGridParams) 
    call RegPackAlloc(RF, InData%FKMod)
    if (RegCheckErr(RF, RoutineName)) return
@@ -1164,6 +1171,7 @@ subroutine WAMIT_UnPackParam(RF, OutData)
       OutData%WaveField => null()
    end if
    call RegUnpack(RF, OutData%PtfmYMod); if (RegCheckErr(RF, RoutineName)) return
+   call RegUnpack(RF, OutData%FrameSpd); if (RegCheckErr(RF, RoutineName)) return
    call GridInterp_UnpackParam(RF, OutData%ExctnGridParams) ! ExctnGridParams 
    call RegUnpackAlloc(RF, OutData%FKMod); if (RegCheckErr(RF, RoutineName)) return
 end subroutine

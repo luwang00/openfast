@@ -116,6 +116,62 @@ CONTAINS
       end do
 
    end subroutine TransformWAMITMatrices
+
+!----------------------------------------------------------------------------------------------------------------------------------
+!> Rigid-body velocity (and optionally acceleration) input of the radiation operator for one body: heading-frame motion, or with
+!! FrameSpd /= 0 the body-axis velocity relative to the steady stream and its body-frame derivative (no centripetal term).
+   subroutine RdtnKinematics( p, u, iBody, nu, nuDot )
+      TYPE(WAMIT_ParameterType),   intent(in   ) :: p
+      TYPE(WAMIT_InputType),       intent(in   ) :: u
+      integer(IntKi),              intent(in   ) :: iBody
+      real(ReKi),                  intent(  out) :: nu(6)
+      real(ReKi), optional,        intent(  out) :: nuDot(6)
+
+      real(R8Ki)                                 :: R(3,3), Ux(3), vr(3), wb(3)
+      integer(IntKi)                             :: ErrStat2
+      character(ErrMsgLen)                       :: ErrMsg2
+
+      if ( EqualRealNos( p%FrameSpd, 0.0_ReKi ) ) then
+         call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%TranslationVel(:,iBody), nu(1:3), ErrStat2, ErrMsg2 )
+         call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%RotationVel(:,iBody),    nu(4:6), ErrStat2, ErrMsg2 )
+         if ( present(nuDot) ) then
+            call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%TranslationAcc(:,iBody), nuDot(1:3), ErrStat2, ErrMsg2 )
+            call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%RotationAcc(:,iBody),    nuDot(4:6), ErrStat2, ErrMsg2 )
+         end if
+      else
+         R  = u%Mesh%Orientation(:,:,iBody)
+         Ux = (/ real(p%FrameSpd,R8Ki), 0.0_R8Ki, 0.0_R8Ki /)
+         vr = matmul( R, real(u%Mesh%TranslationVel(:,iBody),R8Ki) + Ux )   ! body-axis velocity relative to the still water
+         wb = matmul( R, real(u%Mesh%RotationVel(:,iBody),R8Ki) )
+         nu(1:3) = real( vr - Ux, ReKi )
+         nu(4:6) = real( wb, ReKi )
+         if ( present(nuDot) ) then
+            nuDot(1:3) = real( matmul( R, real(u%Mesh%TranslationAcc(:,iBody),R8Ki) ) - cross_product( wb, vr ), ReKi )
+            nuDot(4:6) = real( matmul( R, real(u%Mesh%RotationAcc(:,iBody),R8Ki) ), ReKi )
+         end if
+      end if
+   end subroutine RdtnKinematics
+
+!----------------------------------------------------------------------------------------------------------------------------------
+!> Transforms a rigid-body radiation or added-mass load of one body from the frame of RdtnKinematics to the global frame.
+   subroutine RdtnLoadToGlobal( p, u, iBody, F )
+      TYPE(WAMIT_ParameterType),   intent(in   ) :: p
+      TYPE(WAMIT_InputType),       intent(in   ) :: u
+      integer(IntKi),              intent(in   ) :: iBody
+      real(ReKi),                  intent(inout) :: F(6)
+
+      real(ReKi)                                 :: tmpVec3(3)
+      integer(IntKi)                             :: ErrStat2
+      character(ErrMsgLen)                       :: ErrMsg2
+
+      if ( EqualRealNos( p%FrameSpd, 0.0_ReKi ) ) then
+         call hiFrameTransform( h2i, u%PtfmRefY, F(1:3), tmpVec3, ErrStat2, ErrMsg2 );  F(1:3) = tmpVec3
+         call hiFrameTransform( h2i, u%PtfmRefY, F(4:6), tmpVec3, ErrStat2, ErrMsg2 );  F(4:6) = tmpVec3
+      else
+         F(1:3) = real( matmul( transpose(u%Mesh%Orientation(:,:,iBody)), real(F(1:3),R8Ki) ), ReKi )
+         F(4:6) = real( matmul( transpose(u%Mesh%Orientation(:,:,iBody)), real(F(4:6),R8Ki) ), ReKi )
+      end if
+   end subroutine RdtnLoadToGlobal
    
 !----------------------------------------------------------------------------------------------------------------------------------
 !> This routine is called at the start of the simulation to perform initialization steps. 
@@ -264,6 +320,7 @@ SUBROUTINE WAMIT_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, ErrS
       p%NBody        = InitInp%NBody            ! In the context of this WAMIT object NBody is 1 if NBodyMod > 1 [there are NBody different WAMIT objects in this case]
       p%WaveField   => InitInp%WaveField
       p%PtfmYMod     = InitInp%PtfmYMod
+      p%FrameSpd     = InitInp%FrameSpd
       
       ! Set up wave excitation grid - Can no longer use the WaveField parameters due to different headings
       ! Copy WaveField grid parameters
@@ -1205,8 +1262,8 @@ end if
 
                DO I = 0,p%WaveField%NStepWave2  ! Loop through the positive frequency components (including zero) of the discrete Fourier transform
 
-                  ! Compute the frequency of this component:
-                  Omega = I*p%WaveField%WaveDOmega
+                  ! Excitation is looked up at the intrinsic frequency (equal to the grid frequency without Doppler shift)
+                  Omega = p%WaveField%WaveOmegaI(I)
                   
                   DO iHdg = 1,p%NExctnHdg+1
                      ! Compute the PRP heading angle
@@ -1278,8 +1335,8 @@ end if
             else  ! p%ExctnDisp > 0
                DO I = 0,p%WaveField%NStepWave2  ! Loop through the positive frequency components (including zero) of the discrete Fourier transform
 
-                  ! Compute the frequency of this component:
-                  Omega = I*p%WaveField%WaveDOmega
+                  ! Excitation is looked up at the intrinsic frequency (equal to the grid frequency without Doppler shift)
+                  Omega = p%WaveField%WaveOmegaI(I)
 
                   DO iHdg = 1,p%ExctnGridParams%n(4)
                      ! Compute the current PRP heading
@@ -1391,8 +1448,7 @@ end if
                         do I = 0,p%WaveField%NStepWave2  ! Loop through the positive frequency components (including zero) of the discrete Fourier transform
 
                            ! Compute the phase shift of this component, Fxy = exp(-j * k(w) * ( X*cos(Beta(w)) + Y*sin(Beta(w)) ):
-                           Omega = I*p%WaveField%WaveDOmega 
-                           WaveNmbr   = WaveNumber ( Omega, InitInp%Gravity, p%WaveField%EffWtrDpth )
+                           WaveNmbr   = p%WaveField%WaveNmbr(I)
                            tmpAngle   = WaveNmbr * ( InitInp%PtfmRefxt(1)*cos(p%WaveField%WaveDirArr(I)*D2R) + InitInp%PtfmRefyt(1)*sin(p%WaveField%WaveDirArr(I)*D2R) )
                            TmpRe =  cos(tmpAngle)
                            TmpIm = -sin(tmpAngle)
@@ -1495,6 +1551,17 @@ end if
 
             CALL Conv_Rdtn_Init(Conv_Rdtn_InitInp, m%Conv_Rdtn_u, p%Conv_Rdtn, x%Conv_Rdtn, xd%Conv_Rdtn, z%Conv_Rdtn, OtherState%Conv_Rdtn, &
                                    m%Conv_Rdtn_y, m%Conv_Rdtn, Conv_Rdtn_InitOut, ErrStat2, ErrMsg2); IF (Failed()) RETURN
+
+            IF ( .NOT. EqualRealNos( p%FrameSpd, 0.0_ReKi ) ) THEN
+               ! Start the history from the steady stream relative to the initial orientation (no start-up transient from a heading offset)
+               orientation = EulerConstructZYX( InitInp%PlatformPos(4:6) )
+               DO iBody = 1, p%NBody
+                  iDOF = p%BDOFStrt(iBody) - 1
+                  xd%Conv_Rdtn%XDHistory(iDOF+1,:) = REAL( p%FrameSpd*( orientation(1,1) - 1.0_R8Ki ), SiKi )
+                  xd%Conv_Rdtn%XDHistory(iDOF+2,:) = REAL( p%FrameSpd*orientation(2,1), SiKi )
+                  xd%Conv_Rdtn%XDHistory(iDOF+3,:) = REAL( p%FrameSpd*orientation(3,1), SiKi )
+               END DO
+            END IF
             
          ELSE IF ( InitInp%RdtnMod == 2 ) THEN
             
@@ -1773,8 +1840,7 @@ SUBROUTINE WAMIT_UpdateStates( t, n, Inputs, InputTimes, p, x, xd, z, OtherState
             do iBody=1,p%NBody
                indxStart = p%BDOFStrt(iBody)
                indxEnd   = indxStart+5
-               call hiFrameTransform( i2h, Inputs(I)%PtfmRefY, Inputs(I)%Mesh%TranslationVel(:,iBody), tmpVec6(1:3), ErrStat, ErrMsg)
-               call hiFrameTransform( i2h, Inputs(I)%PtfmRefY, Inputs(I)%Mesh%RotationVel(:,iBody),    tmpVec6(4:6), ErrStat, ErrMsg)
+               call RdtnKinematics( p, Inputs(I), iBody, tmpVec6 )
                Conv_Rdtn_u(I)%Velocity(indxStart:indxEnd) = tmpVec6
                if ( p%NAddDOF(iBody) > 0_IntKi ) then
                   indxStart = p%BDOFStrt(iBody)+6
@@ -1808,8 +1874,7 @@ SUBROUTINE WAMIT_UpdateStates( t, n, Inputs, InputTimes, p, x, xd, z, OtherState
             END IF
             do iBody=1,p%NBody
                indxStart = (iBody-1)*6+1
-               call hiFrameTransform( i2h, Inputs(I)%PtfmRefY, Inputs(I)%Mesh%TranslationVel(:,iBody), tmpVec6(1:3), ErrStat, ErrMsg)
-               call hiFrameTransform( i2h, Inputs(I)%PtfmRefY, Inputs(I)%Mesh%RotationVel(:,iBody),    tmpVec6(4:6), ErrStat, ErrMsg)
+               call RdtnKinematics( p, Inputs(I), iBody, tmpVec6 )
                SS_Rdtn_u(I)%dq(indxStart:indxStart+5)   = tmpVec6
             end do
          END DO
@@ -1920,7 +1985,7 @@ SUBROUTINE WAMIT_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat, Er
       INTEGER(IntKi)                       :: AddDOFCntr                              ! Aggregated counter for additional DOF forcing outputs
       REAL(ReKi)                           :: bodyPosition(3)                         ! x-y displaced location of a WAMIT body (relative to 
       REAL(ReKi)                           :: refBodyPosition(3)
-      REAL(ReKi)                           :: tmpVec3(3),tmpVec6(6)
+      REAL(ReKi)                           :: tmpVec3(3)
       REAL(ReKi),      PARAMETER           :: LrgAngle = 0.261799387799149            ! Threshold for platform roll and pitch rotation (15 deg). This is consistent with the ElastoDyn check.
 
         ! Error handling
@@ -2034,13 +2099,8 @@ SUBROUTINE WAMIT_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat, Er
          ! Displacement with Tait-Bryan angles following the intrinsic Z-Y-X convention
          q(indxStart:indxEnd) = reshape((/real(u%Mesh%TranslationDisp(:,iBody),ReKi),rotdisp(:)/),(/6/))
 
-         ! Get velocity and acceleration in the heading frame
-         call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%TranslationVel(:,iBody), tmpVec6(1:3), ErrStat2, ErrMsg2)
-         call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%RotationVel(:,iBody),    tmpVec6(4:6), ErrStat2, ErrMsg2)
-         qdot   (indxStart:indxEnd)   = tmpVec6
-         call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%TranslationAcc(:,iBody), tmpVec6(1:3), ErrStat2, ErrMsg2)
-         call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%RotationAcc(:,iBody),    tmpVec6(4:6), ErrStat2, ErrMsg2)
-         qdotdot(indxStart:indxEnd)   = tmpVec6
+         ! Get velocity and acceleration in the heading frame (body axes relative to the stream when FrameSpd /= 0)
+         call RdtnKinematics( p, u, iBody, qdot(indxStart:indxEnd), qdotdot(indxStart:indxEnd) )
 
          if ( p%NAddDOF(iBody) > 0_IntKi ) then
             indxStart = p%BDOFStrt(iBody) + 6
@@ -2113,14 +2173,7 @@ SUBROUTINE WAMIT_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat, Er
       
       do iBody = 1, p%NBody
          indxStart = p%BDOFStrt(iBody)
-         indxEnd   = indxStart+2
-         call hiFrameTransform( h2i, u%PtfmRefY, m%F_Rdtn(indxStart:indxEnd), tmpVec3, ErrStat2, ErrMsg2 )
-         m%F_Rdtn(indxStart:indxEnd) = tmpVec3
-
-         indxStart = indxEnd+1
-         indxEnd   = indxStart+2
-         call hiFrameTransform( h2i, u%PtfmRefY, m%F_Rdtn(indxStart:indxEnd), tmpVec3, ErrStat2, ErrMsg2 )
-         m%F_Rdtn(indxStart:indxEnd) = tmpVec3
+         call RdtnLoadToGlobal( p, u, iBody, m%F_Rdtn(indxStart:indxStart+5) )
       end do
 
       ! Compute Added Mass Forces
@@ -2131,17 +2184,10 @@ SUBROUTINE WAMIT_CalcOutput( Time, u, p, x, xd, z, OtherState, y, m, ErrStat, Er
          
          !added mass:
 
-      m%F_PtfmAM     =   -matmul(p%HdroAdMsI, qdotdot) ! In h-frame
+      m%F_PtfmAM     =   -matmul(p%HdroAdMsI, qdotdot) ! In h-frame (body axes when FrameSpd /= 0)
       do iBody = 1, p%NBody
          indxStart = p%BDOFStrt(iBody)
-         indxEnd   = indxStart+2
-         call hiFrameTransform( h2i, u%PtfmRefY, m%F_PtfmAM(indxStart:indxEnd), tmpVec3, ErrStat2, ErrMsg2 )
-         m%F_PtfmAM(indxStart:indxEnd) = tmpVec3
-
-         indxStart = indxEnd+1
-         indxEnd   = indxStart+2
-         call hiFrameTransform( h2i, u%PtfmRefY, m%F_PtfmAM(indxStart:indxEnd), tmpVec3, ErrStat2, ErrMsg2 )
-         m%F_PtfmAM(indxStart:indxEnd) = tmpVec3
+         call RdtnLoadToGlobal( p, u, iBody, m%F_PtfmAM(indxStart:indxStart+5) )
       end do
       
          ! Compute outputs here:
@@ -2201,8 +2247,7 @@ SUBROUTINE WAMIT_CalcContStateDeriv( Time, u, p, x, xd, z, OtherState, m, dxdt, 
       if (p%RdtnMod == 2) then
          do iBody = 1, p%NBody
             indxStart = (iBody-1)*6+1 
-            call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%TranslationVel(:,iBody), tmpVec6(1:3), ErrStat, ErrMsg)
-            call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%RotationVel(:,iBody),    tmpVec6(4:6), ErrStat, ErrMsg)
+            call RdtnKinematics( p, u, iBody, tmpVec6 )
             m%SS_Rdtn_u%dq(indxStart:indxStart+5) = tmpVec6
          end do
       
@@ -2252,8 +2297,7 @@ SUBROUTINE WAMIT_UpdateDiscState( Time, n, u, p, x, xd, z, OtherState, m, ErrSta
          do iBody=1,p%NBody
                indxStart = p%BDOFStrt(iBody)
                indxEnd   = indxStart+5
-               call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%TranslationVel(:,iBody), tmpVec6(1:3), ErrStat, ErrMsg)
-               call hiFrameTransform( i2h, u%PtfmRefY, u%Mesh%RotationVel(:,iBody),    tmpVec6(4:6), ErrStat, ErrMsg)
+               call RdtnKinematics( p, u, iBody, tmpVec6 )
                m%Conv_Rdtn_u%Velocity(indxStart:indxEnd) = tmpVec6
                if ( p%NAddDOF(iBody) > 0_IntKi ) then
                   indxStart = p%BDOFStrt(iBody)+6

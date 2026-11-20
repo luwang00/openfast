@@ -300,6 +300,7 @@ SUBROUTINE HydroDyn_Init( InitInp, u, p, x, xd, z, OtherState, y, m, Interval, I
             p%vecMultiplier          = InputFileData%vecMultiplier  ! Multiply all vectors and matrices row/column lengths by NBody
             InputFileData%WAMIT%NBodyMod = InputFileData%NBodyMod
             InputFileData%WAMIT%Gravity  = InitInp%Gravity
+            InputFileData%WAMIT%FrameSpd = InitInp%FrameSpd
             InputFileData%WAMIT%PlatformPos = InitInp%PlatformPos   ! Initial platform/HD origin position
             p%NBody                  = InputFileData%NBody
             p%NBodyMod               = InputFileData%NBodyMod
@@ -2102,6 +2103,7 @@ SUBROUTINE HD_JacobianPInput(Vars, t, u, p, x, xd, z, OtherState, y, m, ErrStat,
    integer(IntKi)                :: iVarWaveElev0, iVarHWindSpeed, iVarPLexp, iVarPropagationDir
    logical                       :: calcMorisonHstLds
    logical                       :: calcNonlinearFKLds
+   logical                       :: FrameFD
    
    ErrStat = ErrID_None
    ErrMsg  = ''
@@ -2208,6 +2210,32 @@ SUBROUTINE HD_JacobianPInput(Vars, t, u, p, x, xd, z, OtherState, y, m, ErrStat,
       
       offsetI = 0
       dXdu = 0.0_R8Ki
+
+      FrameFD = .false.
+      if ( p%totalRdtnStates > 0 ) FrameFD = .not. EqualRealNos( p%WAMIT(1)%FrameSpd, 0.0_ReKi )
+
+      if ( FrameFD ) then
+
+         ! Radiation input depends on body orientation and on velocity relative to the stream: central differences
+         do i = 1, size(Vars%u)
+            if (MV_HasFlagsAll(Vars%u(i), VF_ExtLin)) cycle
+            do j = 1, Vars%u(i)%Num
+               call MV_Perturb(Vars%u(i), j, 1, m%Jac%u, m%Jac%u_perturb)
+               call HydroDyn_VarsUnpackInput(Vars, m%Jac%u_perturb, m%u_perturb)
+               call HydroDyn_CalcContStateDeriv(t, m%u_perturb, p, x, xd, z, OtherState, m, m%dxdt_lin, ErrStat2, ErrMsg2); if (Failed()) return
+               call HydroDyn_VarsPackContStateDeriv(Vars, m%dxdt_lin, m%Jac%x_pos)
+
+               call MV_Perturb(Vars%u(i), j, -1, m%Jac%u, m%Jac%u_perturb)
+               call HydroDyn_VarsUnpackInput(Vars, m%Jac%u_perturb, m%u_perturb)
+               call HydroDyn_CalcContStateDeriv(t, m%u_perturb, p, x, xd, z, OtherState, m, m%dxdt_lin, ErrStat2, ErrMsg2); if (Failed()) return
+               call HydroDyn_VarsPackContStateDeriv(Vars, m%dxdt_lin, m%Jac%x_neg)
+
+               col = Vars%u(i)%iLoc(1) + j - 1
+               dXdu(:,col) = (m%Jac%x_pos - m%Jac%x_neg) / (2.0_R8Ki * Vars%u(i)%Perturb)
+            end do
+         end do
+
+      else
       
       do j = 1,p%nWAMITObj
          do i = 1,p%WAMIT(j)%SS_Exctn%numStates
@@ -2292,7 +2320,9 @@ SUBROUTINE HD_JacobianPInput(Vars, t, u, p, x, xd, z, OtherState, y, m, ErrStat,
             offsetI = offsetI + p%WAMIT(j)%SS_Rdtn%numStates
          end do
       end if   
-      
+
+      end if
+
    END IF
 
    IF ( PRESENT( dXddu ) ) THEN

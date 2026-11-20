@@ -167,6 +167,7 @@ PROGRAM HydroDynDriver
    InitInData_SeaSt%defWtrDens   = drvrData%WtrDens
    InitInData_SeaSt%defWtrDpth   = drvrData%WtrDpth
    InitInData_SeaSt%defMSL2SWL   = drvrData%MSL2SWL
+   InitInData_SeaSt%FrameSpd     = drvrData%FrameSpd
    InitInData_SeaSt%UseInputFile = .TRUE. 
    InitInData_SeaSt%InputFile    = drvrData%SeaStateInputFile
    InitInData_SeaSt%OutRootName  = trim(drvrData%OutRootName)//'.SEA'
@@ -335,6 +336,7 @@ CONTAINS
 subroutine SetHD_InitInputs()
 
    InitInData_HD%Gravity      = drvrData%Gravity
+   InitInData_HD%FrameSpd     = drvrData%FrameSpd
    InitInData_HD%UseInputFile = .TRUE.
    InitInData_HD%InputFile    = drvrData%HDInputFile
    InitInData_HD%OutRootName  = trim(drvrData%OutRootName)//'.HD'
